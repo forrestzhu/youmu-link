@@ -11,7 +11,7 @@
 - YM_Link：Windows / macOS 桌面应用，连接 Meta Quest 3 / 3S 上的游目；产品全称 Youmu VR Player 桌面伴侣 YM_Link。
 - 先读 [当前进度](docs/STATUS.md)、[产品定义](docs/product/YM-LINK.md) 和当前任务；用 [文档索引](docs/README.md) 定位材料。
 - 阶段目标见 [ROADMAP](docs/product/ROADMAP.md)；未立项的想法先进 ROADMAP 候选，不直接动代码。
-- 按用户本轮要求准备 Apache-2.0 开源与 GitHub Actions 自动测试 / 开发包；LICENSE 与第三方许可文件随仓库及制品保留。当前 GitHub 仓库仍为 private，转公开与改写已推送历史必须由用户明确决定；本次不自动发布 GitHub Release，不更改账户设置。
+- 用户已于 2026-10-27 授权将 GitHub 仓库公开为 Apache-2.0 开发预览；LICENSE 与第三方许可文件随仓库及制品保留。后续改写已推送历史仍须用户明确决定；源码公开不自动发布 GitHub Release，不更改账户计费设置。
 
 ## 工作闭环
 

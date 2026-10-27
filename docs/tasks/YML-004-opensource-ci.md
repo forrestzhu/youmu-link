@@ -7,7 +7,7 @@ Tests: python3 -m unittest discover -s scripts -p test_*.py; harness verify; Win
 
 ## Scope
 
-按用户要求准备 Apache-2.0 开源，核对全部历史 author / committer 邮箱，补齐 GitHub Actions 自动测试与 Windows / macOS 开发包；追加检查源码、所有历史与开发包的敏感信息并修复确认的问题。用户后续明确授权仅将旧提交 author / committer 的公司邮箱修正为目标邮箱，并完成必要的历史改写 / 精确 lease 推送。采用现有原生构建，不引入安装器 / 发布服务。仓库转 public、其他历史正文改写、GitHub Release 公开发布及账户设置不在本轮自动执行范围。
+按用户要求准备 Apache-2.0 开源，核对全部历史 author / committer 邮箱，补齐 GitHub Actions 自动测试与 Windows / macOS 开发包；追加检查源码、所有历史与开发包的敏感信息并修复确认的问题。用户先后明确授权历史公司邮箱修正及必要的精确 lease 推送、将当前已审计仓库公开为开发预览。采用现有原生构建，不引入安装器 / 发布服务；其他历史正文改写、GitHub Release 正式发布及账户计费设置不在本轮自动执行范围。
 
 ## Spec
 
@@ -47,4 +47,4 @@ Tests: python3 -m unittest discover -s scripts -p test_*.py; harness verify; Win
 
 追加[公开准备复查](../evidence/2026-10-27-public-readiness.md)：基线 `61c072f` 的 21 提交 / 281 个唯一文本 blob fresh 扫描无已确认凭据，许可 / 依赖未发现确定缺件。HEAD 一处内部名称注释已泛化，历史正文 / message 未改。基线 20 runs / 60 jobs 均 steps=0，50 个失败 job 均为账户条件，0 artifacts / releases / tags；不把背景文本视为已确认凭据泄露，公开前决定保留或清理。源码可以开发预览形式开放，Quest 真机、正式签名 / 安装器不作为源码开放的硬前置。
 
-注释 / 文档小修后实际 `harness verify` 为 Python 36 passed / 1 skipped、Rust 76 passed / 2 ignored。云端与 macOS 构建仍 not-run，任务保持 verifying；用户决定历史 / 运行背景公开范围及公开时点后再实跑三平台 CI，不保证可见性变更自动解除账户限制。SECURITY / 私下报告入口与简短贡献说明建议补齐，当前没有自动公开或删除远端记录。
+注释 / 文档小修后实际 `harness verify` 为 Python 36 passed / 1 skipped、Rust 76 passed / 2 ignored。用户现已明确授权公开，GitHub 回读 PUBLIC / Apache-2.0，匿名仓库 API / LICENSE 200，私下报告 enabled=true；新增中英 SECURITY / CONTRIBUTING。首个公开后 run 40505699128 的 checks / windows 全部成功并上传 Windows 包；macOS Rust 构建因默认 Xcode 16.4 SDK 过旧失败，已固定镜像中 Xcode 26.3，等待新 run 验证，任务保持 verifying。完整记录见[公开与云端证据](../evidence/2026-10-27-public-launch.md)。未删除旧运行记录或追加历史改写。

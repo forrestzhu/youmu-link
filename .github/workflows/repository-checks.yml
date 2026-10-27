@@ -77,6 +77,9 @@ jobs:
     # This standard image is Apple Silicon; Intel and macOS 14 compatibility need separate acceptance.
     runs-on: macos-15
     timeout-minutes: 35
+    env:
+      # The locked apple-metal Swift bridge uses Metal APIs from the macOS 26 SDK.
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -89,6 +92,11 @@ jobs:
           toolchain: "1.85.0"
       - name: Confirm Apple Silicon runner
         run: test "$(uname -m)" = arm64
+      - name: Verify selected Xcode and macOS SDK
+        run: |
+          xcodebuild -version
+          xcrun --sdk macosx --show-sdk-version
+          swift --version
       - name: macOS Rust tests
         run: cargo test --workspace --all-targets --locked
       - name: Build and verify static Rust linkage and ad-hoc signature

@@ -12,7 +12,7 @@
 | L4 互操作 | Rust ↔ 游目 Kotlin：golden beacon、Noise / SPAKE2、文件与媒体帧对拍、错误版本拒绝 | 双仓一致性夹具 + 联调任务真机 | 协议版本变化必须；当前 Kotlin 侧尚未集成，not-run |
 | L5 体验基准 | Quest 文件播放 / seek、镜像延迟 / FPS / 音画同步、吞吐与弱网恢复 | M3 / M4 固化样本、脚本和佩戴记录 | 里程碑验收；当前 not-run |
 
-CI workflow 配置 Ubuntu 24.04 / Windows 2025 / macOS 15 三平台测试；Windows 补 Release / WPF / ABI / smoke，macOS 补 Swift 测试、Rust 静态链接与 `.app` 构建。当前云端 runner 尚未实际启动，macOS 本机既有证据单独记录；workflow 配置不等于三平台已实跑通过。
+CI workflow 配置 Ubuntu 24.04 / Windows 2025 / macOS 15 三平台测试；Windows 补 Release / WPF / ABI / smoke，macOS 补 Swift 测试、Rust 静态链接与 `.app` 构建。公开后首跑的 Linux / Windows 测试与 Windows 开发包已通过；macOS 首次 Rust 构建遇到默认 Xcode SDK 过旧，已固定 Xcode 26.3，后续结果见[公开与云端证据](../evidence/2026-10-27-public-launch.md)。本机既有证据单独记录，workflow 配置不等于三平台已实跑通过。
 
 Windows CI 另运行 WPF Release 构建与 .NET 控制台测试；无交互屏幕采集，不将 CI 构建视为原生窗口验收。
 

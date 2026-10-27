@@ -14,8 +14,9 @@ YM_Link 是 [Youmu VR Player](https://github.com/forrestzhu/youmu)（游目）�
 
 - 阶段：macOS 使用 SwiftUI / AppKit（[YML-002](docs/tasks/YML-002-macos-native.md)），Windows 使用 WPF / .NET 8（[YML-003](docs/tasks/YML-003-windows-native.md)）；Rust 共用发现、加密配对、授权文件服务、传输与镜像控制，采集编码按平台适配。决策见 [ADR-0002](docs/engineering/decisions/0002-native-desktop.md) / [ADR-0003](docs/engineering/decisions/0003-windows-native.md)。游目头显侧 YM_Link v3 集成与真实设备验收仍待推进。
 - 验证：Windows 本轮 76 项 Rust 回归、WPF 数据行 / 中英资源 / ABI 生命周期、Release 构建与启动检查通过；合成 HD 实际 H.264 编码与 SPS 检查另行通过。桌面后端覆盖真实 TCP 单机配对、文件 range、传输控制、重连与授权目录重启持久化。macOS 之前已有 `.app`、原生配对及 4 MiB 下载证据，本轮未在 Windows 复跑 macOS 构建。双机 LAN、真实 Quest 播放 / 镜像与音画同步为 **not-run**，不以测试桩代替设备验收。
-- 许可：原创代码采用 [Apache-2.0](LICENSE)，第三方依赖保留各自许可，见 [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES.md)。历史邮箱已按维护者授权修正，当前 GitHub 仓库仍为 private；历史示例 / 内部背景的处理和公开时点仍由维护者决定，不自动发布 Release。
+- 许可：仓库已于 2026-10-27 按维护者授权公开为 **Apache-2.0 开发预览**，原创代码采用 [Apache-2.0](LICENSE)，第三方依赖保留各自许可，见 [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES.md)。历史邮箱已修正；源码公开不等于正式发行，不自动发布 Release。
 - 当前进度：[STATUS](docs/STATUS.md)；文档索引：[docs/README](docs/README.md)。
+- 参与项目：[贡献指南 / Contributing](CONTRIBUTING.md)；私下报告漏洞：[安全政策 / Security](SECURITY.md)。
 
 ## 仓库结构
 
@@ -28,7 +29,7 @@ YM_Link 是 [Youmu VR Player](https://github.com/forrestzhu/youmu)（游目）�
 | `scripts/` | harness 任务闭环、仓库检查、macOS `.app` / Windows 开发目录构建 |
 | `docs/` | 产品定义、架构、协议、测试策略与任务记录 |
 | `design/prototypes/` | 可点击 demo 原型 |
-| `.github/workflows/` | CI（仓库检查 + Rust 矩阵测试） |
+| `.github/workflows/` | CI（仓库检查、三平台 Rust / 原生测试与开发包） |
 
 ## 自动测试与开发包
 
@@ -44,7 +45,7 @@ python3 scripts/package_build.py --platform windows-x64
 # macOS 构建后省略 --windows-assets，并改为 --platform macos-arm64
 ```
 
-开源前隐私审查见[敏感信息审计](docs/evidence/2026-10-27-sensitive-information-audit.md)，当前剩余项见[公开准备复查](docs/evidence/2026-10-27-public-readiness.md)。源码开源与 CI runner 实际执行状态见 [开源与 CI 报告](docs/evidence/2026-10-27-opensource-ci.md)。当前账户级托管运行条件限制曾阻止任务启动；workflow 已配置不代表云端任务已成功。
+开源前隐私审查见[敏感信息审计](docs/evidence/2026-10-27-sensitive-information-audit.md)与[公开准备复查](docs/evidence/2026-10-27-public-readiness.md)。公开后的 CI 执行与开发包结果以 [STATUS](docs/STATUS.md) 的实际证据为准；此前账户级运行条件阻塞保留于[开源与 CI 报告](docs/evidence/2026-10-27-opensource-ci.md)，workflow 配置不代表云端任务已成功。
 
 ## 快速开始
 
@@ -62,7 +63,7 @@ dotnet run --project windows/Tests/YM_Link.Tests.csproj
 
 Windows 窗口可切换系统语言 / English / 简体中文，设备面板显示 TCP / UDP 端口并提供手动 IPv4:端口连接。发现不到时先核对同一局域网、访客网隔离与系统对应用的专用网络访问权限；应用不会自动改防火墙。选择“授权文件夹”后才开放该目录，未配对设备不可访问。录屏首次开始弹出本机确认，系统音频可关闭。当前 Windows 使用系统软件 H.264 编码与 CPU 缩放；不把配置档位当作实际性能，不承诺硬件编码、Quest 播放或延迟达标。开发目录不是安装器或已签名分发包。
 
-macOS 构建目标为 **macOS 14+**。当前只在 **Apple Silicon、macOS 27.0.1、Xcode 27** 开发机验证；尚未在 macOS 14 或 Intel Mac 上运行，不能据此承诺这些环境已通过兼容性验收。需要本机 Rust / Cargo、Python 3.10+ 与 Xcode 的 Swift 工具链。
+macOS 构建目标为 **macOS 14+**。当前只在 **Apple Silicon、macOS 27.0.1、Xcode 27** 开发机验证；尚未在 macOS 14 或 Intel Mac 上运行，不能据此承诺这些环境已通过兼容性验收。需要本机 Rust / Cargo、Python 3.10+ 与 Xcode 26+ 的 Swift 工具链；锁定的 Metal bridge 编译需要 macOS 26 SDK，CI 选择已安装的 Xcode 26.3。较新的编译 SDK 不等于旧系统兼容性已验收。
 
 ```bash
 # 构建本地开发包（临时签名，未公证；最终构建结果见 STATUS）
