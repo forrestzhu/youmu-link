@@ -33,6 +33,7 @@ Tests: core::tests::discovery、core::tests::session、core::tests::files、core
 
 ## Evidence
 
+- 2026-10-27 联调条件实查：使用本机已有 SDK 的 `adb devices -l`，当前连接设备 0；只读核对相邻游目 `app/src/main` 与 YM-276，尚无可运行 YM_Link v3 客户端，头显集成仍属后续任务。未安装 / 启动 Android 包、未修改游目仓库。录屏确认尚无用户答复，未采集画面或音频。解除条件：用户确认本机采集测试并完成系统授权；Quest / 第二设备具备匹配 v3 的端侧实现与连接条件后，继续 L3–L5 验收。
 - 完成范围复核定位产品体验原则“弱网先降分辨率”尚缺：旧 capture 只丢帧 / 补关键帧。本轮先修订规范 v0.5（无新增字段，应用仍 v3），补持续背压检测与降低实际采集 / 编码分辨率；录屏与 Quest 验收仍待外部条件。
 - 弱网续轮回归：尺寸 cap 先 RED（960 上限仍生成 1920），修复后 GREEN；运行时策略先 RED（满队列两窗口未触发），修复后 GREEN。最终 `harness verify`：59 passed、0 failed、1 ignored；显式硬件合成帧编码 1 passed，视频计数实际为 1 次尝试 / 0 丢弃。真实采集、自动重启后帧 / 音频与 Quest 弱网解码仍 not-run。
 - 弱网续轮审查（`b5260fe` + 工作树）发现 fatal 媒体包可能被背压分支跳过、以及旧代际初始化错误可能丢失两项 P2。改为共享授权链的独立首错信号：fail / stop 同锁同步；Err / JoinErr 在释放 capture gate 前记录首错，UI 仍按代际更新；恢复 / 切屏共用链，仅有效的本机 Start 更新。隔离测试永久占用 capture gate，即使断言失败也不能录屏；移除保护或不保存旧启动错误时均实际 RED，补齐后 GREEN。原 reviewer 限定复审确认两条时序关闭。
