@@ -23,6 +23,19 @@ pub struct MediaPacket {
     pub data: Vec<u8>,
 }
 
+/// A terminal failure belongs to the whole locally authorized mirror chain.
+#[derive(Default)]
+pub struct Failure(pub(crate) std::sync::Mutex<Option<String>>);
+
+impl Failure {
+    pub fn message(&self) -> Option<String> {
+        self.0
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .clone()
+    }
+}
+
 #[cfg(target_os = "macos")]
 mod platform {
     use super::*;
@@ -30,7 +43,7 @@ mod platform {
     use screencapturekit::stream::delegate_trait::SCStreamDelegateTrait;
     use std::ffi::c_void;
     use std::ptr;
-    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
     use std::sync::{Arc, Mutex};
 
     type Ref = *const c_void;
@@ -194,7 +207,12 @@ mod platform {
         bitrate: i32,
     }
 
-    fn profile(width: u32, height: u32, quality: &str) -> Result<Profile, String> {
+    fn profile(
+        width: u32,
+        height: u32,
+        quality: &str,
+        max_edge: Option<u32>,
+    ) -> Result<Profile, String> {
         let (maximum, fps, bitrate) = match quality {
             "smooth" => (1280u32, 30, 4_000_000),
             "balanced" => (1920, 60, 12_000_000),
@@ -204,8 +222,11 @@ mod platform {
         if width < 2 || height < 2 {
             return Err("Display dimensions are invalid".into());
         }
+        if max_edge.is_some_and(|edge| edge < 2) {
+            return Err("Mirror size limit is invalid".into());
+        }
         let longest = width.max(height);
-        let scaled = |value: u32| {
+        let scaled = |value: u32, maximum: u32| {
             let value = if longest > maximum {
                 (u64::from(value) * u64::from(maximum) / u64::from(longest)) as u32
             } else {
@@ -213,9 +234,14 @@ mod platform {
             };
             (value & !1).max(2)
         };
+        let base_area = u64::from(scaled(width, maximum)) * u64::from(scaled(height, maximum));
+        let maximum = maximum.min(max_edge.unwrap_or(maximum));
+        let (width, height) = (scaled(width, maximum), scaled(height, maximum));
+        let bitrate = (bitrate as u64 * u64::from(width) * u64::from(height) / base_area)
+            .clamp(256_000, bitrate as u64) as i32;
         Ok(Profile {
-            width: scaled(width),
-            height: scaled(height),
+            width,
+            height,
             fps,
             bitrate,
         })
@@ -235,6 +261,9 @@ mod platform {
         failed: AtomicBool,
         need_keyframe: AtomicBool,
         audio_config_sent: AtomicBool,
+        video_attempts: AtomicU64,
+        video_drops: AtomicU64,
+        failure: Arc<Failure>,
         width: u32,
         height: u32,
     }
@@ -268,8 +297,17 @@ mod platform {
         }
 
         fn fail(&self, message: &str) {
-            if self.failed.swap(true, Ordering::SeqCst) || !self.running.load(Ordering::SeqCst) {
-                return;
+            {
+                let mut failure = self
+                    .failure
+                    .0
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner());
+                if !self.running.load(Ordering::SeqCst) || failure.is_some() {
+                    return;
+                }
+                *failure = Some(message.into());
+                self.failed.store(true, Ordering::SeqCst);
             }
             // Never block Apple's output queue or silently lose a fatal error to backpressure.
             let packet = self.packet("error", "", 0, false, message.as_bytes().to_vec());
@@ -281,10 +319,12 @@ mod platform {
 
         fn send_video(&self, sample: &CMSampleBuffer) -> Result<(), String> {
             let Some(pts_us) = timestamp(sample.presentation_timestamp()) else {
+                self.video_drops.fetch_add(1, Ordering::Relaxed);
                 return Ok(());
             };
             let keyframe = sample.is_sync_sample();
             if self.need_keyframe.load(Ordering::SeqCst) && !keyframe {
+                self.video_drops.fetch_add(1, Ordering::Relaxed);
                 return Ok(());
             }
             let block = sample
@@ -323,9 +363,11 @@ mod platform {
                     permits.next().unwrap().send(frame);
                     self.need_keyframe.store(false, Ordering::SeqCst);
                 } else {
+                    self.video_drops.fetch_add(1, Ordering::Relaxed);
                     self.need_keyframe.store(true, Ordering::SeqCst);
                 }
             } else if self.sender.try_send(frame).is_err() {
+                self.video_drops.fetch_add(1, Ordering::Relaxed);
                 self.need_keyframe.store(true, Ordering::SeqCst);
             }
             Ok(())
@@ -451,17 +493,23 @@ mod platform {
             return;
         }
         if status != 0 {
+            output.video_drops.fetch_add(1, Ordering::Relaxed);
             output.fail("The hardware video encoder stopped unexpectedly");
             return;
         }
         if flags & 2 != 0 || sample.is_null() {
+            output.video_drops.fetch_add(1, Ordering::Relaxed);
             output.need_keyframe.store(true, Ordering::SeqCst);
             return;
         }
         if let Some(sample) = CMSampleBuffer::from_raw_borrowed(sample) {
             if let Err(error) = output.send_video(&sample) {
+                output.video_drops.fetch_add(1, Ordering::Relaxed);
                 output.fail(&error)
             }
+        } else {
+            output.video_drops.fetch_add(1, Ordering::Relaxed);
+            output.need_keyframe.store(true, Ordering::SeqCst);
         }
     }
 
@@ -545,7 +593,9 @@ mod platform {
             {
                 return;
             }
+            output.video_attempts.fetch_add(1, Ordering::Relaxed);
             if output.sender.capacity() == 0 {
+                output.video_drops.fetch_add(1, Ordering::Relaxed);
                 output.need_keyframe.store(true, Ordering::SeqCst);
                 return;
             }
@@ -555,6 +605,7 @@ mod platform {
                 }]) {
                     Ok(value) => Some(value),
                     Err(error) => {
+                        output.video_drops.fetch_add(1, Ordering::Relaxed);
                         output.fail(&error);
                         return;
                     }
@@ -575,9 +626,13 @@ mod platform {
                 )
             };
             if status != 0 {
-                output.fail("Unable to encode the captured screen frame")
+                output.video_drops.fetch_add(1, Ordering::Relaxed);
+                output.fail("Unable to encode the captured screen frame");
+                return;
             }
             if flags & 2 != 0 {
+                // Count completion drops in `encoded`, including synchronous
+                // completion, rather than counting both VT reports for one frame.
                 output.need_keyframe.store(true, Ordering::SeqCst)
             }
         }
@@ -623,7 +678,12 @@ mod platform {
             quality: &str,
             sender: Sender<MediaPacket>,
             allow_permission_request: bool,
+            max_edge: Option<u32>,
+            failure: Arc<Failure>,
         ) -> Result<Self, String> {
+            if let Some(message) = failure.message() {
+                return Err(message);
+            }
             if sender.max_capacity() < 2 {
                 return Err(
                     "Mirror output queue needs capacity for configuration and video".into(),
@@ -633,7 +693,7 @@ mod platform {
                 .into_iter()
                 .find(|display| display.id == display_id)
                 .ok_or("The selected display is no longer available")?;
-            let profile = profile(source.width, source.height, quality)?;
+            let profile = profile(source.width, source.height, quality, max_edge)?;
             if !permission_granted()
                 && (!allow_permission_request || !unsafe { CGRequestScreenCaptureAccess() })
             {
@@ -672,6 +732,9 @@ mod platform {
                 failed: AtomicBool::new(false),
                 need_keyframe: AtomicBool::new(true),
                 audio_config_sent: AtomicBool::new(false),
+                video_attempts: AtomicU64::new(0),
+                video_drops: AtomicU64::new(0),
+                failure,
                 width: profile.width,
                 height: profile.height,
             });
@@ -742,8 +805,27 @@ mod platform {
             Ok(capture)
         }
 
+        pub fn dimensions(&self) -> (u32, u32) {
+            (self.output.width, self.output.height)
+        }
+
+        pub fn take_video_pressure(&self) -> (u64, u64) {
+            (
+                self.output.video_attempts.swap(0, Ordering::Relaxed),
+                self.output.video_drops.swap(0, Ordering::Relaxed),
+            )
+        }
+
         pub fn stop(&mut self) {
-            self.output.running.store(false, Ordering::SeqCst);
+            {
+                let _failure = self
+                    .output
+                    .failure
+                    .0
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner());
+                self.output.running.store(false, Ordering::SeqCst);
+            }
             if let Some(mut stream) = self.stream.take() {
                 let _ = stream.stop_capture();
                 for (handler, kind) in self.handlers.drain(..) {
@@ -785,12 +867,12 @@ mod platform {
 
         #[test]
         fn profiles_and_pcm_keep_dimensions_and_channels() {
-            let p = profile(3456, 2234, "balanced").unwrap();
+            let p = profile(3456, 2234, "balanced", None).unwrap();
             assert_eq!(
                 (p.width, p.height, p.fps, p.bitrate),
                 (1920, 1240, 60, 12_000_000)
             );
-            assert!(profile(100, 100, "unknown").is_err());
+            assert!(profile(100, 100, "unknown", None).is_err());
             assert_eq!(timestamp(CMTime::new(3, 2)), Some(1_500_000));
             assert_eq!(timestamp(CMTime::INVALID), None);
             let left: Vec<_> = [1.0f32, 2.0]
@@ -812,6 +894,67 @@ mod platform {
             assert!(interleave_audio(&[&left], 2, true).is_err());
         }
 
+        #[test]
+        fn adaptive_cap_only_shrinks_even_dimensions_and_scales_bitrate() {
+            let base = profile(3456, 2234, "balanced", None).unwrap();
+            let capped = profile(3456, 2234, "balanced", Some(960)).unwrap();
+            assert_eq!(
+                (capped.width, capped.height, capped.fps, capped.bitrate),
+                (960, 620, 60, 3_000_000)
+            );
+            let no_enlargement = profile(3456, 2234, "balanced", Some(u32::MAX)).unwrap();
+            assert_eq!(
+                (
+                    no_enlargement.width,
+                    no_enlargement.height,
+                    no_enlargement.bitrate
+                ),
+                (base.width, base.height, base.bitrate)
+            );
+            let tiny = profile(65, 33, "quality", Some(16)).unwrap();
+            assert!(tiny.width <= 16 && tiny.height <= 16);
+            assert!(tiny.width <= 65 && tiny.height <= 33);
+            assert_eq!((tiny.width % 2, tiny.height % 2, tiny.fps), (0, 0, 60));
+            let floor = profile(3840, 2160, "smooth", Some(2)).unwrap();
+            assert_eq!((floor.width, floor.height, floor.bitrate), (2, 2, 256_000));
+            assert!(profile(3840, 2160, "smooth", Some(0)).is_err());
+            assert!(profile(3840, 2160, "smooth", Some(1)).is_err());
+        }
+
+        #[tokio::test]
+        async fn fatal_signal_keeps_the_first_error_without_waiting_for_the_packet_queue() {
+            let (sender, _receiver) = tokio::sync::mpsc::channel(1);
+            sender
+                .try_send(MediaPacket {
+                    kind: "video".into(),
+                    codec: "h264-avcc".into(),
+                    pts_us: 0,
+                    keyframe: true,
+                    width: 64,
+                    height: 64,
+                    data: vec![],
+                })
+                .unwrap();
+            let failure = Arc::new(Failure::default());
+            let output = Output {
+                sender,
+                runtime: tokio::runtime::Handle::current(),
+                running: AtomicBool::new(true),
+                failed: AtomicBool::new(false),
+                need_keyframe: AtomicBool::new(true),
+                audio_config_sent: AtomicBool::new(false),
+                video_attempts: AtomicU64::new(0),
+                video_drops: AtomicU64::new(0),
+                failure: failure.clone(),
+                width: 64,
+                height: 64,
+            };
+            output.fail("first fatal error");
+            output.fail("later error must not overwrite the cause");
+            assert_eq!(failure.message().as_deref(), Some("first fatal error"));
+            assert!(output.failed.load(Ordering::SeqCst));
+        }
+
         #[tokio::test]
         #[ignore = "requires a real Mac hardware H.264 encoder; no screen capture or permission prompt"]
         async fn hardware_encoder_emits_avcc_keyframe_without_screen_capture() {
@@ -823,11 +966,17 @@ mod platform {
                 failed: AtomicBool::new(false),
                 need_keyframe: AtomicBool::new(true),
                 audio_config_sent: AtomicBool::new(false),
+                video_attempts: AtomicU64::new(0),
+                video_drops: AtomicU64::new(0),
+                failure: Arc::new(Failure::default()),
                 width: 64,
                 height: 64,
             });
-            let mut encoder =
-                Encoder::new(profile(64, 64, "smooth").unwrap(), Arc::clone(&output)).unwrap();
+            let mut encoder = Encoder::new(
+                profile(64, 64, "smooth", None).unwrap(),
+                Arc::clone(&output),
+            )
+            .unwrap();
             let mut pixel = ptr::null_mut();
             unsafe {
                 assert_eq!(
@@ -873,6 +1022,8 @@ mod platform {
             let nal_length = u32::from_be_bytes(frame.data[..4].try_into().unwrap()) as usize;
             assert!(nal_length > 0 && nal_length + 4 <= frame.data.len());
             assert!(!output.failed.load(Ordering::SeqCst));
+            assert_eq!(output.video_attempts.load(Ordering::Relaxed), 1);
+            assert_eq!(output.video_drops.load(Ordering::Relaxed), 0);
         }
     }
 }
@@ -898,8 +1049,37 @@ impl Capture {
         _: &str,
         _: Sender<MediaPacket>,
         _: bool,
+        _: Option<u32>,
+        failure: std::sync::Arc<Failure>,
     ) -> Result<Self, String> {
+        if let Some(message) = failure.message() {
+            return Err(message);
+        }
         Err("Native screen capture is currently available on macOS only".into())
     }
     pub fn stop(&mut self) {}
+    pub fn dimensions(&self) -> (u32, u32) {
+        (0, 0)
+    }
+    pub fn take_video_pressure(&self) -> (u64, u64) {
+        (0, 0)
+    }
+}
+
+#[cfg(test)]
+mod failure_tests {
+    use super::*;
+
+    #[test]
+    fn failed_chain_rejects_restart_before_platform_or_permission_access() {
+        let failure = std::sync::Arc::new(Failure(std::sync::Mutex::new(Some(
+            "original fatal error".into(),
+        ))));
+        let (sender, _receiver) = tokio::sync::mpsc::channel(1);
+        // All these parameters would otherwise fail validation or reach platform
+        // enumeration. The existing chain error must be returned before any of it.
+        let result = Capture::start(0, false, "invalid", sender, false, Some(0), failure.clone());
+        assert_eq!(result.err().as_deref(), Some("original fatal error"));
+        assert_eq!(failure.message().as_deref(), Some("original fatal error"));
+    }
 }

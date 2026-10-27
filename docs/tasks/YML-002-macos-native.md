@@ -11,7 +11,7 @@ Tests: core::tests::discovery、core::tests::session、core::tests::files、core
 
 ## Spec
 
-给定同 LAN 对端，用户在原生设备列表连接，经 Noise XX 与 SPAKE2 六位码授权后交换业务数据；受信设备匹配静态密钥才可重连。授权目录支持分页浏览、range 和断点传输，越界请求拒绝。显示器经系统授权后可开启 / 停止屏幕与音频采集，未经配对不发送。断线停止镜像，文件操作等待恢复。权限拒绝、配对失败与超时有明确 UI。以 [PROTOCOL](../engineering/PROTOCOL.md) v0.4 为准。
+给定同 LAN 对端，用户在原生设备列表连接，经 Noise XX 与 SPAKE2 六位码授权后交换业务数据；受信设备匹配静态密钥才可重连。授权目录支持分页浏览、range 和断点传输，越界请求拒绝。显示器经系统授权后可开启 / 停止屏幕与音频采集，未经配对不发送。断线停止镜像，文件操作等待恢复。权限拒绝、配对失败与超时有明确 UI。持续发送拥塞先降实际分辨率，保留用户档位上限；以 [PROTOCOL](../engineering/PROTOCOL.md) v0.5 为准。
 
 ## Acceptance
 
@@ -19,7 +19,7 @@ Tests: core::tests::discovery、core::tests::session、core::tests::files、core
 - [x] 原生窗口实际启动通过（用户手动打开后确认，随后 CUA 取得真实窗口）；完整配对 / 文件 / 镜像 UI 联调继续。
 - [x] 安全会话、配对、信任 / 遗忘 / 重连和发现回退有测试证据。
 - [x] 受限目录、range / 暂停与断点恢复有测试证据。
-- [ ] Rust 真实采集 / 编码 / 加密发送屏幕与系统音频，权限失败可恢复。
+- [ ] Rust 真实采集 / 编码 / 加密发送屏幕与系统音频，权限失败可恢复；真实弱网降分辨率后可继续解码。
 - [x] `harness verify`、原生构建与独立审查通过；已有 main 提交与交付门禁证据（`712cabd` + `ba65b72` + `7614ae3`），本轮提交后再核验远端一致性。
 - [ ] LAN 与 Quest 文件播放 / 镜像 / 音画同步报告完成。
 
@@ -33,6 +33,10 @@ Tests: core::tests::discovery、core::tests::session、core::tests::files、core
 
 ## Evidence
 
+- 完成范围复核定位产品体验原则“弱网先降分辨率”尚缺：旧 capture 只丢帧 / 补关键帧。本轮先修订规范 v0.5（无新增字段，应用仍 v3），补持续背压检测与降低实际采集 / 编码分辨率；录屏与 Quest 验收仍待外部条件。
+- 弱网续轮回归：尺寸 cap 先 RED（960 上限仍生成 1920），修复后 GREEN；运行时策略先 RED（满队列两窗口未触发），修复后 GREEN。最终 `harness verify`：59 passed、0 failed、1 ignored；显式硬件合成帧编码 1 passed，视频计数实际为 1 次尝试 / 0 丢弃。真实采集、自动重启后帧 / 音频与 Quest 弱网解码仍 not-run。
+- 弱网续轮审查（`b5260fe` + 工作树）发现 fatal 媒体包可能被背压分支跳过、以及旧代际初始化错误可能丢失两项 P2。改为共享授权链的独立首错信号：fail / stop 同锁同步；Err / JoinErr 在释放 capture gate 前记录首错，UI 仍按代际更新；恢复 / 切屏共用链，仅有效的本机 Start 更新。隔离测试永久占用 capture gate，即使断言失败也不能录屏；移除保护或不保存旧启动错误时均实际 RED，补齐后 GREEN。原 reviewer 限定复审确认两条时序关闭。
+- 故障边界补齐后的完整 `harness verify`：62 passed、0 failed、1 ignored；显式硬件编码 1/1，Swift 1/1。原生包已重建与签名校验，窗口重新打开成功；未触发真实录屏 / 音频或权限申请。此处不将策略单测或合成编码作为实际弱网体验证据。
 - 续轮差距核对：产品 F1 要求双端暂停 / 停止 / 切屏，上一实现仅本机开始 / 停止。本轮先将协议文档升 v0.4、应用 Hello / 业务 v3，补齐本机与已配对对端控制及授权边界；录屏确认仍待用户回复，不用单元测试代替实际采集。
 - 本轮独立只读复核（基线 `7614ae3` + 工作树）：镜像控制未发现新 P1 / P2；检查首次开始 / 权限请求限制、过期请求、连接代际、stop / error 解除授权与 capture gate 保留到真实 teardown。文件 actor 复核发现同连接同 id 重开会受旧 Ack 干扰，规范先明确同连接 id 不复用、最多 1024 个，重连后仍可原 id 续传，再补回归修复。
 - 本轮最终 `harness verify` PASS：57 Rust passed、0 failed、1 ignored；`swift test --package-path macos` 1/1；显式合成像素硬件编码 1/1。新增回归实际验证慢 catalog / 真实 TCP 写反压下 Stop 转发、文件工作上限与取消后真实 I/O 仍持额度、退休 id 迟到 Ack / 重开拒绝、失效本地控制不影响新任务。独立复核的 ID 复用 P2 已先 RED 后 GREEN，随后根代理回读实现与回归。

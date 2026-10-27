@@ -39,6 +39,8 @@ final class ModelsTests: XCTestCase {
         XCTAssertEqual(Localizer.backendMessage("incompatible application version; upgrade YM_Link on both devices", language: "zh-Hans"), "两端版本不兼容，请更新两台设备上的 YM_Link 后重新连接。")
         XCTAssertEqual(Localizer.backendMessage("protocol error: incompatible application version; upgrade YM_Link on both devices", language: "zh-Hans"), Localizer.string("error_version_incompatible", language: "zh-Hans"))
         XCTAssertEqual(Localizer.backendMessage("connection busy; try starting mirror again", language: "en"), "The connection is busy. Try starting mirroring again shortly.")
+        XCTAssertEqual(Localizer.backendMessage("connection too slow for screen mirroring; turn off system audio or reconnect", language: "zh-Hans"), "连接速度不足，无法继续镜像。请关闭系统音频或重新连接。")
+        XCTAssertEqual(Localizer.backendMessage("connection too slow for screen mirroring; turn off system audio or reconnect", language: "en"), "The connection is too slow to continue mirroring. Turn off system audio or reconnect.")
 
         let pausedJSON = json.replacingOccurrences(of: #""mirror":{"status":"running""#, with: #""mirror":{"status":"paused""#)
         let paused = try decoder.decode(Snapshot.self, from: Data(pausedJSON.utf8)).mirror

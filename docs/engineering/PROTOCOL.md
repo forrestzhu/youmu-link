@@ -1,6 +1,6 @@
 # YM_Link 互联协议规范
 
-状态：**v0.4 实现规范**（2026-10-27）。§2 发现线协议保持 v1；§3–§5 的应用 Hello、认证消息与业务报文升级为 v3；Noise 承载的 framing / magic / prologue 仍使用第 2 版定义，均已冻结并对应当前 Rust 实现。冻结表示字段与行为已有实现，不表示已完成 Quest 互操作或真实双设备验收。Quest / Kotlin 的 L4 一致性与互操作测试仍为 **not-run**。
+状态：**v0.5 实现规范**（2026-10-27）。§2 发现线协议保持 v1；§3–§5 的应用 Hello、认证消息与业务报文为 v3；Noise 承载的 framing / magic / prologue 仍使用第 2 版定义。v0.5 补充发送拥塞降分辨率策略，不新增报文字段，应用线协议保持 v3。冻结不表示已完成 Quest 互操作或真实双设备验收。Quest / Kotlin 的 L4 一致性与互操作测试仍为 **not-run**。
 
 互联模型参考内部项目 klip 的已验证设计；本文为 YM_Link 独立规范，报文与常量不复用 klip 取值。
 
@@ -155,6 +155,9 @@ FileResponse = {kind:"shares",shares:[ShareInfo]}
 - `video_config` 的 codec 为 `h264-avcc`，data 是 AVCDecoderConfigurationRecord（avcC）：版本 1、4 字节 NAL 长度、一个 SPS 和一个 PPS。每个关键帧前重复发送配置；`video` 包为 AVCC 格式（每个 NAL 前 4 字节大端长度），keyframe 由编码样本 sync attachment 判断。
 - 分辨率保持源比例并取偶数尺寸。初始可调档位为 smooth（长边不超过 1280，30fps，4Mbps）、balanced（长边不超过 1920，60fps，12Mbps）、quality（长边不超过 2560，60fps，24Mbps）；这些为编码目标上限，不是画质 / 延迟保证，实际指标按真实硬件与接收端验收。
 - 媒体队列有界；慢接收端时停止积压视频，丢帧后请求下一帧为关键帧，并在关键帧前重新发送配置。不得在解码依赖已丢失时持续发送后续 P 帧。停止 / 断开后镜像需用户重新开始；v3 的暂停 / 恢复与双端控制见 §5.4。
+- 发送端每 2s 观察一次背压。连续两个窗口均满足以下任一条件：媒体队列满，或视频至少丢 10 帧且占尝试帧数至少 20%，将实际编码长边降至当前的 3/4（偶数尺寸，最低长边 640，不放大源尺寸），目标码率按实际像素面积比例降低（最低 256kbps，且不超过所选档）。短暂单窗口拥塞不切档；阈值是初始控制参数，真实弱网效果仍需硬件验收。
+- 降分辨率沿用原显示器 / 音频选择和用户画质上限，停止并释放旧采集后创建新 stream_id、重新发配置与关键帧；不重置 Noise nonce，不再次申请录屏权限。一个开始周期只降不升，手动重新开始 / 恢复 / 切屏从用户所选档重新评估；最低分辨率持续拥塞则明确报慢连接错误并停止，不无界积压媒体。
+- 系统停止 / 编码失败等致命错误独立于有界媒体队列保存，并优先于自动降档。暂停、恢复与切屏保留同一本机开始周期的故障信号；旧采集 teardown 才报告的错误也禁止恢复新采集。只有本机再次明确开始才能建立新的授权周期，不能用弱网自动重启绕过错误解除授权。
 
 ### 5.3 系统音频与错误
 
@@ -196,7 +199,7 @@ MirrorInfo = {status:text,display_id:uint32|null,audio:bool,quality:text,
 | v1 | v2 ↔ v2 | transport-v2 | 旧文档 v0.2 / v0.3 的历史实现，当前应用不提供兼容或降级 |
 | 非 v1 | 任意 | 任意 | 发现解码拒绝；不能据此建立应用兼容结论 |
 
-transport-v2 专指 `YL-CTRL2\0`、`youmu-link-v2` prologue、`youmu-link-display-v2` / `youmu-link-enter-v2` 与双向确认 domain、原 Noise framing，不代表应用消息仍为 v2。升级应用到 v3 不轮换 `device-identity-v2` Keychain 条目，不清空静态公钥信任；已信任对端须双方都升级后才可按原互信重连。文档版本 v0.4、发现 v1、应用 v3 与 transport-v2 分别编号，不能混用。
+transport-v2 专指 `YL-CTRL2\0`、`youmu-link-v2` prologue、`youmu-link-display-v2` / `youmu-link-enter-v2` 与双向确认 domain、原 Noise framing，不代表应用消息仍为 v2。升级应用到 v3 不轮换 `device-identity-v2` Keychain 条目，不清空静态公钥信任；已信任对端须双方都升级后才可按原互信重连。文档版本 v0.5、发现 v1、应用 v3 与 transport-v2 分别编号，不能混用。
 
 ## 6. 一致性与验收边界
 

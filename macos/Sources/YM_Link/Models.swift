@@ -121,6 +121,7 @@ enum Localizer {
         case "connection no longer active": key = "error_connection"
         case "incompatible application version; upgrade ym_link on both devices": key = "error_version_incompatible"
         case "connection busy; try starting mirror again": key = "error_mirror_busy"
+        case "connection too slow for screen mirroring; turn off system audio or reconnect": key = "error_mirror_connection_slow"
         case "selected display is unavailable", "the selected display is no longer available", "unable to list displays": key = "error_display_unavailable"
         case "hardware h.264 encoding is unavailable on this mac": key = "error_hardware_unavailable"
         case "screen capture stopped; check the display and screen recording permission": key = "error_capture_stopped"

@@ -23,6 +23,7 @@ CI workflow 目前配置 Ubuntu / Windows，macOS 原生构建与系统 API 由�
 - `core/src/discovery.rs`：5 项接口 / 企业网段 / 特殊地址与有界缓存回归；`core/tests/protocol_vectors.rs`：1 项独立发现报文固定向量。core 共 39 项，本机结果见任务。
 - 桌面 runtime 真实 TCP 集成已有通过记录：配对、授权目录、Stat / range、传输暂停 / 恢复 / 取消、取消后迟到 Ack、重连和配对取消。业务 wire 另测未知字段与最大消息大小；测试桩另测下载中间文件与媒体分片重组。
 - 镜像控制回归覆盖首次远端恢复拒绝、暂停模型下切屏 / 重复暂停、停止后恢复拒绝、旧代际 running 公告、有界控制队列；慢磁盘 / 慢 socket 回归验证停止指令仍可转发，取消等待者后全局真实 I/O 上限保持。合成暂停模型不调用采集 API，不能代替真实暂停 / 恢复录屏。
+- 弱网控制回归使用真实有界 channel 验证单窗口不切档、连续拥塞触发、恢复窗口清零、视频丢弃比例阈值与有限尺寸下限；profile 回归覆盖按源比例缩小、偶数尺寸、不放大与按像素面积降低目标码率。上述测试不证明实际 ScreenCaptureKit 切档、接收端解码或弱网体验通过。
 - macOS 原生 Swift 模型测试、`.app` 最终构建、启动与交互结果以当前 [STATUS](../STATUS.md) 及 [YML-002](../tasks/YML-002-macos-native.md) 的实际证据为准。自动协议测试不代替窗口启动、目录选择或系统权限操作。
 - `hardware_encoder_emits_avcc_keyframe_without_screen_capture` 是显式忽略的硬件编码检查，使用合成像素，不采集屏幕、不请求屏幕录制；即使通过，也只证明当前 Mac 的 VideoToolbox 编码，不证明屏幕采集或 Quest 解码。
 - demo 原型用于页面 / 交互参考，不是视觉合同，也不把原型中的模拟性能数字作为实现验收标准。

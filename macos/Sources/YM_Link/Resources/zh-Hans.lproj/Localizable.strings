@@ -135,3 +135,4 @@
 "error_mirror_timeout" = "镜像操作超时，请检查连接后重试。";
 "error_version_incompatible" = "两端版本不兼容，请更新两台设备上的 YM_Link 后重新连接。";
 "error_mirror_busy" = "连接忙碌，请稍后重新开始镜像。";
+"error_mirror_connection_slow" = "连接速度不足，无法继续镜像。请关闭系统音频或重新连接。";

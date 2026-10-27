@@ -150,6 +150,7 @@ struct Shared {
     share_changes: Mutex<()>,
     commands: mpsc::Sender<Request>,
     capture_gate: Arc<Semaphore>,
+    mirror_failure: Mutex<Arc<crate::capture::Failure>>,
     file_gate: Arc<Semaphore>,
 }
 
@@ -332,6 +333,7 @@ async fn run(
         share_changes: Mutex::new(()),
         commands: command_sender,
         capture_gate: Arc::new(Semaphore::new(1)),
+        mirror_failure: Mutex::new(Arc::new(crate::capture::Failure::default())),
         file_gate: Arc::new(Semaphore::new(MAX_FILE_WORK)),
     });
     let slots = Arc::new(Semaphore::new(4));
@@ -1109,6 +1111,17 @@ fn mirror_command(
     let current = current.ok_or("connect and pair a device before mirroring")?;
     let mut state = shared.state.lock().unwrap();
     let selected = state.mirror.clone();
+    if !matches!(command, Command::StartMirror { .. })
+        && ["starting", "running", "paused"].contains(&selected.status.as_str())
+    {
+        let failure = shared.mirror_failure.lock().unwrap().message();
+        if let Some(error) = failure {
+            shared.end_mirror_locked(&mut state, MirrorEnd::Stopped);
+            state.mirror.status = "error".into();
+            state.mirror.error = Some(error.clone());
+            return Err(error);
+        }
+    }
     match command {
         Command::PauseMirror => {
             if selected.status == "paused" {
@@ -1140,6 +1153,7 @@ fn mirror_command(
                 selected.audio,
                 selected.quality,
                 expected.is_none(),
+                false,
             )?;
         }
         Command::SelectMirrorDisplay { display_id } => {
@@ -1167,6 +1181,7 @@ fn mirror_command(
                     selected.audio,
                     selected.quality,
                     expected.is_none(),
+                    false,
                 )?;
             }
         }
@@ -1179,7 +1194,7 @@ fn mirror_command(
                 return Err("first mirror start requires local confirmation".into());
             }
             start_mirror(
-                shared, current, &mut state, display_id, audio, quality, true,
+                shared, current, &mut state, display_id, audio, quality, true, true,
             )?;
         }
         _ => return Err("invalid mirror command".into()),
@@ -1203,11 +1218,16 @@ fn start_mirror(
     audio: bool,
     quality: String,
     allow_permission_request: bool,
+    fresh_start: bool,
 ) -> Result<(), String> {
     if !["smooth", "balanced", "quality"].contains(&quality.as_str()) {
         return Err("invalid mirror quality".into());
     }
     check_display(state, display_id)?;
+    if fresh_start {
+        *shared.mirror_failure.lock().unwrap() = Arc::new(crate::capture::Failure::default());
+    }
+    let failure = shared.mirror_failure.lock().unwrap().clone();
     shared.end_mirror_locked(state, MirrorEnd::Stopped);
     let generation = shared.mirror_generation.fetch_add(1, Ordering::AcqRel) + 1;
     let (cancel, receiver) = watch::channel(None);
@@ -1227,6 +1247,7 @@ fn start_mirror(
         receiver,
         generation,
         allow_permission_request,
+        failure,
     ));
     Ok(())
 }
@@ -1292,6 +1313,35 @@ async fn transfer_command(shared: &Shared, id: String, action: &str) -> Result<(
         .map_err(|_| "connection busy; try the transfer control again".into())
 }
 
+// Initial feedback parameters; real LAN / Quest runs must calibrate them.
+const MIRROR_PRESSURE_WINDOW: Duration = Duration::from_secs(2);
+const MIN_MIRROR_EDGE: u32 = 640;
+
+fn mirror_congested(windows: &mut u8, attempted: u64, dropped: u64, queue_full: bool) -> bool {
+    let congested = queue_full || (dropped >= 10 && dropped.saturating_mul(5) >= attempted);
+    *windows = if congested {
+        windows.saturating_add(1)
+    } else {
+        0
+    };
+    *windows >= 2
+}
+
+fn lower_mirror_edge(width: u32, height: u32) -> Option<u32> {
+    let longest = width.max(height);
+    (longest > MIN_MIRROR_EDGE)
+        .then(|| (((u64::from(longest) * 3 / 4) as u32) & !1).max(MIN_MIRROR_EDGE))
+}
+
+fn record_capture_failure(failure: &crate::capture::Failure, message: String) -> String {
+    failure
+        .0
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .get_or_insert(message)
+        .clone()
+}
+
 async fn mirror(
     shared: Arc<Shared>,
     control: mpsc::Sender<Message>,
@@ -1301,139 +1351,209 @@ async fn mirror(
     quality: String,
     mut cancel: watch::Receiver<Option<MirrorEnd>>,
     generation: u64,
-    allow_permission_request: bool,
+    mut allow_permission_request: bool,
+    failure: Arc<crate::capture::Failure>,
 ) {
-    let stream_id = rand::random::<u64>();
-    if cancel.borrow().is_some() {
-        return;
-    }
-    let permit = tokio::select! {
-        biased;
-        _=cancel.changed()=>return,
-        permit=shared.capture_gate.clone().acquire_owned()=>match permit {Ok(permit)=>permit,Err(_)=>return},
-    };
-    if cancel.borrow().is_some() {
-        return;
-    }
-    let (packets_tx, mut packets) = mpsc::channel(2);
-    let started = tokio::task::spawn_blocking(move || {
-        crate::capture::Capture::start(
-            display,
-            audio,
-            &quality,
-            packets_tx,
-            allow_permission_request,
-        )
-    })
-    .await;
-    let capture = match started {
-        Ok(Ok(capture)) => capture,
-        Ok(Err(error)) => {
-            shared.mirror_edit(generation, |s| {
-                s.mirror.status = "error".into();
-                s.mirror.permission = if crate::capture::permission_granted() {
-                    "granted"
-                } else {
-                    "denied"
-                }
-                .into();
-                s.mirror.error = Some(error);
-                let _ = control.try_send(Message::MirrorState {
-                    v: VERSION,
-                    status: "error".into(),
-                    stream_id,
-                });
-            });
-            return;
-        }
-        Err(_) => {
-            shared.mirror_edit(generation, |s| {
-                s.mirror.status = "error".into();
-                s.mirror.error = Some("screen capture worker failed".into());
-                let _ = control.try_send(Message::MirrorState {
-                    v: VERSION,
-                    status: "error".into(),
-                    stream_id,
-                });
-            });
-            return;
-        }
-    };
-    if cancel.borrow().is_some() {
-        finish_capture(capture, permit).await;
-        return;
-    }
-    let announced = announce_mirror(
-        &shared.state,
-        &shared.mirror_generation,
-        generation,
-        &control,
-        stream_id,
-    );
-    if !announced {
-        finish_capture(capture, permit).await;
-        return;
-    }
-    let mut packet_id = 0u64;
-    let mut frames = 0u64;
-    let mut bytes = 0u64;
-    let mut window = Instant::now();
-    let mut failed = false;
+    let mut maximum_edge = None;
     loop {
-        tokio::select! {
-            _=cancel.changed()=>break,
-            packet=packets.recv()=>{
-                let Some(packet)=packet else{break};
-                if packet.kind=="error" {
-                    failed=true;
-                    shared.mirror_edit(generation,|s|{s.mirror.status="error".into();s.mirror.error=Some(String::from_utf8_lossy(&packet.data).into_owned());});break;
-                }
-                if packet.data.len()>16*1024*1024 {failed=true;shared.mirror_edit(generation,|s|{s.mirror.status="error".into();s.mirror.error=Some("encoded screen packet exceeds limit".into());});break;}
-                if packet.kind=="video" {frames+=1;}
-                bytes+=packet.data.len() as u64;
-                let parts=packet.data.len().max(1).div_ceil(8192) as u32;
-                let mut failed=false;
-                for part in 0..parts {
-                    let start=part as usize*8192;
-                    let end=(start+8192).min(packet.data.len());
-                    let frame=Message::Media{v:VERSION,stream_id,packet_id,part,parts,media_kind:packet.kind.clone(),codec:packet.codec.clone(),pts_us:packet.pts_us,keyframe:packet.keyframe,width:packet.width,height:packet.height,data:packet.data[start..end].to_vec()};
-                    tokio::select! {
-                        _=cancel.changed()=>{failed=true;break;},
-                        result=outbox.send(frame)=>{if result.is_err(){failed=true;break;}},
+        if cancel.borrow().is_some() {
+            return;
+        }
+        let stream_id = rand::random::<u64>();
+        let permit = tokio::select! {
+            biased;
+            _ = cancel.changed() => return,
+            permit = shared.capture_gate.clone().acquire_owned() => match permit { Ok(permit) => permit, Err(_) => return },
+        };
+        if cancel.borrow().is_some() {
+            return;
+        }
+        shared.mirror_edit(generation, |s| {
+            s.mirror.status = "starting".into();
+            s.mirror.fps = None;
+            s.mirror.bitrate_mbps = None;
+        });
+        let (packets_tx, mut packets) = mpsc::channel(2);
+        let capture_quality = quality.clone();
+        let capture_failure = failure.clone();
+        let started = tokio::task::spawn_blocking(move || {
+            crate::capture::Capture::start(
+                display,
+                audio,
+                &capture_quality,
+                packets_tx,
+                allow_permission_request,
+                maximum_edge,
+                capture_failure,
+            )
+        })
+        .await;
+        // Automatic restarts never ask the OS for recording access.
+        allow_permission_request = false;
+        let capture = match started {
+            Ok(Ok(capture)) => capture,
+            result => {
+                let error = match result {
+                    Ok(Err(error)) => error,
+                    _ => "screen capture worker failed".into(),
+                };
+                let error = record_capture_failure(&failure, error);
+                shared.mirror_edit(generation, |s| {
+                    s.mirror.status = "error".into();
+                    s.mirror.permission = if crate::capture::permission_granted() {
+                        "granted"
+                    } else {
+                        "denied"
                     }
+                    .into();
+                    s.mirror.error = Some(error);
+                    let _ = control.try_send(Message::MirrorState {
+                        v: VERSION,
+                        status: "error".into(),
+                        stream_id,
+                    });
+                });
+                return;
+            }
+        };
+        if cancel.borrow().is_some() {
+            finish_capture(capture, permit).await;
+            return;
+        }
+        if !announce_mirror(
+            &shared.state,
+            &shared.mirror_generation,
+            generation,
+            &control,
+            stream_id,
+        ) {
+            finish_capture(capture, permit).await;
+            return;
+        }
+        let dimensions = capture.dimensions();
+        let mut pressure = tokio::time::interval_at(
+            tokio::time::Instant::now() + MIRROR_PRESSURE_WINDOW,
+            MIRROR_PRESSURE_WINDOW,
+        );
+        pressure.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        let mut pressure_windows = 0;
+        let mut packet_id = 0u64;
+        let mut frames = 0u64;
+        let mut bytes = 0u64;
+        let mut window = Instant::now();
+        let mut failed = false;
+        let mut reduce = false;
+        'stream: loop {
+            tokio::select! {
+                biased;
+                _ = cancel.changed() => break,
+                _ = pressure.tick() => {
+                    if failure.message().is_some() { failed = true; break; }
+                    let (attempted, dropped) = capture.take_video_pressure();
+                    if mirror_congested(&mut pressure_windows, attempted, dropped, outbox.capacity() == 0) { reduce = true; break; }
                 }
-                if failed{break;}
-                packet_id=packet_id.wrapping_add(1);
-                let elapsed=window.elapsed().as_secs_f64();
-                if elapsed>=1.0 {
-                    shared.mirror_edit(generation,|s|{s.mirror.fps=Some(frames as f64/elapsed);s.mirror.bitrate_mbps=Some(bytes as f64*8.0/elapsed/1_000_000.0);});
-                    frames=0;bytes=0;window=Instant::now();
+                packet = packets.recv() => {
+                    let Some(packet) = packet else { break };
+                    if packet.kind == "error" || packet.data.len() > 16 * 1024 * 1024 {
+                        failed = true;
+                        let error = if packet.kind == "error" { String::from_utf8_lossy(&packet.data).into_owned() } else { "encoded screen packet exceeds limit".into() };
+                        shared.mirror_edit(generation, |s| { s.mirror.status = "error".into(); s.mirror.error = Some(error); });
+                        break;
+                    }
+                    let parts = packet.data.len().max(1).div_ceil(8192) as u32;
+                    for part in 0..parts {
+                        // Reserve before moving the fragment: timer ticks cannot lose it.
+                        let slot = loop {
+                            tokio::select! {
+                                biased;
+                                _ = cancel.changed() => break 'stream,
+                                _ = pressure.tick() => {
+                                    if failure.message().is_some() { failed = true; break 'stream; }
+                                    let (attempted, dropped) = capture.take_video_pressure();
+                                    if mirror_congested(&mut pressure_windows, attempted, dropped, outbox.capacity() == 0) { reduce = true; break 'stream; }
+                                }
+                                slot = outbox.reserve() => match slot {
+                                    Ok(slot) => break slot,
+                                    Err(_) => { failed = true; break 'stream; }
+                                },
+                            }
+                        };
+                        let start = part as usize * 8192;
+                        let end = (start + 8192).min(packet.data.len());
+                        slot.send(Message::Media { v: VERSION, stream_id, packet_id, part, parts, media_kind: packet.kind.clone(), codec: packet.codec.clone(), pts_us: packet.pts_us, keyframe: packet.keyframe, width: packet.width, height: packet.height, data: packet.data[start..end].to_vec() });
+                    }
+                    if packet.kind == "video" { frames += 1; }
+                    bytes += packet.data.len() as u64;
+                    packet_id = packet_id.wrapping_add(1);
+                    let elapsed = window.elapsed().as_secs_f64();
+                    if elapsed >= 1.0 {
+                        shared.mirror_edit(generation, |s| { s.mirror.fps = Some(frames as f64 / elapsed); s.mirror.bitrate_mbps = Some(bytes as f64 * 8.0 / elapsed / 1_000_000.0); });
+                        frames = 0; bytes = 0; window = Instant::now();
+                    }
                 }
             }
         }
-    }
-    finish_capture(capture, permit).await;
-    let status = if failed {
-        "error"
-    } else {
-        cancel.borrow().map_or("stopped", MirrorEnd::status)
-    };
-    let _ = tokio::time::timeout(
-        Duration::from_secs(5),
-        control.send(Message::MirrorState {
-            v: VERSION,
-            status: status.into(),
-            stream_id,
-        }),
-    )
-    .await;
-    shared.mirror_edit(generation, |s| {
-        if s.mirror.status == "running" {
-            s.mirror.status = "stopped".into();
+        finish_capture(capture, permit).await;
+        if let Some(error) = failure.message() {
+            failed = true;
+            reduce = false;
+            shared.mirror_edit(generation, |s| {
+                s.mirror.status = "error".into();
+                s.mirror.error = Some(error);
+            });
         }
-        s.mirror.fps = None;
-        s.mirror.bitrate_mbps = None;
-    });
+        if reduce && cancel.borrow().is_none() {
+            if let Some(next) = lower_mirror_edge(dimensions.0, dimensions.1) {
+                // A new stream discards old partial packets and decoder dependencies.
+                if control
+                    .try_send(Message::MirrorState {
+                        v: VERSION,
+                        status: "stopped".into(),
+                        stream_id,
+                    })
+                    .is_err()
+                {
+                    shared.mirror_edit(generation, |s| {
+                        s.mirror.status = "error".into();
+                        s.mirror.error = Some("connection busy; try starting mirror again".into());
+                    });
+                    return;
+                }
+                maximum_edge = Some(next);
+                continue;
+            }
+            failed = true;
+            shared.mirror_edit(generation, |s| {
+                s.mirror.status = "error".into();
+                s.mirror.error = Some(
+                    "connection too slow for screen mirroring; turn off system audio or reconnect"
+                        .into(),
+                );
+            });
+        }
+        let status = if failed {
+            "error"
+        } else {
+            cancel.borrow().map_or("stopped", MirrorEnd::status)
+        };
+        let _ = tokio::time::timeout(
+            Duration::from_secs(5),
+            control.send(Message::MirrorState {
+                v: VERSION,
+                status: status.into(),
+                stream_id,
+            }),
+        )
+        .await;
+        shared.mirror_edit(generation, |s| {
+            if ["running", "starting"].contains(&s.mirror.status.as_str()) {
+                s.mirror.status = status.into();
+            }
+            s.mirror.fps = None;
+            s.mirror.bitrate_mbps = None;
+        });
+        return;
+    }
 }
 
 async fn finish_capture(

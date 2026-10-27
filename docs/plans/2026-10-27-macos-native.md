@@ -16,6 +16,7 @@
 6. `scripts/build_macos.py` 构建 `.app`，补齐 Info.plist 隐私用途与本地开发签名；Rust 头显测试桩用于 loopback 验收。
 7. 运行 `cargo test`、`swift build` 和本机 UI 核验，稳定后 `harness verify`；独立审查安全与生命周期并修复有证据的问题。
 8. 更新 STATUS / 任务 / 使用说明；main commit / push，执行 `check --require-pushed`。第二设备 / Quest 未验收时保持任务 verifying 与总目标 active。
+9. 产品完成范围复核补弱网控制：连续背压窗口降低实际采集 / 编码尺寸并重建新流，用户画质作为上限；策略与尺寸边界自动回归，实际采集 / 弱网效果仍需授权和设备验证。
 
 ## 可观察验收
 

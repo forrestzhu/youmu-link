@@ -1,6 +1,119 @@
 use super::*;
 
 #[test]
+fn mirror_backpressure_needs_two_windows_then_reduces_to_a_finite_floor() {
+    let (sender, mut receiver) = mpsc::channel(1);
+    let mut windows = 0;
+    assert!(!mirror_congested(&mut windows, 120, 2, false));
+    sender.try_send(()).unwrap();
+    assert!(!mirror_congested(
+        &mut windows,
+        120,
+        0,
+        sender.capacity() == 0
+    ));
+    assert!(mirror_congested(
+        &mut windows,
+        120,
+        0,
+        sender.capacity() == 0
+    ));
+    receiver.try_recv().unwrap();
+    assert!(!mirror_congested(
+        &mut windows,
+        120,
+        0,
+        sender.capacity() == 0
+    ));
+    assert!(!mirror_congested(&mut windows, 120, 24, false));
+    assert!(mirror_congested(&mut windows, 120, 24, false));
+    assert!(!mirror_congested(&mut windows, 120, 23, false));
+    assert!(!mirror_congested(&mut windows, 9, 9, false));
+
+    let mut edge = 1920;
+    let mut actual = vec![];
+    while let Some(next) = lower_mirror_edge(edge, edge / 2) {
+        assert!(next < edge && next % 2 == 0);
+        actual.push(next);
+        edge = next;
+    }
+    assert_eq!(actual, [1440, 1080, 810, 640]);
+    assert_eq!(lower_mirror_edge(1080, 1920), Some(1440));
+    assert_eq!(lower_mirror_edge(640, 360), None);
+    assert_eq!(lower_mirror_edge(320, 240), None);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn capture_failure_survives_resume_and_only_explicit_start_renews_consent() {
+    let (shared, mut writer, _incoming, _read, server, _commands) = isolated_file_server().await;
+    // Permanently occupy this isolated test's gate: even a failing assertion can
+    // never enter Capture::start or request recording access.
+    shared
+        .capture_gate
+        .clone()
+        .try_acquire_owned()
+        .unwrap()
+        .forget();
+    shared.edit(|s| {
+        s.displays = vec![crate::capture::Display {
+            id: 991,
+            name: "test display".into(),
+            width: 1920,
+            height: 1080,
+        }];
+        s.mirror.status = "paused".into();
+        s.mirror.display_id = Some(991);
+    });
+    let generation = shared.active.lock().unwrap().as_ref().unwrap().generation;
+    let failure = shared.mirror_failure.lock().unwrap().clone();
+    mirror_command(&shared, Command::ResumeMirror, None).unwrap();
+    assert!(Arc::ptr_eq(
+        &failure,
+        &shared.mirror_failure.lock().unwrap()
+    ));
+    // An initialization failure from the old generation must survive even when
+    // resume already awaits its teardown and the old UI update will be ignored.
+    record_capture_failure(&failure, "screen capture stopped unexpectedly".into());
+    assert_eq!(
+        record_capture_failure(&failure, "later startup failure".into()),
+        "screen capture stopped unexpectedly"
+    );
+    assert_eq!(
+        mirror_command(&shared, Command::PauseMirror, Some(generation)).unwrap_err(),
+        "screen capture stopped unexpectedly"
+    );
+    assert_eq!(shared.state.lock().unwrap().mirror.status, "error");
+    shared.edit(|s| s.mirror.status = "paused".into());
+    assert_eq!(
+        mirror_command(&shared, Command::ResumeMirror, Some(generation)).unwrap_err(),
+        "screen capture stopped unexpectedly"
+    );
+    assert_eq!(shared.state.lock().unwrap().mirror.status, "error");
+    let start = |display_id| Command::StartMirror {
+        display_id,
+        audio: false,
+        quality: "balanced".into(),
+    };
+    assert!(mirror_command(&shared, start(992), None).is_err());
+    assert!(Arc::ptr_eq(
+        &failure,
+        &shared.mirror_failure.lock().unwrap()
+    ));
+    mirror_command(&shared, start(991), None).unwrap();
+    let renewed = shared.mirror_failure.lock().unwrap().clone();
+    assert!(!Arc::ptr_eq(&failure, &renewed));
+    assert!(renewed.message().is_none());
+    assert!(failure.message().is_some());
+    mirror_command(&shared, Command::StopMirror, None).unwrap();
+    writer.send(&Message::Bye { v: VERSION }).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(2), server)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+}
+
+#[test]
 fn mirror_start_announcement_rejects_old_generations_and_full_control_queues() {
     let state = Mutex::new(Snapshot::new("test".into()));
     let current = AtomicU64::new(2);
@@ -276,6 +389,7 @@ async fn isolated_file_server() -> (
         share_changes: Mutex::new(()),
         commands,
         capture_gate: Arc::new(Semaphore::new(1)),
+        mirror_failure: Mutex::new(Arc::new(crate::capture::Failure::default())),
         file_gate: Arc::new(Semaphore::new(MAX_FILE_WORK)),
     });
     let (outbox, outgoing) = mpsc::channel(32);

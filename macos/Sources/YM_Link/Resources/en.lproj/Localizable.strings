@@ -135,3 +135,4 @@
 "error_mirror_timeout" = "The mirror command timed out. Check the connection and try again.";
 "error_version_incompatible" = "The device versions are incompatible. Update YM_Link on both devices and reconnect.";
 "error_mirror_busy" = "The connection is busy. Try starting mirroring again shortly.";
+"error_mirror_connection_slow" = "The connection is too slow to continue mirroring. Turn off system audio or reconnect.";
