@@ -28,4 +28,4 @@
 
 ## 下一步
 
-macOS 两轮 CR 修复代码 `d9130b8` 已推送 main。本次 Windows 实现完成第二轮 CR 与最终 commit / push 核验后交付。随后推进游目端 v3 对接及双机 LAN / Quest 文件播放、镜像和弱网验收；真实采集需本机确认。没有真实设备证据前，两端任务均保留 verifying，见 [ROADMAP](product/ROADMAP.md)。
+Windows 交付代码 `d9b54fa` 已推送 main，`check --require-pushed` 实跑通过，开发包在 `dist/YM_Link/YM_Link.exe`；macOS 上轮 CR 代码为 `d9130b8`。下一步推进游目端 v3 对接及双机 LAN / Quest 文件播放、镜像和弱网验收；真实采集需本机确认。没有真实设备证据前，两端任务均保留 verifying，见 [ROADMAP](product/ROADMAP.md)。

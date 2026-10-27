@@ -13,7 +13,7 @@ YM_Link 是 [Youmu VR Player](https://github.com/forrestzhu/youmu)（游目）�
 ## 仓库状态
 
 - 阶段：macOS 使用 SwiftUI / AppKit（[YML-002](docs/tasks/YML-002-macos-native.md)），Windows 使用 WPF / .NET 8（[YML-003](docs/tasks/YML-003-windows-native.md)）；Rust 共用发现、加密配对、授权文件服务、传输与镜像控制，采集编码按平台适配。决策见 [ADR-0002](docs/engineering/decisions/0002-native-desktop.md) / [ADR-0003](docs/engineering/decisions/0003-windows-native.md)。游目头显侧 YM_Link v3 集成与真实设备验收仍待推进。
-- 验证：Rust core 39 项回归通过（含独立发现向量与应用版本拒绝）；桌面后端已有真实 TCP 的单机配对、文件 range、传输控制与重连集成验证。macOS `.app` 构建和本地开发签名已通过，本机窗口已由用户与 CUA 确认，原生配对与 4 MiB 下载已实测；双机 LAN、真实 Quest 播放 / 镜像与音画同步为 **not-run**，不以测试桩代替设备验收。
+- 验证：Windows 本轮 76 项 Rust 回归、WPF 数据行 / 中英资源 / ABI 生命周期、Release 构建与启动检查通过；合成 HD 实际 H.264 编码与 SPS 检查另行通过。桌面后端覆盖真实 TCP 单机配对、文件 range、传输控制、重连与授权目录重启持久化。macOS 之前已有 `.app`、原生配对及 4 MiB 下载证据，本轮未在 Windows 复跑 macOS 构建。双机 LAN、真实 Quest 播放 / 镜像与音画同步为 **not-run**，不以测试桩代替设备验收。
 - 许可：**暂闭源**（私有仓库，无 LICENSE 文件）。后续计划转 GitLab 分发，并在合适时机开源；在此之前不得公开仓库或对外分发。
 - 当前进度：[STATUS](docs/STATUS.md)；文档索引：[docs/README](docs/README.md)。
 

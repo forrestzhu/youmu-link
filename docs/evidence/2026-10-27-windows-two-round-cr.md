@@ -3,6 +3,7 @@
 日期：2026-10-27。任务：[YML-003](../tasks/YML-003-windows-native.md)。
 
 Base-Commit: 3a81eade1de1eca03a2616116d688fc70b28e198
+Commit: d9b54fa6ba7dd911412dd0c9db4afe4ea0d77f11
 Host-OS: Windows 11 Pro x64 10.0.26200
 Result: partial — Windows 开发交付、本机验证与两轮 CR 完成；L3 / L4 / L5 not-run
 
@@ -46,6 +47,7 @@ Reviewer: `cr_round2`（新的独立上下文）。受审 staged tree：`c8f08f0
 - `.NET` Release 模型 / 本地化 / 错误类别 / ABI 生命周期测试及 WPF Release 构建通过；CR 新增的实际 STA 数据行模板回归通过。
 - 最终 `python3 scripts/build_windows.py --smoke-test`：exit 0，win-x64 自包含未签名开发目录生成；真实 DLL 的队列快照 / 指令、在途完成后销毁、生产后端监听 / 快照 / 干净关闭通过。两轮 CR 修复后重建与启动检查通过；另实测第二实例 exit 4，已有实例不受影响。
 - CUA 本机真实窗口：启动 / 显示器枚举、中文→English→跟随系统、镜像未连接禁用、文件 / 传输空态与正常关闭已核验。不提交窗口中的主机名、用户路径或原始日志。
+- 代码提交 `d9b54fa` 已 push main；`python3 scripts/harness.py check --require-pushed` 实跑 exit 0，HEAD 与实际远端 main 相同。后续交付记录仅更新文档。
 
 ## 限制与下一步
 

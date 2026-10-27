@@ -18,7 +18,7 @@ Tests: cargo test --workspace --all-targets; dotnet run --project windows/Tests/
 - [x] Windows 原生应用构建、启动，发现 / 配对 / 重连与目录授权持久化自动测试通过。
 - [x] 镜像 Windows 采集适配、协议媒体输出、取消与故障回归通过；中英文资源完整。
 - [x] 至少两轮独立 CR 完成，属实问题修复与复核；harness verify 通过。
-- [ ] commit / push main，check --require-pushed 通过。
+- [x] commit / push main，check --require-pushed 通过。
 - [ ] 真实 Windows + Quest LAN 发现、配对、目录播放与镜像 / 音频验收（缺设备时保留 not-run）。
 
 ## Verification
@@ -36,7 +36,8 @@ Tests: cargo test --workspace --all-targets; dotnet run --project windows/Tests/
 - 原生 CUA 已核验实际 Release 窗口、显示器枚举、中文 / 英文切换、镜像未连接禁用、文件与传输空态、恢复系统语言并正常关闭；修正英文共享页残留 Mac 文案。未授权任何用户目录、未实际采集屏幕 / 音频。
 - CR 第 1 轮受审基线 `3a81ead` / staged tree `3f99d123686ad2c6f529357eb8440d1c37a89aa8`；独立 reviewer 确认 P1 数据行双向绑定异常、P2 Local mutex 跨会话失效。修复与第二轮结果继续追加。
 - 两轮结果见 [Windows 实现与两轮 CR](../evidence/2026-10-27-windows-two-round-cr.md)：首轮两项全部修复，第二轮受审 tree `c8f08f0b4b7db9d7a7f28bf6827db4c9c870add8` 发现 SPS 色彩描述 P2，经实际 HD 合成编码 RED / GREEN 和定点复审关闭。最终 `harness verify` 76 passed / 2 ignored；显式实际编码检查通过，.NET STA 数据行 / 本地化 / 真实 ABI 生命周期、最终 Release 构建 / smoke 通过。目录授权经实际后端添加→重启恢复→撤销→重启不再恢复的回归通过。
+- 交付代码 `d9b54fa6ba7dd911412dd0c9db4afe4ea0d77f11` 已 commit / push main，`harness check --require-pushed` 实跑通过；本地开发包为 `dist/YM_Link/YM_Link.exe`，未签名 / 未对外分发。
 
 ## Next
 
-提交推送后记录交付提交与远端门禁。任务保留 verifying：真实 Windows + Quest LAN 发现 / 配对、文件播放 / seek、镜像 / 音频同步及弱网未验收；解除条件为可用的 v3 Quest 客户端与第二台设备。旧 Windows / ARM64、macOS 构建复跑 not-run（本轮主机为 Windows，未改 macOS 界面）。
+开发交付完成，任务保留 verifying：真实 Windows + Quest LAN 发现 / 配对、文件播放 / seek、镜像 / 音频同步及弱网未验收；解除条件为可用的 v3 Quest 客户端与第二台设备。旧 Windows / ARM64、macOS 构建复跑 not-run（本轮主机为 Windows，未改 macOS 界面）。

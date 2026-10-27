@@ -14,7 +14,7 @@
 - [x] 构建入口：`scripts/build_windows.py` 生成忽略入库的 `dist/YM_Link`，CLI smoke test 验证生产 DLL / 持久身份启动与退出。补 Windows CI 原生构建与测试。
 - [x] 集成验证：harness verify、原生测试、release 构建及窗口启动检查。先查明失败根因再修复，不靠跳过失败用例通过。
 - [x] 完成代码后独立 subagent 首轮 CR（平台安全 / 生命周期 / 互通），修复并复核；第二轮新 subagent CR 覆盖修订后全量 diff，修复并复核。记录每轮受审版本 / 发现 / 结果。
-- [ ] 更新任务、STATUS、架构与构建说明；自查 diff；commit / push main 并 `check --require-pushed`。
+- [x] 更新任务、STATUS、架构与构建说明；自查 diff；commit / push main 并 `check --require-pushed`。
 
 ## 风险与验证边界
 
