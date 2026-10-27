@@ -27,7 +27,7 @@
 - 显式硬件合成帧编码 1/1，通过；不采集屏幕、不申请权限。
 - 根代理 `swift test --package-path macos` 2/2；本地 Apple Development 签名构建与严格签名校验通过，最终 `.app` 已由 CUA 打开并读取原生窗口。仅本机 arm64 / macOS 27.0.1 验证，旧系统 / Intel not-run。
 - 生产原生包实际提交同一无效地址两次，分别看到相同的中文失败提示；关闭后重复轮询未重弹。结束后重启应用，回到无临时设备的搜索态。未发送网络连接或采集请求。
-- `check --require-pushed` 待提交 / 推送后补录；检查与两轮 CR 不能替代下列真实设备边界。
+- 修复提交 `d9130b8` 已推送 `origin/main`；根代理实跑 `check --require-pushed` PASS，HEAD 等于实际远端 main，工作区干净。检查与两轮 CR 不能替代下列真实设备边界。
 
 ## 边界
 

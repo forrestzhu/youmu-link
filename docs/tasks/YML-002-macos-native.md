@@ -35,6 +35,7 @@ Tests: core::tests::discovery、core::tests::session、core::tests::files、core
 ## Evidence
 
 - 用户追加至少两轮 subagent CR，按完整实现基线 `7dce375..8e41ea0` 开展首轮独立分区审查，修复后再做第二轮；轮次、发现、核验及交付证据集中于[本轮 CR 报告](../evidence/2026-10-27-native-two-round-cr.md)。
+- 本轮两轮 CR 交付代码 `d9130b8` 已推送 main，`check --require-pushed` 实跑 PASS；6 项发现全部修复并复核。原生应用已重建 / 打开、70 Rust / 2 Swift 与显式硬件编码通过；真实采集与 Quest 验收未完成，YML-002 保持 verifying。
 - 2026-10-27 联调条件实查：使用本机已有 SDK 的 `adb devices -l`，当前连接设备 0；只读核对相邻游目 `app/src/main` 与 YM-276，尚无可运行 YM_Link v3 客户端，头显集成仍属后续任务。未安装 / 启动 Android 包、未修改游目仓库。录屏确认尚无用户答复，未采集画面或音频。解除条件：用户确认本机采集测试并完成系统授权；Quest / 第二设备具备匹配 v3 的端侧实现与连接条件后，继续 L3–L5 验收。
 - 完成范围复核定位产品体验原则“弱网先降分辨率”尚缺：旧 capture 只丢帧 / 补关键帧。本轮先修订规范 v0.5（无新增字段，应用仍 v3），补持续背压检测与降低实际采集 / 编码分辨率；录屏与 Quest 验收仍待外部条件。
 - 弱网续轮回归：尺寸 cap 先 RED（960 上限仍生成 1920），修复后 GREEN；运行时策略先 RED（满队列两窗口未触发），修复后 GREEN。最终 `harness verify`：59 passed、0 failed、1 ignored；显式硬件合成帧编码 1 passed，视频计数实际为 1 次尝试 / 0 丢弃。真实采集、自动重启后帧 / 音频与 Quest 弱网解码仍 not-run。
