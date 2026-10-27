@@ -2,11 +2,13 @@
 
 更新：2026-10-27。仅记录最近实测事实、未关闭问题与下一步；详细证据见任务。
 
+用户授权的历史邮箱修正已完成：20 个既有提交的 author / committer 均统一为目标邮箱，20 个文件树不变，16 个提交号变化；旧记录中的提交号见[旧 → 新映射](evidence/2026-10-27-history-email-rewrite.md)。
+
 ## 当前制品与服务
 
 | 项目 | 最近实际记录及边界 |
 | --- | --- |
-| 仓库 | GitHub private `forrestzhu/youmu-link`，原创代码已准备 Apache-2.0、NOTICE 与第三方声明；公开及已推送历史邮箱 / 路径处理等待用户明确决定，不自动发布 Release。 |
+| 仓库 | GitHub private `forrestzhu/youmu-link`，原创代码已准备 Apache-2.0、NOTICE 与第三方声明；历史邮箱修正已授权完成，公开与历史路径 / 内部说明清理仍待用户决定，不自动发布 Release。 |
 | 设计与实现基线 | 用户授权基于现有 demo 实现，M1 通过；[YML-001](tasks/archive/YML-001-bootstrap.md) 归档。按 [ADR-0002](engineering/decisions/0002-native-desktop.md) 改为 macOS SwiftUI / AppKit 原生界面 + Rust 后端，取代桌面 Tauri 方案。 |
 | Rust 核心 | 按实际接口子网的 UDP 发现 / 三端口回退、Noise XX、SPAKE2、Keychain 身份与信任、capability 授权文件服务。core 39 项回归通过（含独立发现向量与 v2 拒绝）；应用协议现为 v3，双方需升级，Noise 承载与原身份保持不变。 |
 | Rust 桌面后端 | C ABI + 单设备状态、取消 / 重连、16KiB 停等 Ack 传输；读写与文件工作分别调度，慢磁盘 / socket 不阻塞停止指令。文件工作每连接 4 项、真实 I/O 跨连接全局 4 项；同连接传输 id 不复用，防迟到确认误作用于新任务。 |
@@ -22,11 +24,11 @@
 | --- | --- |
 | [YML-002 原生 macOS 实现](tasks/YML-002-macos-native.md) | verifying：双端控制、传输边界与弱网策略自动回归通过；真实屏幕 / 系统音频采集等待用户确认，弱网切档与 Quest 验收未完成。 |
 | [YML-003 Windows 原生实现](tasks/YML-003-windows-native.md) | verifying：两轮 CR 的三项发现全部修复并复核；最终门禁 76 Rust passed / 2 ignored，另实际系统编码器 / SPS 检查、WPF 数据行 / 本地化 / ABI、Release 构建与启动通过。实际 Quest / LAN、文件播放与屏幕 / 音频仍待设备，证据见 [Windows 实现与两轮 CR](evidence/2026-10-27-windows-two-round-cr.md)。 |
-| [YML-004 开源与 CI](tasks/YML-004-opensource-ci.md) | verifying：Apache-2.0 / 三平台 CI 配置已交付，仍 private。追加全历史 / 源码 / Windows 包审计未发现已确认凭据；修复 DLL 内嵌本机路径，泛化当前演示 / 测试 / 文档信息。旧历史邮箱、个人路径及内部说明仍待授权清理，不能宣称历史完全无敏感信息，见 [隐私审计](evidence/2026-10-27-sensitive-information-audit.md)。云端实际执行及公开仍待外部条件 / 用户决定。 |
+| [YML-004 开源与 CI](tasks/YML-004-opensource-ci.md) | verifying：Apache-2.0 / 三平台 CI 配置已交付，仍 private。历史 author / committer 邮箱已按用户授权修正，备份 / 独立逐提交核验 / 远端新 clone 复核通过。旧个人路径及内部说明仍待清理；此前敏感信息审计、DLL 隐私修复与制品复核见[隐私审计](evidence/2026-10-27-sensitive-information-audit.md)。云端实际执行及公开仍待外部条件 / 用户决定。 |
 | [用户追加两轮 CR](evidence/2026-10-27-native-two-round-cr.md) | 完成：首轮 3 P2 / 1 P3、第二轮 2 P3，全部修复并复核关闭；覆盖端点 pin、采集 teardown、传输历史 / 连接交接、重复错误事件和测试桩换源续传。 |
 | 本地启动 | 用户手动启动已确认成功，CUA 已取得窗口。早期自动启动入口出现 SIGKILL 的原因不明，未据此修改应用生命周期或系统安全策略。 |
 | 真实 LAN / Quest | not-run：本轮用现有 SDK 的 ADB 实查为 0 个连接设备；相邻游目源码尚无 YM_Link v3 客户端，YM-276 仍是桌面启动 / 头显设计范围。暂无第二设备或 v3 互操作证据，Rust 测试桩不代替真机。 |
 
 ## 下一步
 
-公开前需决定并清理旧历史邮箱 / 示例路径 / 内部说明，复查远端 Actions 记录及副本；当前保持 private。解除账户级托管运行条件限制后验证云端实际构建。真实 Quest / LAN、录屏音频验收仍需 v3 客户端和设备，见 [ROADMAP](product/ROADMAP.md)。
+公开前仍需决定并清理历史示例路径 / 内部说明，复查远端 Actions 记录及副本；当前保持 private，历史邮箱已修正。解除账户级托管运行条件限制后验证云端实际构建。真实 Quest / LAN、录屏音频验收仍需 v3 客户端和设备，见 [ROADMAP](product/ROADMAP.md)。

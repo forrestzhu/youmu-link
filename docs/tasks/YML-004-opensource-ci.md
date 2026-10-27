@@ -3,11 +3,11 @@
 Status: verifying
 Workflow: maintenance
 Requires-Device: no
-Tests: python3 -m unittest discover -s scripts -p test_*.py; harness verify; Windows build / legal bundle / package checks; GitHub Actions run diagnostics
+Tests: python3 -m unittest discover -s scripts -p test_*.py; harness verify; Windows build / legal bundle / package checks; GitHub Actions run diagnostics; history raw commit / tree / parent comparison; independent remote clone email verification
 
 ## Scope
 
-按用户要求准备 Apache-2.0 开源，核对全部历史 author / committer 邮箱，补齐 GitHub Actions 自动测试与 Windows / macOS 开发包；追加检查源码、所有历史与开发包的敏感信息并修复确认的问题。采用现有原生构建，不引入安装器 / 发布服务。仓库转 public、已推送历史改写、GitHub Release 公开发布及账户设置不在本轮自动执行范围。
+按用户要求准备 Apache-2.0 开源，核对全部历史 author / committer 邮箱，补齐 GitHub Actions 自动测试与 Windows / macOS 开发包；追加检查源码、所有历史与开发包的敏感信息并修复确认的问题。用户后续明确授权仅将旧提交 author / committer 的公司邮箱修正为目标邮箱，并完成必要的历史改写 / 精确 lease 推送。采用现有原生构建，不引入安装器 / 发布服务。仓库转 public、其他历史正文改写、GitHub Release 公开发布及账户设置不在本轮自动执行范围。
 
 ## Spec
 
@@ -15,7 +15,7 @@ Tests: python3 -m unittest discover -s scripts -p test_*.py; harness verify; Win
 
 ## Acceptance
 
-- [x] 历史邮箱 / 隐私 / 依赖许可审计有证据，准备 Apache-2.0 文件与元数据；保留已推送历史。
+- [x] 历史邮箱 / 隐私 / 依赖许可审计有证据，准备 Apache-2.0 文件与元数据；用户授权邮箱修正后，保留本地备份、独立比对原历史并核验远端新历史。
 - [x] CI 覆盖 Linux / Windows / macOS 测试与 Windows / macOS 开发包，使用只读权限及固定 action SHA。
 - [x] 包内包含项目与第三方许可证、正确原生制品和校验和；本机可运行的验证通过。
 - [ ] GitHub runner 实际执行测试 / 构建 / 上传成功；账户阻塞时保留 not-run 与 verifying。
@@ -39,6 +39,10 @@ Tests: python3 -m unittest discover -s scripts -p test_*.py; harness verify; Win
 
 隐私修复交付 `24455748a121d23051066ff832ad5a4854c7cc05`；追加两轮独立 CR，首轮 UTF-16LE 中文路径 P2 经 RED / GREEN 修复，次轮复核关闭。提交后 19 个可达提交及新 ZIP 展开内容的 Gitleaks 均 0 findings。最终 Windows 包独立复核全部 747 成员、464/464 应用文件、CRC / revision / SHA-256 通过，本机路径与已知凭据签名 0 命中。3 份旧 / 审计临时 ZIP 及 checksum 已从分发输出隔离，详细 hash 见报告。
 
+## 历史邮箱修正
+
+历史邮箱修正已完成：备份及独立审查通过，20 个既有提交的 author / committer 均为 `jayzero@foxmail.com`，20/20 tree / 姓名 / 日期 / message 不变，16 个 SHA 改变；精确旧 tip lease 推送后远端新 clone 的 20/20 raw commits 一致。原文 SHA 作为改写前证据保留，映射与完整核验见[历史邮箱修正](../evidence/2026-10-27-history-email-rewrite.md)。本轮仅元数据与文档，应用 / 协议代码无变化，运行 harness check，不重复 cargo / 原生构建。
+
 ## Next
 
-任务保持 verifying：真实 runner 通过需要解除账户阻塞，或用户批准公开后再实跑验证；不保证可见性变更自动解除所有账户限制。开源前由用户决定是否统一历史邮箱、清理历史示例路径与公开仓库；当前 HEAD 与新 Windows 包已作隐私修复；已推送历史及远端运行记录清理仍待用户明确决定。
+任务保持 verifying：真实 runner 通过需要解除账户阻塞，或用户批准公开后再实跑验证；不保证可见性变更自动解除所有账户限制。开源前仍由用户决定历史示例路径 / 内部说明及远端运行记录清理与公开时点，当前保持 private。

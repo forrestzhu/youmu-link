@@ -43,7 +43,7 @@ YM_Link 是游目的桌面伴侣：一台 Windows / macOS 电脑 + 一台 Meta Q
 
 - 当前开发包：GitHub Actions 成功 main 构建上传 Windows x64 ZIP 与 macOS arm64 ZIP，附校验和与完整许可。正式 Windows 安装器、macOS 通用 dmg / 签名 / 公证及发行渠道另行确定；Meta 商店不涉及。
 - 版本号策略随 M6 分发任务确定（对齐游目 `yyyyMMdd.HHmm` 显示版本惯例）。
-- 许可证：原创代码采用 Apache-2.0；依赖保留各自许可。GitHub 仓库当前仍 private，公开前由用户决定历史邮箱 / 路径清理与公开时点，同步更新 [AGENTS](../../AGENTS.md)。GitLab 迁移不再作为当前开源前置条件。
+- 许可证：原创代码采用 Apache-2.0；依赖保留各自许可。GitHub 仓库当前仍 private，历史邮箱已按用户授权修正；历史路径 / 内部说明清理与公开时点仍由用户决定，同步更新 [AGENTS](../../AGENTS.md)。GitLab 迁移不再作为当前开源前置条件。
 
 ## 验收口径
 

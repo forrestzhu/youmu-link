@@ -21,7 +21,7 @@
 4. 小步修改，先复现再修复；协议与发现等行为改动必须带 cargo 单元 / 集成测试，任务 `Tests:` 字段声明目标或写明不适用原因。
 5. 代码稳定后运行 `python3 scripts/harness.py verify`（harness 回归 + 仓库检查 + rustfmt + cargo test）；只改文档时只跑 `check`。记录实际结果与限制，未运行写 `not-run`。
 6. 自查 diff；证据集中在任务或 `docs/evidence/` 报告；`docs/STATUS.md` 简述结果、限制和下一步。
-7. 默认直接在 `main` 开发并 commit / push；交付前运行 `python3 scripts/harness.py check --require-pushed` 确认 HEAD 等于远端 main。不强推，保留用户修改。
+7. 默认直接在 `main` 开发并 commit / push；交付前运行 `python3 scripts/harness.py check --require-pushed` 确认 HEAD 等于远端 main。默认不强推，保留用户修改；用户明确授权历史改写时，先本地备份并独立核验，再以精确旧 tip 的 `--force-with-lease` 仅更新授权分支。本次已按用户授权统一历史邮箱，见[改写记录](docs/evidence/2026-10-27-history-email-rewrite.md)。
 
 ## 技术边界
 

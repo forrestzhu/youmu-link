@@ -4,6 +4,8 @@
 
 Commit: 4c2ecdcc6959cce18f2e48263bb8de4db3e4178d
 
+后续更新：历史邮箱已按用户明确授权修正；下文保留原审计时的身份统计和提交编号，旧 → 新映射见[历史邮箱修正](2026-10-27-history-email-rewrite.md)。
+
 ## 历史与公开范围
 
 本地非浅克隆，fetch main / tags 后远端仅 main、无 tags，所有本地 refs 共 16 个历史提交。author 与 committer 分别统计，均为 6 个 `jayzero@foxmail.com`、10 个其他同一公司邮箱。当前 Git user.email 与最近两个 Windows 提交均为目标邮箱。
