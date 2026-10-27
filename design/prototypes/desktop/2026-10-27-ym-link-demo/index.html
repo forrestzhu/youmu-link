@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>YM_Link demo · 桌面 × 头显</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --panel-2: #1d212b; --line: #2a2f3c;
+    --text: #e8eaf0; --muted: #9aa3b5; --accent: #4f8cff; --ok: #3fb96d;
+    --warn: #e0a93e; --err: #e05f5f; --chip-bg: #232837;
+    font-size: 15px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; }
+  header.app { display: flex; align-items: center; gap: 16px; padding: 14px 22px; border-bottom: 1px solid var(--line); }
+  header.app h1 { font-size: 18px; font-weight: 600; }
+  header.app .note { color: var(--muted); font-size: 13px; }
+  .view-tabs { display: flex; gap: 8px; margin-left: auto; }
+  .view-tabs button { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 7px 14px; cursor: pointer; font-size: 14px; }
+  .view-tabs button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  main { padding: 18px 22px; max-width: 1080px; margin: 0 auto; }
+  .demo-controls { margin-top: 14px; padding: 10px 12px; border: 1px dashed var(--line); border-radius: 10px; color: var(--muted); font-size: 13px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .demo-controls button { background: transparent; border: 1px solid var(--line); color: var(--muted); border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 12px; }
+  .demo-controls button:hover { color: var(--text); border-color: var(--muted); }
+
+  .window { border: 1px solid var(--line); border-radius: 14px; background: var(--panel); overflow: hidden; }
+  .window .titlebar { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: var(--panel-2); border-bottom: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+  .titlebar .dots { display: flex; gap: 5px; }
+  .titlebar .dots i { width: 10px; height: 10px; border-radius: 50%; background: #3a4152; display: block; }
+  .window .body { display: grid; grid-template-columns: 250px 1fr; min-height: 480px; }
+  .sidebar { border-right: 1px solid var(--line); padding: 14px; }
+  .sidebar h2, .panel h2 { font-size: 13px; color: var(--muted); font-weight: 600; margin-bottom: 10px; letter-spacing: .05em; }
+  .device { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; background: var(--panel-2); }
+  .device .name { font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+  .device .meta { color: var(--muted); font-size: 12px; margin: 4px 0 8px; }
+  .chip { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 20px; background: var(--chip-bg); color: var(--muted); }
+  .chip.ok { color: var(--ok); } .chip.warn { color: var(--warn); } .chip.err { color: var(--err); } .chip.busy { color: var(--accent); }
+  .btn { background: var(--accent); border: none; color: #fff; border-radius: 8px; padding: 7px 14px; cursor: pointer; font-size: 13px; }
+  .btn.secondary { background: transparent; border: 1px solid var(--line); color: var(--text); }
+  .btn.danger { background: transparent; border: 1px solid var(--err); color: var(--err); }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .panel { padding: 16px; }
+  .tabs { display: flex; gap: 6px; margin-bottom: 16px; }
+  .tabs button { background: transparent; border: none; color: var(--muted); padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 14px; }
+  .tabs button.active { background: var(--panel-2); color: var(--text); }
+  .hint { color: var(--muted); font-size: 13px; line-height: 1.7; }
+  .hint b { color: var(--text); }
+  .empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 48px 0; color: var(--muted); }
+  .spinner { width: 26px; height: 26px; border-radius: 50%; border: 3px solid var(--line); border-top-color: var(--accent); animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .monitor-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; }
+  .monitor { border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: var(--panel-2); cursor: pointer; }
+  .monitor.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .monitor .screen { height: 92px; border-radius: 6px; background: linear-gradient(145deg, #232937, #151922); display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+  .monitor .label { font-size: 13px; font-weight: 600; }
+  .monitor .res { font-size: 12px; color: var(--muted); }
+  .row { display: flex; align-items: center; gap: 12px; }
+  .row.between { justify-content: space-between; }
+  .field { display: flex; align-items: center; gap: 10px; margin: 10px 0; font-size: 14px; }
+  select { background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; }
+  .statusbar { border-top: 1px solid var(--line); padding: 8px 14px; font-size: 12px; color: var(--muted); display: flex; gap: 18px; }
+  .statusbar .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; vertical-align: middle; }
+  .dot.ok { background: var(--ok); } .dot.warn { background: var(--warn); } .dot.err { background: var(--err); } .dot.off { background: #555c6e; }
+  table.files { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.files th { text-align: left; color: var(--muted); font-weight: 500; padding: 6px 8px; border-bottom: 1px solid var(--line); font-size: 12px; }
+  table.files td { padding: 8px; border-bottom: 1px solid var(--line); }
+  table.files tr.dir td { cursor: pointer; }
+  table.files tr.dir td:hover { color: var(--accent); }
+  .breadcrumb { color: var(--muted); font-size: 13px; margin-bottom: 10px; }
+  .breadcrumb a { color: var(--accent); cursor: pointer; text-decoration: none; }
+  .modal-mask { position: fixed; inset: 0; background: rgba(5,7,10,.62); display: flex; align-items: center; justify-content: center; }
+  .modal { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 22px; width: 340px; }
+  .modal h3 { font-size: 15px; margin-bottom: 6px; }
+  .modal p { color: var(--muted); font-size: 13px; line-height: 1.6; margin-bottom: 12px; }
+  .code { font-size: 30px; letter-spacing: 8px; font-family: ui-monospace, Menlo, monospace; background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; text-align: center; padding: 12px 0; margin-bottom: 10px; }
+  .code input { background: transparent; border: none; outline: none; color: var(--text); font-size: 30px; letter-spacing: 8px; width: 100%; text-align: center; font-family: ui-monospace, Menlo, monospace; }
+  .progress { height: 6px; border-radius: 4px; background: var(--panel-2); overflow: hidden; margin: 6px 0; }
+  .progress i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .3s; }
+  .transfer-item { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; background: var(--panel-2); font-size: 13px; }
+  .hq-view { border: 1px solid var(--line); border-radius: 14px; background: var(--panel); overflow: hidden; max-width: 720px; margin: 0 auto; }
+  .hq-view .screen-area { min-height: 300px; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 14px; background: radial-gradient(1200px 500px at 50% 120%, #101725, #0c0e13); border-bottom: 1px solid var(--line); }
+  .hq-view .controls { padding: 12px 16px; display: flex; gap: 10px; align-items: center; }
+  .hq-list { display: grid; gap: 10px; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<header class="app">
+  <h1>YM_Link demo</h1>
+  <span class="note">信息架构原型 · 无真实网络 · <a href="../../../../docs/plans/2026-10-27-demo-design.md" style="color:var(--accent)">设计文档</a></span>
+  <div class="view-tabs">
+    <button id="tab-desktop" class="active">桌面端 youmu-link</button>
+    <button id="tab-headset">头显端 游目 · YM_Link 面板</button>
+  </div>
+</header>
+
+<main>
+  <!-- ============ 桌面端 ============ -->
+  <section id="view-desktop">
+    <div class="window">
+      <div class="titlebar"><span class="dots"><i></i><i></i><i></i></span> youmu-link</div>
+      <div class="body">
+        <aside class="sidebar">
+          <h2>设备</h2>
+          <div id="desktop-devices"></div>
+        </aside>
+        <div class="panel">
+          <div id="desktop-disconnected" class="empty">
+            <div class="spinner"></div>
+            <div>正在搜索同一网络中的游目头显…</div>
+            <div class="hint">确认头显已戴上并在游目内打开 YM_Link 面板</div>
+          </div>
+          <div id="desktop-connected" class="hidden">
+            <div class="tabs">
+              <button id="desktop-tab-mirror" class="active">屏幕镜像</button>
+              <button id="desktop-tab-files">文件共享</button>
+            </div>
+            <div id="desktop-mirror">
+              <div class="monitor-grid" id="monitor-grid"></div>
+              <div class="field">系统音频
+                <select id="audio-select"><option>共享</option><option>不共享</option></select>
+                画质
+                <select id="quality-select"><option>流畅</option><option selected>平衡</option><option>画质优先</option></select>
+              </div>
+              <div class="row" style="margin-top:8px">
+                <button class="btn" id="mirror-start">开始镜像</button>
+                <button class="btn danger hidden" id="mirror-stop">停止镜像</button>
+              </div>
+            </div>
+            <div id="desktop-files" class="hidden">
+              <p class="hint">以下目录已授权给已配对的头显浏览；文件操作在头显端进行。</p>
+              <div id="shared-dirs" style="margin-top:12px"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="statusbar" id="desktop-status"></div>
+    </div>
+  </section>
+
+  <!-- ============ 头显端 ============ -->
+  <section id="view-headset" class="hidden">
+    <div class="hq-view">
+      <div class="titlebar"><span class="dots"><i></i><i></i><i></i></span> 游目 · YM_Link</div>
+      <div class="screen-area" id="hq-area">
+        <!-- 状态内容由 demo.js 渲染 -->
+      </div>
+      <div class="controls" id="hq-controls"></div>
+    </div>
+  </section>
+
+  <div class="demo-controls">
+    演示控制：
+    <button id="ctl-scan">重新扫描</button>
+    <button id="ctl-expire">模拟配对码过期</button>
+    <button id="ctl-drop">模拟连接断开</button>
+    <button id="ctl-reset">重置演示</button>
+  </div>
+</main>
+
+<div id="modal-root"></div>
+<script src="demo.js"></script>
+</body>
+</html>

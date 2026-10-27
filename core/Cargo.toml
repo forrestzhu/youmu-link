@@ -1,0 +1,16 @@
+[package]
+name = "ymlink-core"
+version.workspace = true
+edition.workspace = true
+description = "YM_Link LAN protocol core: discovery layer (PROTOCOL §2)"
+
+[dependencies]
+tokio = { version = "1.43", features = ["net", "time", "sync", "macros", "rt"] }
+serde = { version = "1", features = ["derive"] }
+ciborium = "0.2"
+sha2 = "0.10"
+if-addrs = "0.13"
+rand = "0.8"
+
+[dev-dependencies]
+tokio = { version = "1.43", features = ["rt-multi-thread"] }
