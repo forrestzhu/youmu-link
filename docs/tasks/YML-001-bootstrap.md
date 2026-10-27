@@ -32,7 +32,10 @@ Tests: core::beacon (单元：编解码 / 512B / 定长 / 未知字段 / tag_has
 
 ## Evidence
 
-- 2026-10-27：`gh repo view forrestzhu/youmu-link --json visibility` 回读 PRIVATE；推送后 `harness check --require-pushed` PASS。本地门禁实测：`cargo test --workspace --all-targets` 15 通过（beacon 单元 8 + loopback 集成 7）、`cargo fmt --all --check` 干净、`python3 scripts/test_harness.py` 16 通过、`python3 scripts/harness.py check` PASS（23 个文本文件）。demo 原型 `node --check` 语法通过，浏览器人工核对两视角状态流。首次修复过程：ciborium 0.2 无 `into_vec`（改 `into_writer` 辅助）、if-addrs `Ifv4Addr` 含 `prefixlen` 且 `broadcast` 已是 `Option<Ipv4Addr>`、临时目录符号链接导致未 resolve 的 ROOT 比较失败——均已修复并保留在对应实现 / 测试中。
+- 2026-10-27：`gh repo view forrestzhu/youmu-link --json visibility` 回读 PRIVATE。本地门禁实测：`cargo test --workspace --all-targets` 15 通过（beacon 单元 8 + loopback 集成 7）、`cargo fmt --all --check` 干净、`python3 scripts/test_harness.py` 16 通过、`python3 scripts/harness.py check` PASS（23 个文本文件）。demo 原型 `node --check` 语法通过，浏览器人工核对两视角状态流。首次修复过程：ciborium 0.2 无 `into_vec`（改 `into_writer` 辅助）、if-addrs `Ifv4Addr` 含 `prefixlen` 且 `broadcast` 已是 `Option<Ipv4Addr>`、临时目录符号链接导致未 resolve 的 ROOT 比较失败——均已修复并保留在对应实现 / 测试中。
+- **demo 两轮独立 CR（用户要求；两轮均为只读 subagent，修复由主代理执行并逐项浏览器核实）**：
+  - 第 1 轮（受审树 f326af3）：3 P1 + 5 P2 + 若干 P3。P1 全部先用真实浏览器复现属实——配对弹窗全屏遮罩命中测试挡住视图切换（elementFromPoint 返回 .modal-mask）、重扫后 500ms ticker 永久停止（倒计时冻结在 05:00、timer=null）、播放中断线残留字面量 "null" 且无断线提示；P2-4（已发现态主区仍显示搜索动画）亦快照可见。修复提交 `43721b6`：弹窗改桌面窗口内遮罩、ticker 幂等重启 + scanToken 防旧发现、断线保留标题并显示重连提示、传输 / 文件 / 播放页断线横幅与按钮禁用、断线传输自动恢复、ctl-drop 仅 connected 生效、配对错误 / 过期头显侧持久提示且草稿保留、tick 从全量重渲染改为定向更新（根除重渲染吞输入 / 反馈一类问题）、状态命名映射写入设计文档。修复后浏览器逐项回归通过（含手动 tick 确定性验证倒计时递减与传输 100% 完成；IAB 面板后台节流导致定时器偏慢属环境现象，逻辑以同一处理函数调用核实）。
+  - 第 2 轮（受审树 43721b6，新 agent）：确认第 1 轮修复全部落实、无新 P1（ticker 定向更新元素存在性 / hqError 清理时机 / scanToken 与重连定时器竞态专项核查通过）；新发现 N1（P2，home 页残留上一屏控制条——系第 1 轮重写遗漏 controls 赋值）与 N2-N7（P3）。属实修复：N1 home 控制条、N2 断线窗口内手动重配对后传输同样恢复、N3 断线文案不再对镜像自动继续过度承诺、N4 “字幕包”返回上级回到父级“电影”、N5 设计文档桌面文件标签描述对齐、N6 配对草稿属性转义；N7（fps 恒 72、暂停 chip 同色）与面包屑层级记为原型已知限制写入 README。修复后浏览器复核：home 返回后控制条为传输任务 / 断开、手动重配对路径传输恢复为传输中、字幕包返回到电影、含双引号 / 伪 ONLOAD 草稿完整保留不注入。
 - 双机 LAN 与互操作（L3 / L4）not-run：需第二真实设备与游目端实现，M2+ 任务承接。
 
 ## Next

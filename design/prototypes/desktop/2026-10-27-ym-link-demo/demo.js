@@ -46,6 +46,9 @@ const FILES = {
   ],
 };
 
+// 平铺目录表的父级映射，用于“返回上级”。
+const DIR_PARENT = { 电影: "root", 纪录片: "root", 字幕包: "电影" };
+
 const state = {
   link: "searching", // searching | discovered | pairing | connected | disconnected
   pairingCode: "",
@@ -104,6 +107,10 @@ function completePairing() {
   state.hqScreen = "home";
   state.hqDir = "root";
   state.hqError = "";
+  // 断线窗口内手动重新配对的路径也要兑现“恢复后传输继续”。
+  state.transfers.forEach((t) => {
+    if (t.status === "暂停" && t.percent < 100) t.status = "传输中";
+  });
   renderAll();
 }
 
@@ -159,7 +166,7 @@ function desktopEmptyHtml() {
   }
   if (state.link === "disconnected") {
     return `<div>连接已断开，正在重连…</div>
-      <div class="hint">重连后镜像与传输自动继续；也可以在左侧重新连接</div>`;
+      <div class="hint">重连后传输自动继续，镜像需重新开启；也可以在左侧重新连接</div>`;
   }
   return `<div>已发现设备</div>
     <div class="hint">在左侧设备卡片点「连接」开始配对</div>`;
@@ -296,7 +303,7 @@ function hqDeviceRow() {
       <div class="name">${COMPUTER.name} <span class="chip busy">配对中</span></div>
       <div class="meta">请输入电脑端 YM_Link 显示的六位码</div>
       ${errorLine}
-      <div class="code"><input id="hq-code-input" maxlength="6" inputmode="numeric" placeholder="——————" value="${state.hqCodeDraft}" oninput="hqTyping(this)"></div>
+      <div class="code"><input id="hq-code-input" maxlength="6" inputmode="numeric" placeholder="——————" value="${state.hqCodeDraft.replace(/&/g, "&amp;").replace(/"/g, "&quot;")}" oninput="hqTyping(this)"></div>
       <div class="row"><button class="btn" onclick="submitHqCode()">确认</button>
       <button class="btn secondary" onclick="cancelPairing()">取消</button></div>
     </div>`;
@@ -363,7 +370,7 @@ function renderHeadset() {
       <table class="files">
         <tr><th>名称</th><th>大小</th><th style="width:190px">操作</th></tr>
         ${list.map((f) => f.dir
-          ? `<tr class="dir" onclick="hqEnter('${f.name === ".." ? "root" : f.name}')"><td>📁 ${f.name === ".." ? "返回上级" : f.name}</td><td>—</td><td></td></tr>`
+          ? `<tr class="dir" onclick="hqEnter('${f.name === ".." ? (DIR_PARENT[state.hqDir] ?? "root") : f.name}')"><td>📁 ${f.name === ".." ? "返回上级" : f.name}</td><td>—</td><td></td></tr>`
           : `<tr><td>${f.video ? "🎬" : "📄"} ${f.name}</td><td class="hint">${f.size}</td><td>
              <button class="btn" ${offline ? "disabled" : ""} onclick="streamFile('${f.name}')">直接播放</button>
              <button class="btn secondary" ${offline ? "disabled" : ""} onclick="transferFile('${f.name}')">传输到本机</button></td></tr>`).join("")}
@@ -390,6 +397,10 @@ function renderHeadset() {
   const focused = document.activeElement === $("hq-code-input");
   const caret = focused ? $("hq-code-input").selectionStart : null;
   area.innerHTML = `<div style="width:70%">${hqDeviceRow()}</div>`;
+  controls.innerHTML = state.link === "connected"
+    ? `<button class="btn secondary" onclick="openHqScreen('transfers')">传输任务</button>
+       <button class="btn danger" onclick="dropConnection()">断开</button>`
+    : `<span class="hint">配对一次后，之后会自动重连</span>`;
   if (focused) {
     const input = $("hq-code-input");
     if (input) {
