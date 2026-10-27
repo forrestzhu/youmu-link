@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fmt;
 
-/// 绑定候选端口，按序回退；与 klip 的 47470-47472 错开避免串扰。
+/// 绑定候选端口，按序回退；独立分配端口，避免与其他局域网服务串扰。
 pub const BEACON_PORTS: [u16; 3] = [47610, 47611, 47612];
 /// 发现报文硬上限。
 pub const MAX_PACKET: usize = 512;

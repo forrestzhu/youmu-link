@@ -14,7 +14,7 @@ YM_Link 是 [Youmu VR Player](https://github.com/forrestzhu/youmu)（游目）�
 
 - 阶段：macOS 使用 SwiftUI / AppKit（[YML-002](docs/tasks/YML-002-macos-native.md)），Windows 使用 WPF / .NET 8（[YML-003](docs/tasks/YML-003-windows-native.md)）；Rust 共用发现、加密配对、授权文件服务、传输与镜像控制，采集编码按平台适配。决策见 [ADR-0002](docs/engineering/decisions/0002-native-desktop.md) / [ADR-0003](docs/engineering/decisions/0003-windows-native.md)。游目头显侧 YM_Link v3 集成与真实设备验收仍待推进。
 - 验证：Windows 本轮 76 项 Rust 回归、WPF 数据行 / 中英资源 / ABI 生命周期、Release 构建与启动检查通过；合成 HD 实际 H.264 编码与 SPS 检查另行通过。桌面后端覆盖真实 TCP 单机配对、文件 range、传输控制、重连与授权目录重启持久化。macOS 之前已有 `.app`、原生配对及 4 MiB 下载证据，本轮未在 Windows 复跑 macOS 构建。双机 LAN、真实 Quest 播放 / 镜像与音画同步为 **not-run**，不以测试桩代替设备验收。
-- 许可：原创代码采用 [Apache-2.0](LICENSE)，第三方依赖保留各自许可，见 [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES.md)。当前 GitHub 仓库仍为 private，公开及历史邮箱 / 目录记录处理须由维护者明确决定；不自动发布 Release。
+- 许可：原创代码采用 [Apache-2.0](LICENSE)，第三方依赖保留各自许可，见 [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES.md)。历史邮箱已按维护者授权修正，当前 GitHub 仓库仍为 private；历史示例 / 内部背景的处理和公开时点仍由维护者决定，不自动发布 Release。
 - 当前进度：[STATUS](docs/STATUS.md)；文档索引：[docs/README](docs/README.md)。
 
 ## 仓库结构
@@ -44,11 +44,11 @@ python3 scripts/package_build.py --platform windows-x64
 # macOS 构建后省略 --windows-assets，并改为 --platform macos-arm64
 ```
 
-开源前隐私审查见[敏感信息审计](docs/evidence/2026-10-27-sensitive-information-audit.md)。源码开源与 CI runner 实际执行状态见 [开源与 CI 报告](docs/evidence/2026-10-27-opensource-ci.md)。当前账户级托管运行条件限制曾阻止任务启动；workflow 已配置不代表云端任务已成功。
+开源前隐私审查见[敏感信息审计](docs/evidence/2026-10-27-sensitive-information-audit.md)，当前剩余项见[公开准备复查](docs/evidence/2026-10-27-public-readiness.md)。源码开源与 CI runner 实际执行状态见 [开源与 CI 报告](docs/evidence/2026-10-27-opensource-ci.md)。当前账户级托管运行条件限制曾阻止任务启动；workflow 已配置不代表云端任务已成功。
 
 ## 快速开始
 
-Windows 需要 Rust MSVC 工具链、.NET 8 SDK 与 Python 3.10+。当前构建 win-x64，WGC 显示器采集目标 Windows 10 1903+；本机验证为 Windows 11 专业版 x64 build 26200，其他系统 / ARM64 not-run。
+Windows 需要 Rust MSVC 工具链、Visual Studio C++ Build Tools、Windows SDK、.NET 8 SDK 与 Python 3.10+。当前构建 win-x64，WGC 显示器采集目标 Windows 10 1903+；本机验证为 Windows 11 专业版 x64 build 26200，其他系统 / ARM64 not-run。
 
 ```powershell
 # 默认自包含 .NET 运行时的本地未签名开发目录；检查生产 DLL 启动与关闭

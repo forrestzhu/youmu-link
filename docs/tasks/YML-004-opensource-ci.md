@@ -45,4 +45,6 @@ Tests: python3 -m unittest discover -s scripts -p test_*.py; harness verify; Win
 
 ## Next
 
-任务保持 verifying：真实 runner 通过需要解除账户阻塞，或用户批准公开后再实跑验证；不保证可见性变更自动解除所有账户限制。开源前仍由用户决定历史示例路径 / 内部说明及远端运行记录清理与公开时点，当前保持 private。
+追加[公开准备复查](../evidence/2026-10-27-public-readiness.md)：基线 `61c072f` 的 21 提交 / 281 个唯一文本 blob fresh 扫描无已确认凭据，许可 / 依赖未发现确定缺件。HEAD 一处内部名称注释已泛化，历史正文 / message 未改。基线 20 runs / 60 jobs 均 steps=0，50 个失败 job 均为账户条件，0 artifacts / releases / tags；不把背景文本视为已确认凭据泄露，公开前决定保留或清理。源码可以开发预览形式开放，Quest 真机、正式签名 / 安装器不作为源码开放的硬前置。
+
+注释 / 文档小修后实际 `harness verify` 为 Python 36 passed / 1 skipped、Rust 76 passed / 2 ignored。云端与 macOS 构建仍 not-run，任务保持 verifying；用户决定历史 / 运行背景公开范围及公开时点后再实跑三平台 CI，不保证可见性变更自动解除账户限制。SECURITY / 私下报告入口与简短贡献说明建议补齐，当前没有自动公开或删除远端记录。
