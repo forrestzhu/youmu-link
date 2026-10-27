@@ -6,15 +6,16 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 
 from build_privacy import rust_build_environment
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def run(args, *, capture=False):
+def run(args, *, capture=False, timeout=900):
     return subprocess.run(
-        args, cwd=ROOT, check=True, timeout=900,
+        args, cwd=ROOT, check=True, timeout=timeout,
         env={**rust_build_environment(ROOT), "MACOSX_DEPLOYMENT_TARGET": "14.0", "CARGO_HTTP_MULTIPLEXING": "false"},
         capture_output=capture, text=True,
     )
@@ -52,8 +53,15 @@ def main():
         shutil.copytree(locale, resources / locale.name)
     dependencies = run(["otool", "-L", str(executable / "YM_Link")], capture=True).stdout.splitlines()[1:]
     verify_runtime_dependencies([line.strip().split(" (", 1)[0] for line in dependencies])
+    # Remove debug/source records before signing; runtime resource paths are
+    # resolved relative to the app rather than rewritten in the binary.
+    run(["xcrun", "strip", "-S", str(executable / "YM_Link")])
     run(["codesign", "--force", "--sign", args.sign_identity, str(app)])
     run(["codesign", "--verify", "--strict", str(app)])
+    with tempfile.TemporaryDirectory(prefix="ym-link-resources-") as temporary:
+        relocated = Path(temporary) / app.name
+        shutil.copytree(app, relocated)
+        run([str(relocated / "Contents/MacOS/YM_Link"), "--verify-localizations"], timeout=30)
     print(f"Built {app.relative_to(ROOT)} (local development signing; not notarized).")
 
 

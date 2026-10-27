@@ -96,7 +96,40 @@ struct CommandResult: Decodable {
     var error: String?
 }
 
+private final class LocalizationBundleAnchor: NSObject {}
+
 enum Localizer {
+    static let resourceBundleName = "YM_Link_YM_Link.bundle"
+    private static let resources = resourceBundle(relativeTo: .main)
+        ?? resourceBundle(relativeTo: Bundle(for: LocalizationBundleAnchor.self))
+    private static let languages = resources.map { languageBundles(in: $0) } ?? [:]
+
+    // Do not use SwiftPM's Bundle.module: its generated accessor embeds the
+    // build directory as a runtime fallback. Both app and test resources travel
+    // next to their host bundle, with no dependency on the original checkout.
+    static func resourceBundle(relativeTo host: Bundle) -> Bundle? {
+        let roots = [host.resourceURL, host.bundleURL, host.bundleURL.deletingLastPathComponent()]
+        for root in roots.compactMap({ $0 }) {
+            if let bundle = Bundle(url: root.appendingPathComponent(resourceBundleName)) {
+                return bundle
+            }
+        }
+        return nil
+    }
+
+    private static func languageBundles(in bundle: Bundle) -> [String: Bundle] {
+        guard let root = bundle.resourceURL,
+              let folders = try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil) else { return [:] }
+        var result: [String: Bundle] = [:]
+        for folder in folders where folder.pathExtension.lowercased() == "lproj" {
+            if let localized = Bundle(url: folder) {
+                // SwiftPM lowercases locale identifiers when copying resources.
+                result[folder.deletingPathExtension().lastPathComponent.lowercased()] = localized
+            }
+        }
+        return result
+    }
+
     static func backendMessage(_ message: String, language: String) -> String {
         let source = message.lowercased()
         let protocolPrefix = "protocol error: "
@@ -155,10 +188,17 @@ enum Localizer {
     }
 
     static func string(_ key: String, language: String) -> String {
-        if language != "system", let path = Bundle.module.path(forResource: language, ofType: "lproj"),
-           let bundle = Bundle(path: path) {
-            return bundle.localizedString(forKey: key, value: nil, table: nil)
-        }
-        return Bundle.module.localizedString(forKey: key, value: nil, table: nil)
+        string(key, language: language, bundles: languages, preferredLanguages: Locale.preferredLanguages)
+    }
+
+    static func string(_ key: String, language: String, in bundle: Bundle, preferredLanguages: [String] = Locale.preferredLanguages) -> String {
+        string(key, language: language, bundles: languageBundles(in: bundle), preferredLanguages: preferredLanguages)
+    }
+
+    private static func string(_ key: String, language: String, bundles: [String: Bundle], preferredLanguages: [String]) -> String {
+        let selected = language == "system"
+            ? Bundle.preferredLocalizations(from: bundles.keys.sorted(), forPreferences: preferredLanguages).first ?? "en"
+            : language
+        return (bundles[selected.lowercased()] ?? bundles["en"])?.localizedString(forKey: key, value: nil, table: nil) ?? key
     }
 }

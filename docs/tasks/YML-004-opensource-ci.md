@@ -3,7 +3,7 @@
 Status: verifying
 Workflow: maintenance
 Requires-Device: no
-Tests: python3 -m unittest discover -s scripts -p test_*.py; harness verify; Windows build / legal bundle / package checks; GitHub Actions run diagnostics; history raw commit / tree / parent comparison; independent remote clone email verification; cargo test --locked -p ymlink-core --all-targets
+Tests: python3 -m unittest discover -s scripts -p test_*.py; harness verify; Windows build / legal bundle / package checks; GitHub Actions run diagnostics; history raw commit / tree / parent comparison; independent remote clone email verification; cargo test --locked -p ymlink-core --all-targets; swift test --package-path macos -c release; relocated app localization smoke
 
 ## Scope
 
@@ -50,3 +50,5 @@ Tests: python3 -m unittest discover -s scripts -p test_*.py; harness verify; Win
 注释 / 文档小修后实际 `harness verify` 为 Python 36 passed / 1 skipped、Rust 76 passed / 2 ignored。用户现已明确授权公开，GitHub 回读 PUBLIC / Apache-2.0，匿名仓库 API / LICENSE 200，私下报告 enabled=true；新增中英 SECURITY / CONTRIBUTING。首个公开后 run 40505699128 的 checks / windows 全部成功并上传 Windows 包；macOS Rust 构建因默认 Xcode 16.4 SDK 过旧失败，已固定镜像中 Xcode 26.3，等待新 run 验证，任务保持 verifying。完整记录见[公开与云端证据](../evidence/2026-10-27-public-launch.md)。未删除旧运行记录或追加历史改写。
 
 公开后第二跑 run 40506880396 证实 Xcode 26.3 / SDK 26.2 / Swift 6.2.4 已解决 Metal 编译问题；Mac 的端口回退回归暴露 rescan 遇不可路由广播即提前返回。已补 2 项确定性真实 UDP 回归，RED / GREEN 与两轮独立 CR 通过；完整门禁 78 Rust passed / 2 ignored、36 Python passed / 1 skipped，协议字段不变。第三跑继续核验 Mac 测试 / 应用构建 / 打包。
+
+第三跑 run40509363905 的 Mac Rust 74 passed / 1 ignored、原生构建 / 链接 / 签名通过，Swift 6 个中文断言因 SwiftPM locale 目录规范化而失败。已修复相对资源定位和显式语言选择，移除 Bundle.module 绝对 fallback，并增加移位应用资源自检 / 标准签名前 debug strip；两轮独立静态 CR 与本机完整门禁通过，第四跑验证原生 GREEN / 包隐私。含 rescan 修复的 Windows 云端包已完整独立下载核验，范围 / hash 见证据。

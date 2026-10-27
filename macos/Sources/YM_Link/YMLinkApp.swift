@@ -1,10 +1,24 @@
 import AppKit
+import Darwin
 import SwiftUI
 
 @main
 struct YMLinkApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
-    @StateObject private var model = DesktopModel()
+    @StateObject private var model: DesktopModel
+
+    init() {
+        if CommandLine.arguments.contains("--verify-localizations") {
+            let expected = Bundle.main.resourceURL?.appendingPathComponent(Localizer.resourceBundleName).resolvingSymlinksInPath().standardizedFileURL.path
+            let actual = Localizer.resourceBundle(relativeTo: .main)?.bundleURL.resolvingSymlinksInPath().standardizedFileURL.path
+            let valid = expected != nil && actual == expected
+                && Localizer.string("start_mirror", language: "en") == "Start mirroring"
+                && Localizer.string("start_mirror", language: "zh-Hans") == "开始镜像"
+            print(valid ? "PASS: packaged English and Simplified Chinese resources." : "FAIL: packaged localization resources.")
+            Darwin.exit(valid ? 0 : 1)
+        }
+        _model = StateObject(wrappedValue: DesktopModel())
+    }
 
     var body: some Scene {
         WindowGroup("YM_Link") {

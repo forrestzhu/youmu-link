@@ -24,7 +24,7 @@
 | --- | --- |
 | [YML-002 原生 macOS 实现](tasks/YML-002-macos-native.md) | verifying：双端控制、传输边界与弱网策略自动回归通过；真实屏幕 / 系统音频采集等待用户确认，弱网切档与 Quest 验收未完成。 |
 | [YML-003 Windows 原生实现](tasks/YML-003-windows-native.md) | verifying：两轮 CR 的三项发现全部修复并复核；最终门禁 76 Rust passed / 2 ignored，另实际系统编码器 / SPS 检查、WPF 数据行 / 本地化 / ABI、Release 构建与启动通过。实际 Quest / LAN、文件播放与屏幕 / 音频仍待设备，证据见 [Windows 实现与两轮 CR](evidence/2026-10-27-windows-two-round-cr.md)。 |
-| [YML-004 开源与 CI](tasks/YML-004-opensource-ci.md) | verifying：仓库已按用户授权公开；首个公开后 run 40505699128 的 Linux / Windows 全部通过，Windows 开发包已上传。Mac SDK 已用 Xcode 26.3 修复并越过编译；第二跑发现 rescan 遇首个不可路由广播即早退，已补两个真实 UDP 回归和尽力遍历修复，待新 run 验证。见[公开与云端证据](evidence/2026-10-27-public-launch.md)。 |
+| [YML-004 开源与 CI](tasks/YML-004-opensource-ci.md) | verifying：仓库已按用户授权公开；首个公开后 run 40505699128 的 Linux / Windows 全部通过，Windows 开发包已上传。Mac SDK / 扫描早退已修复，第三跑 Rust / 原生构建 / 签名通过；Swift 中文资源查找失败已补大小写 / 移位回归与独立目录资源自检，待第四跑验证。含扫描修复的 Windows 包已独立核验。见[公开与云端证据](evidence/2026-10-27-public-launch.md)。 |
 | [用户追加两轮 CR](evidence/2026-10-27-native-two-round-cr.md) | 完成：首轮 3 P2 / 1 P3、第二轮 2 P3，全部修复并复核关闭；覆盖端点 pin、采集 teardown、传输历史 / 连接交接、重复错误事件和测试桩换源续传。 |
 | 本地启动 | 用户手动启动已确认成功，CUA 已取得窗口。早期自动启动入口出现 SIGKILL 的原因不明，未据此修改应用生命周期或系统安全策略。 |
 | 真实 LAN / Quest | not-run：本轮用现有 SDK 的 ADB 实查为 0 个连接设备；相邻游目源码尚无 YM_Link v3 客户端，YM-276 仍是桌面启动 / 头显设计范围。暂无第二设备或 v3 互操作证据，Rust 测试桩不代替真机。 |

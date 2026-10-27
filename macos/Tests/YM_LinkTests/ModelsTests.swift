@@ -2,6 +2,39 @@ import XCTest
 @testable import YM_Link
 
 final class ModelsTests: XCTestCase {
+    func testExplicitLanguageIgnoresHostPreferenceAndLocaleFolderCase() throws {
+        let resources = try XCTUnwrap(Localizer.resourceBundle(relativeTo: Bundle(for: Self.self)))
+        XCTAssertEqual(Localizer.string("start_mirror", language: "ZH-HANS", in: resources, preferredLanguages: ["en"]), "开始镜像")
+        XCTAssertEqual(Localizer.string("start_mirror", language: "en", in: resources, preferredLanguages: ["zh-Hans"]), "Start mirroring")
+        XCTAssertEqual(Localizer.string("start_mirror", language: "system", in: resources, preferredLanguages: ["zh-Hans-CN", "en"]), "开始镜像")
+        XCTAssertEqual(Localizer.string("start_mirror", language: "system", in: resources, preferredLanguages: ["fr-FR"]), "Start mirroring")
+        XCTAssertEqual(Localizer.string("unknown-localization-key", language: "zh-Hans", in: resources), "unknown-localization-key")
+    }
+
+    func testLocalizationResourcesTravelWithRelocatedApp() throws {
+        let files = FileManager.default
+        let temporary = files.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try files.createDirectory(at: temporary, withIntermediateDirectories: true)
+        defer { try? files.removeItem(at: temporary) }
+        let source = try XCTUnwrap(Localizer.resourceBundle(relativeTo: Bundle(for: Self.self)))
+        let original = temporary.appendingPathComponent("original/YM_Link.app")
+        let resources = original.appendingPathComponent("Contents/Resources")
+        try files.createDirectory(at: resources, withIntermediateDirectories: true)
+        let info: [String: String] = ["CFBundleIdentifier": "app.youmu.link.test", "CFBundlePackageType": "APPL", "CFBundleExecutable": "YM_Link"]
+        let data = try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0)
+        try data.write(to: original.appendingPathComponent("Contents/Info.plist"))
+        try files.copyItem(at: source.bundleURL, to: resources.appendingPathComponent(Localizer.resourceBundleName))
+        let relocated = temporary.appendingPathComponent("relocated/YM_Link.app")
+        try files.createDirectory(at: relocated.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try files.moveItem(at: original, to: relocated)
+        XCTAssertFalse(files.fileExists(atPath: original.path))
+        let host = try XCTUnwrap(Bundle(url: relocated))
+        let moved = try XCTUnwrap(Localizer.resourceBundle(relativeTo: host))
+        XCTAssertEqual(moved.bundleURL.resolvingSymlinksInPath().standardizedFileURL.path, relocated.appendingPathComponent("Contents/Resources/" + Localizer.resourceBundleName).resolvingSymlinksInPath().standardizedFileURL.path)
+        XCTAssertEqual(Localizer.string("start_mirror", language: "en", in: moved), "Start mirroring")
+        XCTAssertEqual(Localizer.string("start_mirror", language: "zh-Hans", in: moved), "开始镜像")
+    }
+
     func testRustSnapshotContractAndLocalizedControls() throws {
         let json = #"""
         {

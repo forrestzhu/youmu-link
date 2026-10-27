@@ -43,3 +43,29 @@ Windows artifact 为 `YM_Link-windows-x64-7d324b572cd0c568db7d0f7c162f7e6e7374f9
 确定性回归使用真实 UDP socket 并关闭 SO_BROADCAST：广播发送保证失败，之后的 localhost 三端口必须各收到有效 Query，尾部再次失败不覆盖已有成功；另验证全部失败仍报错。旧提前返回实现 RED 为 1 passed / 1 failed（本机错误 10013），修复后新增 2/2 GREEN，core 全目标 46 passed。未修改网络、系统权限或录屏设置；Mac 结果仍需新 run 验证。
 
 网络修复两轮独立 CR：`public_ci_audit` 与 `public_docs` 先后复核 discovery blob `08472e5b42d3cdb3da0a5237740db647cbfe9973`，第二轮同时核对 PROTOCOL blob `b46e455cee3cbb0d70c84acdad779b7f995c7209`，均无确定问题。根代理实际完整 `harness verify` 为 Python 36 passed / 1 Unix-mode skipped、Rust 78 passed / 2 ignored，仓库检查与 rustfmt 通过；macOS 第三次云端结果待实跑。
+
+## 首个 Windows 云端制品独立下载核验
+
+`public_artifact_verify` 完整下载首个 artifact 后核对外层长度 / GitHub digest、内部 ZIP SHA-256 / checksum 文件名及内外两层 CRC，均通过。内层 ZIP SHA-256 为 `e7557e14e563e89199e85b8e21db1c47d74f41d4a69e9e3980e5e3162c769d33`；共 747 文件，BUILD-INFO revision / windows-x64 正确。278 份索引许可存在，128 Rust 包、Rust 1.85.0 标准库和两套 .NET 8.0.32 与实际 runtimeconfig 匹配。
+
+状态 / 密钥 / PDB / 日志 / 媒体文件 0，已知 token / 私钥签名 0；三个自有 PE 对 CI home / workspace 前缀的 UTF-8 / UTF-16LE/BE 扫描均 0，Rust DLL 有 173 处合成路径映射。下载和 JSON 报告仅留在忽略目录，不提交原始日志、签名下载 URL 或构建产物。此结果仅证明首次受审 revision，不冒充后续修复包结果；含 rescan 修复的新 Windows 包另行核验。
+
+## 网络修复后的 Mac 进展
+
+`dd40c6c8cc29b78a532a6ca401e74c234786b41c` 的 [run 40509363905](https://github.com/forrestzhu/youmu-link/actions/runs/40509363905) 已通过 Linux / Windows，Mac Rust 测试、原生应用构建、静态链接与 ad-hoc 签名也通过。随后 Swift 测试有 6 项简体中文断言返回英文，本地化用例失败，打包 / 上传尚未执行。
+
+根因经官方源码确认：SwiftPM 6.2.4 将非 Base locale 转小写，产物为 zh-hans.lproj；原 loader 精确查询 zh-Hans，未找到时转用主机默认偏好，英文 CI 主机因此全部回英文。修复需按实际目录匹配显式语言，不依赖主机语言，并解决同一 Bundle.module 加载器的绝对构建目录 fallback；不能通过改测试期望 / 主机语言或关闭路径门禁绕过。[SwiftPM 资源规范化源码](https://raw.githubusercontent.com/swiftlang/swift-package-manager/swift-6.2.4-RELEASE/Sources/PackageModel/Resource.swift)
+
+## 原生资源修复与待实跑验证
+
+Mac loader 已改为相对 app Resources / host bundle / XCTest anchor 目录查找资源 bundle，不引用含绝对构建目录 fallback 的 Bundle.module。按实际 `.lproj` 名称建立小写索引，显式语言独立于主机偏好，system 才按系统偏好选择。新增大小写 / 主机偏好 / system / 未知 key 与资源随 `.app` 移位的回归；已有 6 项错误断言保留作为真实 RED。
+
+原生入口的 `--verify-localizations` 在创建 DesktopModel 前校验当前 `.app/Contents/Resources` 的实际 bundle 和 en / zh-Hans 文案，然后退出，不创建后端、窗口或采集权限流程。构建器使用系统 strip -S 清除调试记录后签名 / 校验，再复制到唯一临时目录以 30 秒超时运行该模式；它不以二进制字节替换掩盖运行时路径，也不关闭包隐私门禁。
+
+两轮独立 `public_ci_audit` / `public_docs` 静态复核无确定阻断，根代理采纳路径规范化与直接输出安全自检结果的建议。第二轮受审 blob：Models `55055d874ee04c02128012bbf1969ca449275b7e`、App `6e13bdacbf654f8f19893642c00d3df9eb0b7202`、Tests `23575cf622031d64f865ae2b03ce2f4399732426`、build `abe342f7bbb34a668314683c0ab60c1b62d9633e`。本机完整门禁为 Python 36 passed / 1 skipped、Rust 78 passed / 2 ignored；Swift / 移位应用启动 / Mach-O 路径门禁尚待第四跑实证。
+
+## 含网络修复的 Windows 包核验
+
+第三跑 Windows artifact `12737465070` 的外层长度 71,886,420 bytes、GitHub digest `d5a94ec5c3e16467d5df5d52d5b52d15bbc8fa0426e73b96a4ae9b724c8eb51a`、内层 ZIP digest `d5b42fdf9efbeef32990dc3bba80900af3237de199215938eca636faefafb336` 及内外 CRC 全部通过。747 成员、BUILD-INFO revision `dd40c6c8cc29b78a532a6ca401e74c234786b41c` 正确，278 许可文本 / Cargo.lock 精确依赖清单 / 两套 .NET 8.0.32 匹配。
+
+状态 / key / PDB / log / 媒体与已知密钥签名 0；当前项目 CI / home 前缀在自有 PE 中为 0。泛化路径规则的一条候选经 PE Debug Directory / CodeView 结构确认属于微软 apphost.pdb 上游构建元数据，且与首包及官方模板相同，未归类为本项目个人信息泄漏；原路径未复制到报告。本次为静态包核验，运行证据来自对应 Windows job。
