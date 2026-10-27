@@ -130,6 +130,11 @@ pub enum Command {
         quality: String,
     },
     StopMirror,
+    PauseMirror,
+    ResumeMirror,
+    SelectMirrorDisplay {
+        display_id: u32,
+    },
     PauseTransfer {
         id: String,
     },

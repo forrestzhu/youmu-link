@@ -17,7 +17,7 @@ use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::TcpStream;
 use zeroize::Zeroizing;
 
-pub const VERSION: u8 = 2;
+pub const VERSION: u8 = 3;
 pub const MAGIC: &[u8; 9] = b"YL-CTRL2\0";
 pub const MAX_CIPHERTEXT: usize = 65_535;
 pub const MAX_PLAINTEXT: usize = MAX_CIPHERTEXT - 16;
@@ -100,8 +100,12 @@ impl Hello {
     }
 
     fn validate(&self, noise_key: &[u8; 32], local_tag: &[u8]) -> Result<()> {
-        if self.v != VERSION
-            || self.tag_hash.len() != 16
+        if self.v != VERSION {
+            return Err(Error::Protocol(
+                "incompatible application version; upgrade YM_Link on both devices",
+            ));
+        }
+        if self.tag_hash.len() != 16
             || self.tag_hash != local_tag
             || self.name.is_empty()
             || self.name.len() > 128

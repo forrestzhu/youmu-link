@@ -62,6 +62,31 @@ fn receiver(mut reader: session::SecureReader) -> (mpsc::Receiver<Message>, Abor
     (receive, task)
 }
 
+async fn control(
+    receiver: &mut mpsc::Receiver<Message>,
+    writer: &mut session::SecureWriter,
+    id: u64,
+    command: MirrorAction,
+) -> (bool, MirrorInfo) {
+    writer
+        .send(&Message::MirrorControl {
+            v: VERSION,
+            id,
+            command,
+        })
+        .await
+        .unwrap();
+    match next(receiver, writer).await {
+        Message::MirrorReply {
+            id: response,
+            ok,
+            state,
+            ..
+        } if response == id => (ok, state),
+        _ => panic!("expected mirror control reply"),
+    }
+}
+
 #[test]
 fn native_backend_pairs_serves_ranges_controls_transfer_reconnects_and_cancels() {
     let temp = std::env::temp_dir().join(format!("ymlink-runtime-{:016x}", rand::random::<u64>()));
@@ -94,6 +119,27 @@ fn native_backend_pairs_serves_ranges_controls_transfer_reconnects_and_cancels()
         session.authorize(&mut trust,Pairing::Enter{code}).await.unwrap();
         let (read,mut write)=session.into_split().unwrap();let (mut incoming,_read)=receiver(read);
         wait_state(&backend,|s|s.status=="connected").await;
+        write.send(&Message::MirrorQuery{v:VERSION,id:100}).await.unwrap();
+        assert!(matches!(next(&mut incoming,&mut write).await,Message::MirrorReply{id:100,ok:true,state:MirrorInfo{status,..},..}if status=="stopped"));
+        let (ok,view)=control(&mut incoming,&mut write,101,MirrorAction::Resume).await;
+        assert!(!ok);assert_eq!(view.status,"stopped","the peer cannot start the first recording");
+        let (ok,_)=control(&mut incoming,&mut write,102,MirrorAction::Pause).await;assert!(!ok);
+        let (ok,_)=control(&mut incoming,&mut write,103,MirrorAction::Stop).await;assert!(ok);
+        // Policy-only paused state: no Capture::start call or OS permission request.
+        {
+            let mut state=backend.state.lock().unwrap();
+            state.displays=vec![
+                crate::capture::Display{id:991,name:"test display 1".into(),width:1920,height:1080},
+                crate::capture::Display{id:992,name:"test display 2".into(),width:1280,height:720},
+            ];
+            state.mirror.status="paused".into();state.mirror.display_id=Some(991);state.mirror.audio=false;state.mirror.quality="smooth".into();
+        }
+        let (ok,view)=control(&mut incoming,&mut write,104,MirrorAction::SelectDisplay{display_id:992}).await;
+        assert!(ok);assert_eq!(view.status,"paused");assert_eq!(view.display_id,Some(992));assert!(!view.audio);assert_eq!(view.quality,"smooth");
+        let (ok,view)=control(&mut incoming,&mut write,105,MirrorAction::Pause).await;assert!(ok);assert_eq!(view.status,"paused");
+        let (ok,view)=control(&mut incoming,&mut write,106,MirrorAction::SelectDisplay{display_id:993}).await;assert!(!ok);assert_eq!(view.display_id,Some(992));
+        let (ok,view)=control(&mut incoming,&mut write,107,MirrorAction::Stop).await;assert!(ok);assert_eq!(view.status,"stopped");
+        let (ok,view)=control(&mut incoming,&mut write,108,MirrorAction::Resume).await;assert!(!ok);assert_eq!(view.status,"stopped");
         write.send(&Message::FileRequest{v:VERSION,id:1,request:FileRequest::Shares}).await.unwrap();
         let share=match next(&mut incoming,&mut write).await {Message::FileResponse{id:1,response:FileResponse::Shares{shares},..}=>shares[0].id.clone(),_=>panic!("expected shares")};
         write.send(&Message::FileRequest{v:VERSION,id:2,request:FileRequest::Stat{share_id:share.clone(),path:"sample.bin".into()}}).await.unwrap();
@@ -141,4 +187,604 @@ fn native_backend_pairs_serves_ranges_controls_transfer_reconnects_and_cancels()
     drop(client);
     drop(backend);
     std::fs::remove_dir_all(temp).unwrap();
+}
+
+async fn isolated_file_server() -> (
+    Arc<Shared>,
+    session::SecureWriter,
+    mpsc::Receiver<Message>,
+    AbortTask,
+    tokio::task::JoinHandle<session::Result<()>>,
+    AbortTask,
+) {
+    let identity = Identity::generate().unwrap();
+    let client_identity = Identity::generate().unwrap();
+    let socket = tokio::net::TcpSocket::new_v4().unwrap();
+    socket.set_send_buffer_size(4096).unwrap();
+    socket.bind("127.0.0.1:0".parse().unwrap()).unwrap();
+    let listener = socket.listen(8).unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let (client, server) = tokio::join!(
+        async {
+            let socket = tokio::net::TcpSocket::new_v4().unwrap();
+            socket.set_recv_buffer_size(4096).unwrap();
+            let stream = socket
+                .connect(format!("127.0.0.1:{port}").parse().unwrap())
+                .await
+                .unwrap();
+            SecureSession::handshake(
+                stream,
+                true,
+                &client_identity,
+                Hello::new(&client_identity, "Quest test", "headset-test", port),
+            )
+            .await
+            .unwrap()
+        },
+        async {
+            let (stream, _) = listener.accept().await.unwrap();
+            SecureSession::handshake(
+                stream,
+                false,
+                &identity,
+                Hello::new(&identity, "Mac test", "macos", port),
+            )
+            .await
+            .unwrap()
+        }
+    );
+    let (mut client, mut server) = (client, server);
+    let mut client_trust = TrustStore::memory();
+    let mut server_trust = TrustStore::memory();
+    client_trust
+        .remember(client.remote(), &client.remote_key())
+        .unwrap();
+    server_trust
+        .remember(server.remote(), &server.remote_key())
+        .unwrap();
+    let (a, b) = tokio::join!(
+        client.authorize(&mut client_trust, Pairing::ReconnectOnly),
+        server.authorize(&mut server_trust, Pairing::ReconnectOnly)
+    );
+    a.unwrap();
+    b.unwrap();
+    let state = Arc::new(Mutex::new(Snapshot::new("test".into())));
+    let observed = state.clone();
+    let (commands, mut requests) = mpsc::channel::<Request>(8);
+    let responder = AbortTask(tokio::spawn(async move {
+        while let Some(request) = requests.recv().await {
+            observed.lock().unwrap().error = Some("test mirror command processed".into());
+            if let Some(reply) = request.reply {
+                let _ = reply.send(Err("policy-only test; no recording is started".into()));
+            }
+        }
+    }));
+    let shared = Arc::new(Shared {
+        state,
+        identity,
+        trust: AsyncMutex::new(server_trust),
+        catalog: Mutex::new(FileCatalog::new()),
+        active: Mutex::new(None),
+        generation: AtomicU64::new(1),
+        dialing: AtomicBool::new(false),
+        pairing_attempts: Mutex::new(HashMap::new()),
+        config_path: PathBuf::new(),
+        mirror_cancel: Mutex::new(None),
+        disconnected: Mutex::new(HashSet::new()),
+        mirror_generation: AtomicU64::new(1),
+        allow_loopback: true,
+        share_changes: Mutex::new(()),
+        commands,
+        capture_gate: Arc::new(Semaphore::new(1)),
+        file_gate: Arc::new(Semaphore::new(MAX_FILE_WORK)),
+    });
+    let (outbox, outgoing) = mpsc::channel(32);
+    let (media_send, media) = mpsc::channel(8);
+    let (cancel, _) = watch::channel(false);
+    *shared.active.lock().unwrap() = Some(Active {
+        generation: 1,
+        peer_id: client_identity.device_id(),
+        preferred: true,
+        cancel,
+        outbox,
+        media: media_send,
+        pair_input: None,
+        authorized: true,
+    });
+    let server = tokio::spawn(serve(shared.clone(), server, outgoing, media, 1));
+    let (reader, writer) = client.into_split().unwrap();
+    let (incoming, read_task) = receiver(reader);
+    (shared, writer, incoming, read_task, server, responder)
+}
+
+struct HeldCatalog {
+    release: Option<std::sync::mpsc::Sender<()>>,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+impl Drop for HeldCatalog {
+    fn drop(&mut self) {
+        if let Some(release) = self.release.take() {
+            let _ = release.send(());
+        }
+        if let Some(thread) = self.thread.take() {
+            thread.join().unwrap();
+        }
+    }
+}
+
+async fn hold_catalog(shared: Arc<Shared>) -> HeldCatalog {
+    let (release, released) = std::sync::mpsc::channel();
+    let (ready, held) = oneshot::channel();
+    let thread = std::thread::spawn(move || {
+        let _guard = shared.catalog.lock().unwrap();
+        let _ = ready.send(());
+        let _ = released.recv_timeout(Duration::from_secs(10));
+    });
+    held.await.unwrap();
+    HeldCatalog {
+        release: Some(release),
+        thread: Some(thread),
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn slow_file_work_keeps_remote_mirror_controls_responsive() {
+    let (shared, mut writer, mut incoming, _read, server, _commands) = isolated_file_server().await;
+    let held = hold_catalog(shared).await;
+    writer
+        .send(&Message::FileRequest {
+            v: VERSION,
+            id: 1,
+            request: FileRequest::Shares,
+        })
+        .await
+        .unwrap();
+    writer
+        .send(&Message::MirrorQuery { v: VERSION, id: 2 })
+        .await
+        .unwrap();
+    writer
+        .send(&Message::MirrorControl {
+            v: VERSION,
+            id: 3,
+            command: MirrorAction::Stop,
+        })
+        .await
+        .unwrap();
+    for expected in [2, 3] {
+        let message =
+            tokio::time::timeout(Duration::from_millis(750), next(&mut incoming, &mut writer))
+                .await
+                .expect("slow file work blocked remote mirror controls");
+        assert!(matches!(message, Message::MirrorReply { id, ok: false, .. } if id == expected));
+    }
+    drop(held);
+    assert!(matches!(
+        next(&mut incoming, &mut writer).await,
+        Message::FileResponse {
+            id: 1,
+            response: FileResponse::Shares { .. },
+            ..
+        }
+    ));
+    writer.send(&Message::Bye { v: VERSION }).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(2), server)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn file_work_is_bounded_and_cancelled_requests_do_not_emit_chunks() {
+    let (shared, mut writer, mut incoming, _read, server, _commands) = isolated_file_server().await;
+    let directory =
+        std::env::temp_dir().join(format!("ymlink-serve-files-{:016x}", rand::random::<u64>()));
+    std::fs::create_dir(&directory).unwrap();
+    std::fs::write(directory.join("old"), b"old contents").unwrap();
+    std::fs::write(directory.join("new"), b"new contents").unwrap();
+    let versions = {
+        let mut catalog = shared.catalog.lock().unwrap();
+        catalog
+            .add("share".into(), "test".into(), &directory)
+            .unwrap();
+        ["old", "new"].map(|path| {
+            match catalog.handle(FileRequest::Stat {
+                share_id: "share".into(),
+                path: path.into(),
+            }) {
+                FileResponse::Stat { entry } => entry.version.unwrap(),
+                _ => panic!("expected version"),
+            }
+        })
+    };
+    let held = hold_catalog(shared.clone()).await;
+    writer
+        .send(&Message::TransferOpen {
+            v: VERSION,
+            id: "reuse".into(),
+            share_id: "share".into(),
+            path: "old".into(),
+            version: versions[0].clone(),
+            offset: 0,
+        })
+        .await
+        .unwrap();
+    writer
+        .send(&Message::TransferAction {
+            v: VERSION,
+            id: "reuse".into(),
+            action: "cancel".into(),
+        })
+        .await
+        .unwrap();
+    writer
+        .send(&Message::TransferOpen {
+            v: VERSION,
+            id: "fresh".into(),
+            share_id: "share".into(),
+            path: "new".into(),
+            version: versions[1].clone(),
+            offset: 0,
+        })
+        .await
+        .unwrap();
+    for id in 10..13 {
+        writer
+            .send(&Message::FileRequest {
+                v: VERSION,
+                id,
+                request: FileRequest::Shares,
+            })
+            .await
+            .unwrap();
+    }
+    let busy = tokio::time::timeout(Duration::from_millis(750), next(&mut incoming, &mut writer))
+        .await
+        .expect("full file work must be rejected without waiting for disk");
+    assert!(matches!(
+        busy,
+        Message::FileResponse {
+            id: 12,
+            response: FileResponse::Error {
+                code: ymlink_core::files::FileError::Unavailable
+            },
+            ..
+        }
+    ));
+    assert_eq!(
+        shared
+            .state
+            .lock()
+            .unwrap()
+            .transfers
+            .iter()
+            .find(|t| t.id == "fresh")
+            .unwrap()
+            .status,
+        "transferring"
+    );
+    drop(held);
+    let mut responses = 0;
+    let mut chunks = 0;
+    while responses != 2 || chunks != 1 {
+        match next(&mut incoming, &mut writer).await {
+            Message::FileResponse {
+                id: 10 | 11,
+                response: FileResponse::Shares { .. },
+                ..
+            } => responses += 1,
+            Message::TransferChunk {
+                id,
+                version,
+                data,
+                offset: 0,
+                eof: true,
+                ..
+            } => {
+                assert_eq!(id, "fresh");
+                assert_eq!(version, versions[1]);
+                assert_eq!(data, b"new contents");
+                chunks += 1;
+                writer
+                    .send(&Message::TransferAck {
+                        v: VERSION,
+                        id,
+                        offset: data.len() as u64,
+                    })
+                    .await
+                    .unwrap();
+            }
+            _ => panic!("cancelled file work emitted a chunk"),
+        }
+    }
+    writer.send(&Message::Bye { v: VERSION }).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(2), server)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cancelling_file_waiters_keeps_io_slots_until_disk_work_finishes() {
+    let (shared, mut writer, _incoming, _read, server, _commands) = isolated_file_server().await;
+    let held = hold_catalog(shared.clone()).await;
+    let mut old = FileWork::new();
+    for id in 0..MAX_FILE_WORK {
+        file_request(
+            &shared,
+            &mut old,
+            FileTarget::Request(id as u64),
+            FileRequest::Shares,
+        );
+    }
+    tokio::time::timeout(Duration::from_secs(1), async {
+        while shared.file_gate.available_permits() != 0 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    old.abort_all();
+    while old.join_next().await.is_some() {}
+    assert_eq!(
+        shared.file_gate.available_permits(),
+        0,
+        "cancelled physical IO still owns all four slots"
+    );
+    let mut new = FileWork::new();
+    file_request(
+        &shared,
+        &mut new,
+        FileTarget::Request(9),
+        FileRequest::Shares,
+    );
+    assert!(
+        tokio::time::timeout(Duration::from_millis(30), new.join_next())
+            .await
+            .is_err()
+    );
+    drop(held);
+    assert!(matches!(
+        tokio::time::timeout(Duration::from_secs(2), new.join_next())
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap()
+            .unwrap(),
+        (FileTarget::Request(9), FileResponse::Shares { .. })
+    ));
+    writer.send(&Message::Bye { v: VERSION }).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(2), server)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn stalled_socket_writer_does_not_block_remote_stop_dispatch() {
+    let (shared, mut writer, _incoming, _read, server, _commands) = isolated_file_server().await;
+    let media = shared
+        .active
+        .lock()
+        .unwrap()
+        .as_ref()
+        .unwrap()
+        .media
+        .clone();
+    let mut stalled = false;
+    for packet_id in 0..512 {
+        let message = Message::Media {
+            v: VERSION,
+            stream_id: 1,
+            packet_id,
+            part: 0,
+            parts: 1,
+            media_kind: "video".into(),
+            codec: "h264-avcc".into(),
+            pts_us: 0,
+            keyframe: true,
+            width: 64,
+            height: 64,
+            data: vec![255; 8192],
+        };
+        if tokio::time::timeout(Duration::from_millis(100), media.send(message))
+            .await
+            .is_err()
+        {
+            stalled = true;
+            break;
+        }
+    }
+    assert!(
+        stalled,
+        "small TCP buffers and an unread receive queue must exercise writer backpressure"
+    );
+    writer
+        .send(&Message::MirrorControl {
+            v: VERSION,
+            id: 90,
+            command: MirrorAction::Stop,
+        })
+        .await
+        .unwrap();
+    tokio::time::timeout(Duration::from_millis(750), async {
+        while shared.state.lock().unwrap().error.as_deref() != Some("test mirror command processed")
+        {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("socket backpressure blocked remote stop dispatch");
+    server.abort();
+    assert!(server.await.unwrap_err().is_cancelled());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn retired_transfer_ack_is_ignored_but_reopening_its_id_is_rejected() {
+    let (shared, mut writer, mut incoming, _read, mut server, _commands) =
+        isolated_file_server().await;
+    let directory =
+        std::env::temp_dir().join(format!("ymlink-transfer-id-{:016x}", rand::random::<u64>()));
+    std::fs::create_dir(&directory).unwrap();
+    let content = b"actual file bytes";
+    std::fs::write(directory.join("sample"), content).unwrap();
+    let version = {
+        let mut catalog = shared.catalog.lock().unwrap();
+        catalog
+            .add("share".into(), "test".into(), &directory)
+            .unwrap();
+        match catalog.handle(FileRequest::Stat {
+            share_id: "share".into(),
+            path: "sample".into(),
+        }) {
+            FileResponse::Stat { entry } => entry.version.unwrap(),
+            _ => panic!("expected file version"),
+        }
+    };
+    let open = |id: &str| Message::TransferOpen {
+        v: VERSION,
+        id: id.into(),
+        share_id: "share".into(),
+        path: "sample".into(),
+        version: version.clone(),
+        offset: 0,
+    };
+    writer.send(&open("retired")).await.unwrap();
+    assert!(
+        matches!(next(&mut incoming, &mut writer).await, Message::TransferChunk { data, eof: true, .. } if data == content)
+    );
+    writer
+        .send(&Message::TransferAction {
+            v: VERSION,
+            id: "retired".into(),
+            action: "cancel".into(),
+        })
+        .await
+        .unwrap();
+    writer
+        .send(&Message::TransferAck {
+            v: VERSION,
+            id: "retired".into(),
+            offset: content.len() as u64,
+        })
+        .await
+        .unwrap();
+    writer
+        .send(&Message::FileRequest {
+            v: VERSION,
+            id: 90,
+            request: FileRequest::Shares,
+        })
+        .await
+        .unwrap();
+    assert!(matches!(
+        next(&mut incoming, &mut writer).await,
+        Message::FileResponse { id: 90, .. }
+    ));
+    writer
+        .send(&Message::TransferOpen {
+            v: VERSION,
+            id: "failed".into(),
+            share_id: "share".into(),
+            path: "missing".into(),
+            version: version.clone(),
+            offset: 0,
+        })
+        .await
+        .unwrap();
+    assert!(
+        matches!(next(&mut incoming, &mut writer).await, Message::TransferError { id, .. } if id == "failed")
+    );
+    shared
+        .active
+        .lock()
+        .unwrap()
+        .as_ref()
+        .unwrap()
+        .outbox
+        .try_send(Message::TransferAction {
+            v: VERSION,
+            id: "retired".into(),
+            action: "pause".into(),
+        })
+        .unwrap();
+    shared
+        .active
+        .lock()
+        .unwrap()
+        .as_ref()
+        .unwrap()
+        .outbox
+        .try_send(Message::TransferAction {
+            v: VERSION,
+            id: "failed".into(),
+            action: "resume".into(),
+        })
+        .unwrap();
+    writer.send(&open("fresh")).await.unwrap();
+    assert!(
+        matches!(next(&mut incoming, &mut writer).await, Message::TransferChunk { id, data, eof: true, .. } if id == "fresh" && data == content)
+    );
+    writer
+        .send(&Message::TransferAck {
+            v: VERSION,
+            id: "fresh".into(),
+            offset: content.len() as u64,
+        })
+        .await
+        .unwrap();
+    writer
+        .send(&Message::FileRequest {
+            v: VERSION,
+            id: 91,
+            request: FileRequest::Shares,
+        })
+        .await
+        .unwrap();
+    assert!(matches!(
+        next(&mut incoming, &mut writer).await,
+        Message::FileResponse { id: 91, .. }
+    ));
+    assert_eq!(
+        shared.state.lock().unwrap().error.as_deref(),
+        Some("transfer no longer active")
+    );
+    assert_eq!(
+        shared
+            .state
+            .lock()
+            .unwrap()
+            .transfers
+            .iter()
+            .find(|t| t.id == "failed")
+            .unwrap()
+            .status,
+        "failed"
+    );
+    writer.send(&open("retired")).await.unwrap();
+    let rejected = tokio::time::timeout(Duration::from_secs(1), &mut server).await;
+    if rejected.is_err() {
+        server.abort();
+    }
+    std::fs::remove_dir_all(directory).unwrap();
+    assert!(
+        matches!(rejected, Ok(Ok(Err(session::Error::Protocol(_))))),
+        "retired id must never bind an old Ack or queued control to a new transfer"
+    );
+}
+
+#[test]
+fn transfer_id_history_has_a_hard_session_limit() {
+    let mut ids = HashSet::new();
+    for index in 0..MAX_TRANSFER_IDS {
+        remember_transfer_id(&mut ids, &format!("transfer-{index}")).unwrap();
+    }
+    assert_eq!(ids.len(), MAX_TRANSFER_IDS);
+    assert!(remember_transfer_id(&mut ids, "transfer-0").is_err());
+    assert!(remember_transfer_id(&mut ids, "one-too-many").is_err());
+    assert_eq!(ids.len(), MAX_TRANSFER_IDS);
 }

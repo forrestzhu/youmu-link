@@ -13,7 +13,7 @@ YM_Link 是 [Youmu VR Player](https://github.com/forrestzhu/youmu)（游目）�
 ## 仓库状态
 
 - 阶段：用户已授权基于 demo 实现，macOS 原生客户端开发中（[YML-002](docs/tasks/YML-002-macos-native.md)）。SwiftUI / AppKit 负责界面，Rust 负责发现、加密配对、授权文件服务、传输与屏幕采集编码；架构见 [ADR-0002](docs/engineering/decisions/0002-native-desktop.md)。Windows 原生界面与游目头显侧 YM_Link 集成尚未实现。
-- 验证：Rust core 37 项基础回归与独立发现向量测试通过；桌面后端已有真实 TCP 的单机配对、文件 range、传输控制与重连集成验证。macOS `.app` 构建和本地开发签名已通过，本机窗口已由用户与 CUA 确认，原生配对与 4 MiB 下载已实测；双机 LAN、真实 Quest 播放 / 镜像与音画同步为 **not-run**，不以测试桩代替设备验收。
+- 验证：Rust core 39 项回归通过（含独立发现向量与应用版本拒绝）；桌面后端已有真实 TCP 的单机配对、文件 range、传输控制与重连集成验证。macOS `.app` 构建和本地开发签名已通过，本机窗口已由用户与 CUA 确认，原生配对与 4 MiB 下载已实测；双机 LAN、真实 Quest 播放 / 镜像与音画同步为 **not-run**，不以测试桩代替设备验收。
 - 许可：**暂闭源**（私有仓库，无 LICENSE 文件）。后续计划转 GitLab 分发，并在合适时机开源；在此之前不得公开仓库或对外分发。
 - 当前进度：[STATUS](docs/STATUS.md)；文档索引：[docs/README](docs/README.md)。
 
@@ -40,6 +40,8 @@ open dist/YM_Link.app
 ```
 
 启动后选择共享目录；共享范围仅限用户显式添加的目录。首次镜像由 macOS 请求屏幕录制权限；权限拒绝后按应用提示到系统设置中授权并重新打开应用。FPS / 码率来自实际数据统计，未测量的延迟不显示数值。
+
+应用协议现为 v3，双方都需升级；发现 v1、Noise 承载与既有身份保持不变。本机首次开始镜像后，可在任一端暂停、恢复、停止或切屏。对端不能首次开始录屏；停止、断线或采集失败后需要本机重新开始。
 
 ```bash
 # 仓库检查（任务 / 文档 / 链接合同；不构建 Rust）
@@ -75,6 +77,11 @@ cargo run --locked -p ymlink-desktop --bin headset_stub -- 192.168.1.10:PORT dow
 
 # 配对后在桌面开始镜像；接收60秒，可选保存到一个新的目录
 cargo run --locked -p ymlink-desktop --bin headset_stub -- 192.168.1.10:PORT mirror 60 ./mirror-output
+
+# 查看实际状态；控制仅限本机已开始的镜像
+cargo run --locked -p ymlink-desktop --bin headset_stub -- 192.168.1.10:PORT mirror-info
+cargo run --locked -p ymlink-desktop --bin headset_stub -- 192.168.1.10:PORT mirror-control pause
+# 其它控制：resume、stop、display DISPLAY_ID
 ```
 
 测试桩每次启动生成临时身份，须重新配对；测试后可在桌面删除这些测试设备。下载不会覆盖现有目标，保留匹配的中间文件可续传。镜像输出为 `screen.h264` 与 `system-audio.f32le`，仅证明收到完整编码帧 / 音频包，不证明 Quest 可解码或音画同步。请勿把用户媒体、输出文件或原始路径日志提交到仓库。

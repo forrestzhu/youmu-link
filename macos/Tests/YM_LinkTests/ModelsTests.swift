@@ -30,5 +30,29 @@ final class ModelsTests: XCTestCase {
         XCTAssertEqual(Localizer.backendMessage("pairing code rejected", language: "zh-Hans"), "配对码不正确，请重新连接后再试。")
         XCTAssertEqual(Localizer.backendMessage("connection timed out", language: "en"), "The connection timed out. Check that both devices are on the same network and try again.")
         XCTAssertEqual(Localizer.backendMessage("unexpected failure at /private/test/file", language: "zh-Hans"), Localizer.string("command_failed", language: "zh-Hans"))
+        XCTAssertEqual(Localizer.backendMessage("mirror is not active", language: "zh-Hans"), "当前没有活动的屏幕镜像，请先在这台 Mac 上开始镜像。")
+        for message in ["start mirroring on the Mac before remote resume", "start mirroring on the Mac before remote display selection", "first mirror start requires local confirmation"] {
+            XCTAssertEqual(Localizer.backendMessage(message, language: "en"), "Start mirroring on this Mac first. Remote controls become available after local confirmation.")
+        }
+        XCTAssertEqual(Localizer.backendMessage("mirror command timed out", language: "en"), "The mirror command timed out. Check the connection and try again.")
+        XCTAssertEqual(Localizer.backendMessage("connection no longer active", language: "zh-Hans"), Localizer.string("error_connection", language: "zh-Hans"))
+        XCTAssertEqual(Localizer.backendMessage("incompatible application version; upgrade YM_Link on both devices", language: "zh-Hans"), "两端版本不兼容，请更新两台设备上的 YM_Link 后重新连接。")
+        XCTAssertEqual(Localizer.backendMessage("protocol error: incompatible application version; upgrade YM_Link on both devices", language: "zh-Hans"), Localizer.string("error_version_incompatible", language: "zh-Hans"))
+        XCTAssertEqual(Localizer.backendMessage("connection busy; try starting mirror again", language: "en"), "The connection is busy. Try starting mirroring again shortly.")
+
+        let pausedJSON = json.replacingOccurrences(of: #""mirror":{"status":"running""#, with: #""mirror":{"status":"paused""#)
+        let paused = try decoder.decode(Snapshot.self, from: Data(pausedJSON.utf8)).mirror
+        XCTAssertEqual(paused.status, "paused")
+        XCTAssertTrue(paused.isActive)
+        XCTAssertFalse(paused.isMirroring)
+        XCTAssertEqual(paused.displayId, 1)
+        XCTAssertTrue(paused.audio)
+        XCTAssertEqual(paused.quality, "balanced")
+        XCTAssertEqual(Localizer.string("pause_mirror", language: "zh-Hans"), "暂停镜像")
+        XCTAssertEqual(Localizer.string("resume_mirror", language: "en"), "Resume mirroring")
+        var stopped = paused
+        stopped.status = "stopped"
+        XCTAssertFalse(stopped.isActive)
+        XCTAssertFalse(stopped.isMirroring)
     }
 }

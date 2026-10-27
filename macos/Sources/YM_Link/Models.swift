@@ -53,6 +53,9 @@ struct MirrorState: Decodable {
     var latencyMs: Double?
     var error: String?
 
+    var isMirroring: Bool { ["starting", "running"].contains(status) }
+    var isActive: Bool { isMirroring || status == "paused" }
+
     static let empty = MirrorState(
         status: "stopped", permission: "unknown", displayId: nil, audio: false,
         quality: "balanced", fps: nil, bitrateMbps: nil, latencyMs: nil, error: nil
@@ -84,7 +87,9 @@ struct CommandResult: Decodable {
 
 enum Localizer {
     static func backendMessage(_ message: String, language: String) -> String {
-        let text = message.lowercased()
+        let source = message.lowercased()
+        let protocolPrefix = "protocol error: "
+        let text = source.hasPrefix(protocolPrefix) ? String(source.dropFirst(protocolPrefix.count)) : source
         let key: String
         switch text {
         case "paired identity key changed": key = "error_identity_changed"
@@ -110,6 +115,12 @@ enum Localizer {
         case "file changed; restart this read": key = "error_file_changed"
         case "reconnect the device to control this transfer": key = "error_reconnect_transfer"
         case "connect and pair a device before mirroring": key = "error_connect_before_mirror"
+        case "mirror is not active": key = "error_mirror_inactive"
+        case "start mirroring on the mac before remote resume", "start mirroring on the mac before remote display selection", "first mirror start requires local confirmation": key = "error_mirror_local_start"
+        case "mirror command timed out": key = "error_mirror_timeout"
+        case "connection no longer active": key = "error_connection"
+        case "incompatible application version; upgrade ym_link on both devices": key = "error_version_incompatible"
+        case "connection busy; try starting mirror again": key = "error_mirror_busy"
         case "selected display is unavailable", "the selected display is no longer available", "unable to list displays": key = "error_display_unavailable"
         case "hardware h.264 encoding is unavailable on this mac": key = "error_hardware_unavailable"
         case "screen capture stopped; check the display and screen recording permission": key = "error_capture_stopped"
@@ -124,7 +135,7 @@ enum Localizer {
         case _ where text.contains("screen capture"): key = "error_capture"
         case _ where text.hasPrefix("connection error:") || text == "connection closed" || text == "protocol error: connection closed" || text.contains("lan listener") || text.contains("lan connections") || text.hasPrefix("cannot bind discovery socket:") || text.hasPrefix("socket operation failed:"):
             key = "error_connection"
-        case _ where text.hasPrefix("protocol error:"): key = "error_protocol"
+        case _ where source.hasPrefix("protocol error:"): key = "error_protocol"
         default: key = "command_failed"
         }
         // Unknown backend errors are never echoed: they may contain local paths or transport details.

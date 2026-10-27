@@ -75,8 +75,21 @@ struct ContentView: View {
         } message: {
             Text(model.error ?? "")
         }
-        .onChange(of: model.snapshot.displays.map(\.id)) { _, ids in
-            if selectedDisplay == nil || !ids.contains(selectedDisplay!) { selectedDisplay = ids.first }
+        .onChange(of: model.snapshot.displays.map(\.id), initial: true) { _, ids in
+            if model.isMirrorActive, let active = model.snapshot.mirror.displayId, ids.contains(active) {
+                selectedDisplay = active
+            } else if selectedDisplay == nil || !ids.contains(selectedDisplay!) {
+                selectedDisplay = ids.first
+            }
+        }
+        .onChange(of: model.snapshot.mirror.displayId, initial: true) { _, id in
+            if let id { selectedDisplay = id }
+        }
+        .onChange(of: model.snapshot.mirror.status, initial: true) { _, _ in
+            if model.isMirrorActive {
+                audio = model.snapshot.mirror.audio
+                quality = model.snapshot.mirror.quality
+            }
         }
     }
 
@@ -228,7 +241,15 @@ struct ContentView: View {
             } else {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 210), spacing: 16)], spacing: 16) {
                     ForEach(model.snapshot.displays) { display in
-                        Button { selectedDisplay = display.id } label: {
+                        Button {
+                            if model.isMirrorActive {
+                                if selectedDisplay != display.id {
+                                    model.command("select_mirror_display", ["display_id": display.id])
+                                }
+                            } else {
+                                selectedDisplay = display.id
+                            }
+                        } label: {
                             VStack(alignment: .leading, spacing: 12) {
                                 ZStack {
                                     RoundedRectangle(cornerRadius: 6).fill(Color.accentColor.opacity(0.055))
@@ -252,7 +273,7 @@ struct ContentView: View {
                             ))
                         }
                         .buttonStyle(.plain)
-                        .disabled(model.isMirroring)
+                        .disabled(model.pendingActions.contains("select_mirror_display"))
                         .accessibilityLabel("\(model.displayName(display)), \(display.width) × \(display.height)")
                         .accessibilityAddTraits(selectedDisplay == display.id ? .isSelected : [])
                     }
@@ -264,7 +285,7 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Text(model.l("system_audio")).font(.subheadline.weight(.medium))
                     Toggle(model.l("share_audio"), isOn: $audio).toggleStyle(.switch)
-                        .disabled(model.isMirroring)
+                        .disabled(model.isMirrorActive)
                 }
                 VStack(alignment: .leading, spacing: 10) {
                     Text(model.l("quality")).font(.subheadline.weight(.medium))
@@ -273,12 +294,25 @@ struct ContentView: View {
                         Text(model.l("quality_balanced")).tag("balanced")
                         Text(model.l("quality_quality")).tag("quality")
                     }
-                    .labelsHidden().frame(width: 180).disabled(model.isMirroring)
+                    .labelsHidden().frame(width: 180).disabled(model.isMirrorActive)
                 }
                 Spacer()
             }
             HStack(spacing: 12) {
-                if model.isMirroring {
+                if model.isMirrorActive {
+                    if model.snapshot.mirror.status == "paused" {
+                        Button { model.command("resume_mirror") } label: {
+                            Label(model.l("resume_mirror"), systemImage: "play.fill")
+                        }
+                        .buttonStyle(.borderedProminent).controlSize(.large)
+                        .disabled(!model.isConnected || model.pendingActions.contains("resume_mirror"))
+                    } else {
+                        Button { model.command("pause_mirror") } label: {
+                            Label(model.l("pause_mirror"), systemImage: "pause.fill")
+                        }
+                        .controlSize(.large)
+                        .disabled(model.snapshot.mirror.status != "running" || model.pendingActions.contains("pause_mirror"))
+                    }
                     Button(role: .destructive) { model.command("stop_mirror") } label: {
                         Label(model.l("stop_mirror"), systemImage: "stop.fill")
                     }
@@ -294,7 +328,7 @@ struct ContentView: View {
                     .buttonStyle(.borderedProminent).controlSize(.large)
                     .disabled(!model.isConnected || selectedDisplay == nil)
                 }
-                Text(model.l(model.isMirroring ? "mirror_live_hint" : "mirror_start_hint"))
+                Text(model.l(model.snapshot.mirror.status == "paused" ? "mirror_paused_hint" : (model.snapshot.mirror.status == "starting" ? "mirror_starting_hint" : (model.isMirroring ? "mirror_live_hint" : "mirror_start_hint"))))
                     .font(.caption).foregroundStyle(.secondary)
             }
             if let error = model.snapshot.mirror.error {
@@ -395,12 +429,16 @@ struct ContentView: View {
         HStack(spacing: 7) {
             Circle().fill(model.isConnected ? .green : .secondary).frame(width: 6, height: 6)
             Text(model.status(model.snapshot.status))
-            if model.isMirroring {
+            if model.isMirrorActive {
                 Divider().frame(height: 11)
-                Text(model.status(model.snapshot.mirror.status))
-                if let fps = model.snapshot.mirror.fps { Text(String(format: "%.0f fps", fps)) }
-                if let bitrate = model.snapshot.mirror.bitrateMbps { Text(String(format: "%.1f Mbps", bitrate)) }
-                if let latency = model.snapshot.mirror.latencyMs { Text(String(format: "%.0f ms", latency)) }
+                if model.snapshot.mirror.status == "paused" {
+                    statusPill("paused")
+                } else {
+                    Text(model.status(model.snapshot.mirror.status))
+                    if let fps = model.snapshot.mirror.fps { Text(String(format: "%.0f fps", fps)) }
+                    if let bitrate = model.snapshot.mirror.bitrateMbps { Text(String(format: "%.1f Mbps", bitrate)) }
+                    if let latency = model.snapshot.mirror.latencyMs { Text(String(format: "%.0f ms", latency)) }
+                }
             }
             Spacer()
             Text(model.l("local_network"))

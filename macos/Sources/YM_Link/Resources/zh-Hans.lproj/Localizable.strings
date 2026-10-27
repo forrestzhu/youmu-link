@@ -126,3 +126,12 @@
 "status_unknown" = "状态待确认";
 "built_in_display" = "内置显示器";
 "display" = "显示器";
+"pause_mirror" = "暂停镜像";
+"resume_mirror" = "继续镜像";
+"mirror_paused_hint" = "画面与系统音频已暂停。继续时会使用原共享设置。";
+"mirror_starting_hint" = "正在准备镜像…";
+"error_mirror_inactive" = "当前没有活动的屏幕镜像，请先在这台 Mac 上开始镜像。";
+"error_mirror_local_start" = "请先在这台 Mac 上确认并开始镜像，再使用远端控制。";
+"error_mirror_timeout" = "镜像操作超时，请检查连接后重试。";
+"error_version_incompatible" = "两端版本不兼容，请更新两台设备上的 YM_Link 后重新连接。";
+"error_mirror_busy" = "连接忙碌，请稍后重新开始镜像。";

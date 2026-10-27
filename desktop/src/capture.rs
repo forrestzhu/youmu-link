@@ -1,9 +1,10 @@
 //! macOS capture and hardware H.264 encoding. No media or user paths are logged.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::Sender;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Display {
     pub id: u32,
     pub name: String,
@@ -621,6 +622,7 @@ mod platform {
             audio: bool,
             quality: &str,
             sender: Sender<MediaPacket>,
+            allow_permission_request: bool,
         ) -> Result<Self, String> {
             if sender.max_capacity() < 2 {
                 return Err(
@@ -632,7 +634,9 @@ mod platform {
                 .find(|display| display.id == display_id)
                 .ok_or("The selected display is no longer available")?;
             let profile = profile(source.width, source.height, quality)?;
-            if !permission_granted() && !unsafe { CGRequestScreenCaptureAccess() } {
+            if !permission_granted()
+                && (!allow_permission_request || !unsafe { CGRequestScreenCaptureAccess() })
+            {
                 return Err("Screen Recording permission is required. Enable YM_Link in System Settings and reopen the app.".into());
             }
             let runtime = tokio::runtime::Handle::try_current()
@@ -888,7 +892,13 @@ pub fn permission_granted() -> bool {
 pub struct Capture;
 #[cfg(not(target_os = "macos"))]
 impl Capture {
-    pub fn start(_: u32, _: bool, _: &str, _: Sender<MediaPacket>) -> Result<Self, String> {
+    pub fn start(
+        _: u32,
+        _: bool,
+        _: &str,
+        _: Sender<MediaPacket>,
+        _: bool,
+    ) -> Result<Self, String> {
         Err("Native screen capture is currently available on macOS only".into())
     }
     pub fn stop(&mut self) {}

@@ -126,3 +126,12 @@
 "status_unknown" = "Status unavailable";
 "built_in_display" = "Built-in display";
 "display" = "Display";
+"pause_mirror" = "Pause mirroring";
+"resume_mirror" = "Resume mirroring";
+"mirror_paused_hint" = "Screen and system audio are paused. Resuming uses the existing sharing settings.";
+"mirror_starting_hint" = "Preparing to mirror…";
+"error_mirror_inactive" = "No screen mirroring is active. Start mirroring on this Mac first.";
+"error_mirror_local_start" = "Start mirroring on this Mac first. Remote controls become available after local confirmation.";
+"error_mirror_timeout" = "The mirror command timed out. Check the connection and try again.";
+"error_version_incompatible" = "The device versions are incompatible. Update YM_Link on both devices and reconnect.";
+"error_mirror_busy" = "The connection is busy. Try starting mirroring again shortly.";

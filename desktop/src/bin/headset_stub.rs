@@ -10,9 +10,11 @@ use tokio::net::{TcpListener, TcpStream};
 use ymlink_core::files::{FileEntry, FileRequest, FileResponse, MAX_READ_BYTES};
 use ymlink_core::identity::{Identity, TrustStore};
 use ymlink_core::session::{Hello, Pairing, SecureReader, SecureSession, SecureWriter};
-use ymlink_desktop::wire::{Message, VERSION};
+use ymlink_desktop::wire::{Message, MirrorAction, VERSION};
 
 type Result<T> = std::result::Result<T, Box<dyn Error + Send + Sync>>;
+// Local checkpoint schema is unchanged when the application wire version changes.
+const DOWNLOAD_STATE_VERSION: u8 = 2;
 
 fn failure(message: &'static str) -> Box<dyn Error + Send + Sync> {
     std::io::Error::other(message).into()
@@ -29,7 +31,7 @@ async fn main() {
 async fn run() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.len() < 2 {
-        return Err(failure("usage: headset_stub ADDRESS shares | list SHARE [PATH] | stat SHARE PATH | range SHARE PATH OFFSET LENGTH | download SHARE PATH DEST | mirror SECONDS [OUTPUT_DIR]"));
+        return Err(failure("usage: headset_stub ADDRESS shares | list SHARE [PATH] | stat SHARE PATH | range SHARE PATH OFFSET LENGTH | download SHARE PATH DEST | mirror SECONDS [OUTPUT_DIR] | mirror-info | mirror-control pause|resume|stop|display ID"));
     }
     let address: SocketAddr = args[0]
         .parse()
@@ -70,6 +72,7 @@ async fn run() -> Result<()> {
     let (mut reader, mut writer) = session.into_split()?;
     eprintln!("Authenticated encrypted test connection established.");
     let command = args[1].as_str();
+    let mut business_ok = true;
     match command {
         "shares" if args.len() == 2 => {
             let response = request(&mut reader, &mut writer, FileRequest::Shares).await?;
@@ -140,6 +143,13 @@ async fn run() -> Result<()> {
             )
             .await?
         }
+        "mirror-info" if args.len() == 2 => {
+            business_ok = mirror_request(&mut reader, &mut writer, None).await?;
+        }
+        "mirror-control" => {
+            let action = mirror_action(&args[2..])?;
+            business_ok = mirror_request(&mut reader, &mut writer, Some(action)).await?;
+        }
         "mirror" if (3..=4).contains(&args.len()) => {
             let seconds: u64 = args[2].parse().map_err(|_| failure("invalid duration"))?;
             if !(1..=300).contains(&seconds) {
@@ -158,7 +168,23 @@ async fn run() -> Result<()> {
         _ => return Err(failure("invalid test command or arguments")),
     }
     writer.send(&Message::Bye { v: VERSION }).await?;
-    Ok(())
+    if business_ok {
+        Ok(())
+    } else {
+        Err(failure("mirror command rejected"))
+    }
+}
+
+fn mirror_action(arguments: &[String]) -> Result<MirrorAction> {
+    match arguments {
+        [action] if action == "pause" => Ok(MirrorAction::Pause),
+        [action] if action == "resume" => Ok(MirrorAction::Resume),
+        [action] if action == "stop" => Ok(MirrorAction::Stop),
+        [action, display] if action == "display" => Ok(MirrorAction::SelectDisplay {
+            display_id: display.parse().map_err(|_| failure("invalid display id"))?,
+        }),
+        _ => Err(failure("mirror-control requires pause, resume, stop or display ID; remote start is not allowed")),
+    }
 }
 
 async fn receive(reader: &mut SecureReader, writer: &mut SecureWriter) -> Result<Message> {
@@ -175,6 +201,9 @@ async fn receive(reader: &mut SecureReader, writer: &mut SecureWriter) -> Result
             | Message::TransferAck { v, .. }
             | Message::TransferAction { v, .. }
             | Message::TransferError { v, .. }
+            | Message::MirrorQuery { v, .. }
+            | Message::MirrorControl { v, .. }
+            | Message::MirrorReply { v, .. }
             | Message::MirrorState { v, .. }
             | Message::Media { v, .. } => *v,
         };
@@ -188,6 +217,48 @@ async fn receive(reader: &mut SecureReader, writer: &mut SecureWriter) -> Result
             message => return Ok(message),
         }
     }
+}
+
+async fn mirror_request(
+    reader: &mut SecureReader,
+    writer: &mut SecureWriter,
+    command: Option<MirrorAction>,
+) -> Result<bool> {
+    let id = rand::random::<u64>();
+    let message = match command {
+        Some(command) => Message::MirrorControl {
+            v: VERSION,
+            id,
+            command,
+        },
+        None => Message::MirrorQuery { v: VERSION, id },
+    };
+    writer.send(&message).await?;
+    tokio::time::timeout(Duration::from_secs(15), async {
+        loop {
+            match receive(reader, writer).await? {
+                reply @ Message::MirrorReply { id: reply_id, .. } if reply_id == id => {
+                    let Message::MirrorReply { ok, .. } = &reply else {
+                        unreachable!()
+                    };
+                    println!("{}", serde_json::to_string(&reply)?);
+                    return Ok(*ok);
+                }
+                Message::MirrorState {
+                    status, stream_id, ..
+                } => {
+                    println!(
+                        "{}",
+                        serde_json::json!({"mirror_state":status,"stream_id":stream_id})
+                    );
+                }
+                Message::Media { .. } | Message::MirrorReply { .. } => {}
+                _ => return Err(failure("unexpected mirror control response")),
+            }
+        }
+    })
+    .await
+    .map_err(|_| failure("mirror command reply timed out"))?
 }
 
 async fn request(
@@ -295,7 +366,7 @@ impl Download {
             }
             let state: Resume =
                 serde_json::from_slice(&bytes).map_err(|_| failure("invalid download metadata"))?;
-            if state.v != VERSION
+            if state.v != DOWNLOAD_STATE_VERSION
                 || state.share_id != share
                 || state.path != path
                 || state.version != version
@@ -324,7 +395,7 @@ impl Download {
                 .open(&part)?;
             (
                 Resume {
-                    v: VERSION,
+                    v: DOWNLOAD_STATE_VERSION,
                     share_id: share.into(),
                     path: path.into(),
                     version: version.into(),
@@ -533,7 +604,7 @@ impl MediaAssembly {
                 self.active = Some(stream);
                 self.pending = None;
             }
-            "stopped" if self.active == Some(stream) => {
+            "stopped" | "paused" | "error" if self.active == Some(stream) => {
                 self.active = None;
                 self.pending = None;
             }
@@ -788,14 +859,52 @@ mod tests {
         let mut assembly = MediaAssembly::default();
         assembly.state("running", 1);
         assert!(assembly.push(header(1), 0, vec![1]).unwrap().is_none());
-        assembly.state("stopped", 1);
+        assembly.state("paused", 1);
+        assert!(assembly.push(header(1), 1, vec![9]).unwrap().is_none());
         assembly.state("running", 2);
         assert!(assembly.push(header(2), 0, vec![2]).unwrap().is_none());
         assert!(assembly.push(header(1), 1, vec![9]).unwrap().is_none());
+        assembly.state("paused", 1);
         assembly.state("stopped", 1);
         let packet = assembly.push(header(2), 1, vec![3]).unwrap().unwrap();
         assert_eq!(packet.data, [2, 3]);
         assert!(assembly.push(header(2), 1, vec![3]).is_err());
+        assembly.state("stopped", 2);
+        assert!(assembly.push(header(2), 0, vec![2]).unwrap().is_none());
+    }
+
+    #[test]
+    fn mirror_controls_have_no_remote_start_and_validate_display_id() {
+        let args = |values: &[&str]| {
+            values
+                .iter()
+                .map(|value| value.to_string())
+                .collect::<Vec<_>>()
+        };
+        assert!(matches!(
+            mirror_action(&args(&["pause"])).unwrap(),
+            MirrorAction::Pause
+        ));
+        assert!(matches!(
+            mirror_action(&args(&["resume"])).unwrap(),
+            MirrorAction::Resume
+        ));
+        assert!(matches!(
+            mirror_action(&args(&["stop"])).unwrap(),
+            MirrorAction::Stop
+        ));
+        assert!(matches!(
+            mirror_action(&args(&["display", "42"])).unwrap(),
+            MirrorAction::SelectDisplay { display_id: 42 }
+        ));
+        for invalid in [
+            &["start"][..],
+            &["display"][..],
+            &["display", "bad"][..],
+            &["resume", "extra"][..],
+        ] {
+            assert!(mirror_action(&args(invalid)).is_err());
+        }
     }
 
     #[test]

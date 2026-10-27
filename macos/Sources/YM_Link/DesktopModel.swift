@@ -90,7 +90,8 @@ final class DesktopModel: ObservableObject {
     }
 
     var isConnected: Bool { snapshot.status == "connected" }
-    var isMirroring: Bool { ["starting", "running"].contains(snapshot.mirror.status) }
+    var isMirroring: Bool { snapshot.mirror.isMirroring }
+    var isMirrorActive: Bool { snapshot.mirror.isActive }
 
     func command(_ action: String, _ arguments: [String: Any] = [:]) {
         guard !pendingActions.contains(action) else { return }

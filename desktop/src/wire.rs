@@ -2,6 +2,47 @@
 use serde::{Deserialize, Serialize};
 use ymlink_core::files::{FileRequest, FileResponse};
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
+pub enum MirrorAction {
+    Pause,
+    Resume,
+    Stop,
+    SelectDisplay { display_id: u32 },
+}
+
+impl<'de> Deserialize<'de> for MirrorAction {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        // Tagged unit variants ignore extra fields; empty struct variants enforce
+        // the command boundary while preserving the public unit API.
+        #[derive(Deserialize)]
+        #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
+        enum Fields {
+            Pause {},
+            Resume {},
+            Stop {},
+            SelectDisplay { display_id: u32 },
+        }
+        Ok(match Fields::deserialize(deserializer)? {
+            Fields::Pause {} => Self::Pause,
+            Fields::Resume {} => Self::Resume,
+            Fields::Stop {} => Self::Stop,
+            Fields::SelectDisplay { display_id } => Self::SelectDisplay { display_id },
+        })
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MirrorInfo {
+    pub status: String,
+    pub display_id: Option<u32>,
+    pub audio: bool,
+    pub quality: String,
+    pub error: Option<String>,
+    pub displays: Vec<crate::capture::Display>,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Message {
@@ -61,6 +102,22 @@ pub enum Message {
         status: String,
         stream_id: u64,
     },
+    MirrorQuery {
+        v: u8,
+        id: u64,
+    },
+    MirrorControl {
+        v: u8,
+        id: u64,
+        command: MirrorAction,
+    },
+    MirrorReply {
+        v: u8,
+        id: u64,
+        ok: bool,
+        error: Option<String>,
+        state: MirrorInfo,
+    },
     Media {
         v: u8,
         stream_id: u64,
@@ -77,4 +134,4 @@ pub enum Message {
     },
 }
 
-pub const VERSION: u8 = 2;
+pub const VERSION: u8 = ymlink_core::session::VERSION;

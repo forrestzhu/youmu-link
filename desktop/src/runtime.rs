@@ -1,5 +1,5 @@
 use crate::model::{Command, PairingView, Peer, Share, Snapshot, Transfer};
-use crate::wire::{Message, VERSION};
+use crate::wire::{Message, MirrorAction, MirrorInfo, VERSION};
 use serde_json::json;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::net::{IpAddr, SocketAddr};
@@ -16,8 +16,8 @@ use ymlink_core::session::{self, Hello, Pairing, SecureSession};
 
 pub struct Backend {
     runtime: Option<tokio::runtime::Runtime>,
-    commands: mpsc::Sender<Command>,
-    pub state: Arc<Mutex<Snapshot>>,
+    commands: mpsc::Sender<Request>,
+    state: Arc<Mutex<Snapshot>>,
 }
 
 impl Backend {
@@ -42,9 +42,17 @@ impl Backend {
             .build()
             .map_err(|_| "cannot start backend runtime")?;
         let state_task = state.clone();
+        let worker_commands = commands.clone();
         runtime.spawn(async move {
-            if let Err(error) =
-                run(path, state_task.clone(), receiver, identity, allow_loopback).await
+            if let Err(error) = run(
+                path,
+                state_task.clone(),
+                receiver,
+                identity,
+                allow_loopback,
+                worker_commands,
+            )
+            .await
             {
                 let mut state = state_task.lock().unwrap_or_else(|e| e.into_inner());
                 state.status = "error".into();
@@ -64,7 +72,11 @@ impl Backend {
         }
         let command: Command = serde_json::from_str(input).map_err(|_| "invalid command")?;
         self.commands
-            .try_send(command)
+            .try_send(Request {
+                command,
+                reply: None,
+                generation: None,
+            })
             .map_err(|_| "backend busy or unavailable".into())
     }
 
@@ -78,6 +90,26 @@ impl Backend {
         }
         serde_json::to_string(&*state)
             .unwrap_or_else(|_| json!({"status":"error","error":"cannot encode state"}).to_string())
+    }
+}
+
+struct Request {
+    command: Command,
+    reply: Option<oneshot::Sender<Result<(), String>>>,
+    generation: Option<u64>,
+}
+
+#[derive(Clone, Copy)]
+enum MirrorEnd {
+    Stopped,
+    Paused,
+}
+impl MirrorEnd {
+    fn status(self) -> &'static str {
+        match self {
+            Self::Stopped => "stopped",
+            Self::Paused => "paused",
+        }
     }
 }
 
@@ -111,11 +143,14 @@ struct Shared {
     dialing: AtomicBool,
     pairing_attempts: Mutex<HashMap<IpAddr, VecDeque<Instant>>>,
     config_path: PathBuf,
-    mirror_cancel: Mutex<Option<watch::Sender<bool>>>,
+    mirror_cancel: Mutex<Option<watch::Sender<Option<MirrorEnd>>>>,
     disconnected: Mutex<HashSet<String>>,
     mirror_generation: AtomicU64,
     allow_loopback: bool,
     share_changes: Mutex<()>,
+    commands: mpsc::Sender<Request>,
+    capture_gate: Arc<Semaphore>,
+    file_gate: Arc<Semaphore>,
 }
 
 impl Shared {
@@ -126,15 +161,21 @@ impl Shared {
         self.edit(|s| s.error = Some(error.into()));
     }
     fn stop_mirror(&self) {
+        self.end_mirror(MirrorEnd::Stopped);
+    }
+    fn end_mirror(&self, reason: MirrorEnd) {
+        let mut state = self.state.lock().unwrap();
+        self.end_mirror_locked(&mut state, reason);
+    }
+    fn end_mirror_locked(&self, state: &mut Snapshot, reason: MirrorEnd) {
         self.mirror_generation.fetch_add(1, Ordering::AcqRel);
         if let Some(cancel) = self.mirror_cancel.lock().unwrap().take() {
-            let _ = cancel.send(true);
+            let _ = cancel.send(Some(reason));
         }
-        self.edit(|s| {
-            s.mirror.status = "stopped".into();
-            s.mirror.fps = None;
-            s.mirror.bitrate_mbps = None;
-        });
+        state.mirror.status = reason.status().into();
+        state.mirror.fps = None;
+        state.mirror.bitrate_mbps = None;
+        state.mirror.error = None;
     }
     fn outgoing(&self) -> Option<mpsc::Sender<Message>> {
         self.active
@@ -193,9 +234,10 @@ impl Shared {
 async fn run(
     path: PathBuf,
     state: Arc<Mutex<Snapshot>>,
-    mut commands: mpsc::Receiver<Command>,
+    mut commands: mpsc::Receiver<Request>,
     identity: Option<Identity>,
     allow_loopback: bool,
+    command_sender: mpsc::Sender<Request>,
 ) -> Result<(), String> {
     private_directory(&path)?;
     let identity = match identity {
@@ -288,6 +330,9 @@ async fn run(
         mirror_generation: AtomicU64::new(1),
         allow_loopback,
         share_changes: Mutex::new(()),
+        commands: command_sender,
+        capture_gate: Arc::new(Semaphore::new(1)),
+        file_gate: Arc::new(Semaphore::new(MAX_FILE_WORK)),
     });
     let slots = Arc::new(Semaphore::new(4));
     let _ = discovery.rescan().await;
@@ -320,8 +365,11 @@ async fn run(
                     shared.edit(|s| { s.peers.retain(|p| p.trusted || p.address.parse::<SocketAddr>().map_or(true, |a| a.ip() != ip)); });
                 }
             }
-            Some(command) = commands.recv() => {
-                if let Err(error) = handle_command(shared.clone(), &discovery, command).await { shared.error(error); }
+            Some(request) = commands.recv() => {
+                let expired=request.reply.as_ref().is_some_and(|reply|reply.is_closed());
+                let authorized=request.generation.map_or(true,|generation|shared.active.lock().unwrap().as_ref().is_some_and(|a|a.generation==generation && a.authorized && !*a.cancel.borrow()));
+                let result=if expired{Err("request expired".into())}else if !authorized{Err("connection no longer active".into())}else{handle_command(shared.clone(), &discovery, request.command,request.generation).await};
+                if let Some(reply)=request.reply {let _=reply.send(result);}else if let Err(error)=result{shared.error(error);}
             }
             _ = reconnect.tick() => {
                 if shared.active.lock().unwrap().is_none() && !shared.dialing.load(Ordering::Acquire) {
@@ -585,7 +633,7 @@ async fn authorize_and_serve(
     }) {
         return Err(session::Error::PairingRejected);
     }
-    serve(shared, session, receiver, media_receiver).await
+    serve(shared, session, receiver, media_receiver, generation).await
 }
 
 struct AbortTask(tokio::task::JoinHandle<()>);
@@ -595,13 +643,41 @@ impl Drop for AbortTask {
     }
 }
 
+const MAX_FILE_WORK: usize = 4;
+const MAX_TRANSFER_IDS: usize = 1024;
+
+enum WriterEvent {
+    TransferAction {
+        id: String,
+        action: String,
+        accepted: oneshot::Sender<bool>,
+    },
+    Finished(session::Result<()>),
+}
+
+enum FileTarget {
+    Request(u64),
+    Transfer(String),
+}
+
+type FileWork = tokio::task::JoinSet<session::Result<(FileTarget, FileResponse)>>;
+
 async fn serve(
     shared: Arc<Shared>,
     session: SecureSession,
     mut outgoing: mpsc::Receiver<Message>,
     mut media: mpsc::Receiver<Message>,
+    generation: u64,
 ) -> session::Result<()> {
     let (mut reader, mut writer) = session.into_split()?;
+    let control = {
+        let active = shared.active.lock().unwrap();
+        active
+            .as_ref()
+            .filter(|a| a.generation == generation && a.authorized && !*a.cancel.borrow())
+            .map(|a| a.outbox.clone())
+            .ok_or(session::Error::Protocol("connection no longer active"))?
+    };
     let (incoming_tx, mut incoming) = mpsc::channel(32);
     let _reader = AbortTask(tokio::spawn(async move {
         loop {
@@ -612,75 +688,172 @@ async fn serve(
             }
         }
     }));
-    let mut ping = tokio::time::interval(Duration::from_secs(60));
+    let (writer_events, mut events) = mpsc::channel(1);
+    let _writer = AbortTask(tokio::spawn(async move {
+        let mut ping = tokio::time::interval(Duration::from_secs(60));
+        let result = async {
+            loop {
+                tokio::select! {
+                    biased;
+                    Some(message) = outgoing.recv() => {
+                        if let Message::TransferAction { id, action, .. } = &message {
+                            let (accepted, receive) = oneshot::channel();
+                            let allowed = tokio::time::timeout(Duration::from_secs(5), async {
+                                writer_events.send(WriterEvent::TransferAction { id: id.clone(), action: action.clone(), accepted }).await
+                                    .map_err(|_| session::Error::Protocol("transfer controller closed"))?;
+                                receive.await.map_err(|_| session::Error::Protocol("transfer controller closed"))
+                            }).await.map_err(|_| session::Error::Protocol("transfer control timed out"))??;
+                            if !allowed { continue; }
+                        }
+                        writer.send(&message).await?;
+                    }
+                    _ = ping.tick() => writer.send(&Message::Ping { v: VERSION }).await?,
+                    Some(message) = media.recv() => writer.send(&message).await?,
+                    else => return Ok(()),
+                }
+            }
+        }.await;
+        let _ = writer_events.send(WriterEvent::Finished(result)).await;
+    }));
+    let mut maintenance = tokio::time::interval(Duration::from_secs(60));
     let mut transfers: HashMap<String, TransferJob> = HashMap::new();
+    let mut transfer_ids = HashSet::new();
+    let mut files = FileWork::new();
     loop {
+        for (id, job) in &mut transfers {
+            send_transfer_chunk(&shared, &mut files, id, job);
+        }
         tokio::select! {
             biased;
+            event = events.recv() => {
+                match event.ok_or(session::Error::Protocol("writer closed"))? {
+                    WriterEvent::Finished(result) => return result,
+                    WriterEvent::TransferAction { id, action, accepted } => {
+                        if !transfers.contains_key(&id) {
+                            shared.error("transfer no longer active");
+                            let _ = accepted.send(false);
+                            continue;
+                        }
+                        match transfer_action(&shared, &id, &action) {
+                            Ok(()) => {
+                                if action == "cancel" { transfers.remove(&id); }
+                                // The writer already owns this Action, so it writes it before
+                                // any newly scheduled resumed chunk, without blocking this actor.
+                                let _ = accepted.send(true);
+                            }
+                            Err(error) => { shared.error(error.to_string()); let _ = accepted.send(false); }
+                        }
+                    }
+                }
+            }
             received = incoming.recv() => {
                 let message = received.ok_or(session::Error::Protocol("connection closed"))??;
                 match message {
-                    Message::Ping{v:VERSION} => writer.send(&Message::Pong{v:VERSION}).await?,
+                    Message::Ping{v:VERSION} => enqueue(&control,Message::Pong{v:VERSION})?,
                     Message::Pong{v:VERSION} => {},
                     Message::Bye{v:VERSION} => return Ok(()),
+                    Message::MirrorQuery{v:VERSION,id}=>{
+                        let result=remote_command(&shared,generation,Command::RefreshDisplays).await;
+                        enqueue(&control,mirror_reply(&shared,id,result))?;
+                    }
+                    Message::MirrorControl{v:VERSION,id,command}=>{
+                        let command=match command {MirrorAction::Pause=>Command::PauseMirror,MirrorAction::Resume=>Command::ResumeMirror,MirrorAction::Stop=>Command::StopMirror,MirrorAction::SelectDisplay{display_id}=>Command::SelectMirrorDisplay{display_id}};
+                        let result=remote_command(&shared,generation,command).await;
+                        enqueue(&control,mirror_reply(&shared,id,result))?;
+                    }
                     Message::FileRequest{v:VERSION,id,request} => {
-                        let response = file_request(&shared,request).await?;
-                        writer.send(&Message::FileResponse{v:VERSION,id,response}).await?;
+                        if files.len() >= MAX_FILE_WORK {
+                            enqueue(&control,Message::FileResponse{v:VERSION,id,response:FileResponse::Error{code:ymlink_core::files::FileError::Unavailable}})?;
+                        } else { file_request(&shared,&mut files,FileTarget::Request(id),request); }
                     }
                     Message::TransferOpen{v:VERSION,id,share_id,path,version,offset} => {
-                        if !valid_transfer_id(&id) || transfers.len() >= 4 { return Err(session::Error::Protocol("invalid transfer request")); }
-                        let response = file_request(&shared,FileRequest::Read{share_id:share_id.clone(),path:path.clone(),version:version.clone(),offset,length:MAX_READ_BYTES}).await?;
-                        if let FileResponse::Read{total,..} = response {
-                            shared.edit(|s| {
-                                s.transfers.retain(|t| t.id != id);
-                                if s.transfers.len() >= 128 { s.transfers.remove(0); }
-                                s.transfers.push(Transfer{id:id.clone(),name:path.rsplit('/').next().unwrap_or("file").into(),transferred:offset,total,status:"transferring".into()});
-                            });
-                            let job = TransferJob {share_id,path,version,offset,awaiting:None,last_activity:Instant::now()};
-                            transfers.insert(id.clone(),job);
-                            send_transfer_chunk(&shared,&mut writer,&id,transfers.get_mut(&id).unwrap()).await?;
-                        } else { writer.send(&Message::TransferError{v:VERSION,id,code:format_file_error(response)}).await?; }
+                        remember_transfer_id(&mut transfer_ids,&id)?;
+                        if transfers.len() >= 4 {
+                            return Err(session::Error::Protocol("invalid transfer request"));
+                        }
+                        shared.edit(|s| {
+                            s.transfers.retain(|t| t.id != id);
+                            if s.transfers.len() >= 128 { s.transfers.remove(0); }
+                            s.transfers.push(Transfer{id:id.clone(),name:path.rsplit('/').next().unwrap_or("file").into(),transferred:offset,total:offset,status:"transferring".into()});
+                        });
+                        transfers.insert(id,TransferJob{share_id,path,version,offset,awaiting:None,read_pending:false,last_activity:Instant::now()});
                     }
                     Message::TransferAck{v:VERSION,id,offset} => {
                         let Some(job) = transfers.get_mut(&id) else {
-                            if shared.state.lock().unwrap().transfers.iter().any(|t|t.id==id && ["cancelled","failed","completed"].contains(&t.status.as_str())){continue;}
+                            if transfer_ids.contains(&id){continue;}
                             return Err(session::Error::Protocol("unknown transfer acknowledgment"));
                         };
                         if job.awaiting != Some(offset) { return Err(session::Error::Protocol("invalid transfer acknowledgment")); }
                         job.offset = offset; job.awaiting = None;job.last_activity=Instant::now();
                         let mut complete = false;
                         shared.edit(|s| { if let Some(t) = s.transfers.iter_mut().find(|t| t.id == id) { t.transferred = offset; complete = offset == t.total; if complete { t.status = "completed".into(); } } });
-                        if complete { transfers.remove(&id); } else { send_transfer_chunk(&shared,&mut writer,&id,job).await?; }
+                        if complete { transfers.remove(&id); }
                     }
-                    Message::TransferAction{v:VERSION,id,action} => { transfer_action(&shared,&id,&action)?; if action == "cancel" { transfers.remove(&id); } else if action == "resume" { if let Some(job)=transfers.get_mut(&id) { send_transfer_chunk(&shared,&mut writer,&id,job).await?; } } }
+                    Message::TransferAction{v:VERSION,id,action} => {
+                        if !transfers.contains_key(&id) { return Err(session::Error::Protocol("unknown transfer")); }
+                        transfer_action(&shared,&id,&action)?;
+                        if action == "cancel" { transfers.remove(&id); }
+                    }
                     _ => return Err(session::Error::Protocol("unsupported application frame")),
                 }
             }
-            Some(message) = outgoing.recv() => {
-                if let Message::TransferAction{id,action,..}=&message {
-                    if let Err(error)=transfer_action(&shared,id,action){shared.error(error.to_string());continue;}
-                }
-                writer.send(&message).await?;
-                match &message {
-                    Message::TransferAction{id,action,..} if action == "resume" => {
-                        if let Some(job)=transfers.get_mut(id) { send_transfer_chunk(&shared,&mut writer,id,job).await?; }
+            result = files.join_next(), if !files.is_empty() => {
+                let (target,response)=result.unwrap().map_err(|_|session::Error::Protocol("file service failed"))??;
+                match target {
+                    FileTarget::Request(id)=>enqueue(&control,Message::FileResponse{v:VERSION,id,response})?,
+                    FileTarget::Transfer(id)=>{
+                        let Some(job)=transfers.get_mut(&id) else {continue;};
+                        job.read_pending=false;
+                        match response {
+                            FileResponse::Read{offset,total,version,data,eof}=>{
+                                shared.edit(|s|{if let Some(t)=s.transfers.iter_mut().find(|t|t.id==id){t.total=total;}});
+                                if transfer_running(&shared,&id) {
+                                    job.awaiting=Some(offset+data.len()as u64);
+                                    enqueue(&control,Message::TransferChunk{v:VERSION,id,offset,total,version,data,eof})?;
+                                }
+                            }
+                            response=>{
+                                transfers.remove(&id);
+                                shared.edit(|s|{if let Some(t)=s.transfers.iter_mut().find(|t|t.id==id){t.status="failed".into();}});
+                                enqueue(&control,Message::TransferError{v:VERSION,id,code:format_file_error(response)})?;
+                            }
+                        }
                     }
-                    Message::TransferAction{id,action,..} if action == "cancel" => { transfers.remove(id); }
-                    _ => {},
                 }
             }
-            _ = ping.tick() => {
-                writer.send(&Message::Ping{v:VERSION}).await?;
+            _ = maintenance.tick() => {
                 let expired:Vec<_>=transfers.iter().filter(|(_,job)|job.last_activity.elapsed()>=Duration::from_secs(300)).map(|(id,_)|id.clone()).collect();
                 for id in expired {
                     transfers.remove(&id);
                     shared.edit(|s|{if let Some(t)=s.transfers.iter_mut().find(|t|t.id==id){t.status="failed".into();}});
-                    writer.send(&Message::TransferError{v:VERSION,id,code:"transfer timed out".into()}).await?;
+                    enqueue(&control,Message::TransferError{v:VERSION,id,code:"transfer timed out".into()})?;
                 }
             }
-            Some(message)=media.recv()=>{writer.send(&message).await?;}
         }
     }
+}
+
+fn enqueue(control: &mpsc::Sender<Message>, message: Message) -> session::Result<()> {
+    control
+        .try_send(message)
+        .map_err(|_| session::Error::Protocol("connection control queue is full or closed"))
+}
+
+fn remember_transfer_id(ids: &mut HashSet<String>, id: &str) -> session::Result<()> {
+    if !valid_transfer_id(id) {
+        return Err(session::Error::Protocol("invalid transfer id"));
+    }
+    if ids.len() >= MAX_TRANSFER_IDS {
+        return Err(session::Error::Protocol(
+            "transfer id limit reached; reconnect",
+        ));
+    }
+    if !ids.insert(id.into()) {
+        return Err(session::Error::Protocol(
+            "transfer id already used; reconnect",
+        ));
+    }
+    Ok(())
 }
 
 struct TransferJob {
@@ -689,27 +862,38 @@ struct TransferJob {
     version: String,
     offset: u64,
     awaiting: Option<u64>,
+    read_pending: bool,
     last_activity: Instant,
 }
 
-async fn send_transfer_chunk(
-    shared: &Arc<Shared>,
-    writer: &mut session::SecureWriter,
-    id: &str,
-    job: &mut TransferJob,
-) -> session::Result<()> {
-    let running = shared
+fn transfer_running(shared: &Shared, id: &str) -> bool {
+    shared
         .state
         .lock()
         .unwrap()
         .transfers
         .iter()
-        .any(|t| t.id == id && t.status == "transferring");
-    if !running || job.awaiting.is_some() {
-        return Ok(());
+        .any(|t| t.id == id && t.status == "transferring")
+}
+
+fn send_transfer_chunk(
+    shared: &Arc<Shared>,
+    files: &mut FileWork,
+    id: &str,
+    job: &mut TransferJob,
+) {
+    if files.len() >= MAX_FILE_WORK
+        || job.read_pending
+        || job.awaiting.is_some()
+        || !transfer_running(shared, id)
+    {
+        return;
     }
-    let response = file_request(
+    job.read_pending = true;
+    file_request(
         shared,
+        files,
+        FileTarget::Transfer(id.into()),
         FileRequest::Read {
             share_id: job.share_id.clone(),
             path: job.path.clone(),
@@ -717,51 +901,32 @@ async fn send_transfer_chunk(
             offset: job.offset,
             length: MAX_READ_BYTES,
         },
-    )
-    .await?;
-    match response {
-        FileResponse::Read {
-            offset,
-            total,
-            version,
-            data,
-            eof,
-        } => {
-            job.awaiting = Some(offset + data.len() as u64);
-            writer
-                .send(&Message::TransferChunk {
-                    v: VERSION,
-                    id: id.into(),
-                    offset,
-                    total,
-                    version,
-                    data,
-                    eof,
-                })
-                .await
-        }
-        response => {
-            shared.edit(|s| {
-                if let Some(t) = s.transfers.iter_mut().find(|t| t.id == id) {
-                    t.status = "failed".into();
-                }
-            });
-            writer
-                .send(&Message::TransferError {
-                    v: VERSION,
-                    id: id.into(),
-                    code: format_file_error(response),
-                })
-                .await
-        }
-    }
+    );
 }
 
-async fn file_request(shared: &Arc<Shared>, request: FileRequest) -> session::Result<FileResponse> {
+fn file_request(
+    shared: &Arc<Shared>,
+    files: &mut FileWork,
+    target: FileTarget,
+    request: FileRequest,
+) {
     let shared = shared.clone();
-    tokio::task::spawn_blocking(move || shared.catalog.lock().unwrap().handle(request))
+    files.spawn(async move {
+        let permit = shared
+            .file_gate
+            .clone()
+            .acquire_owned()
+            .await
+            .map_err(|_| session::Error::Protocol("file service closed"))?;
+        tokio::task::spawn_blocking(move || {
+            // Cancellation may drop the async waiter, but the physical IO keeps
+            // its global slot until it actually finishes, including across reconnects.
+            let _permit = permit;
+            (target, shared.catalog.lock().unwrap().handle(request))
+        })
         .await
         .map_err(|_| session::Error::Protocol("file service failed"))
+    });
 }
 
 fn format_file_error(response: FileResponse) -> String {
@@ -802,6 +967,7 @@ async fn handle_command(
     shared: Arc<Shared>,
     discovery: &Discovery,
     command: Command,
+    expected: Option<u64>,
 ) -> Result<(), String> {
     match command {
         Command::Rescan => {
@@ -904,55 +1070,11 @@ async fn handle_command(
             let displays = crate::capture::displays()?;
             shared.edit(|s| s.displays = displays);
         }
-        Command::StartMirror {
-            display_id,
-            audio,
-            quality,
-        } => {
-            if !["smooth", "balanced", "quality"].contains(&quality.as_str()) {
-                return Err("invalid mirror quality".into());
-            }
-            if !shared
-                .state
-                .lock()
-                .unwrap()
-                .displays
-                .iter()
-                .any(|d| d.id == display_id)
-            {
-                return Err("selected display is unavailable".into());
-            }
-            let active = shared.active.lock().unwrap();
-            let current = active
-                .as_ref()
-                .filter(|a| a.authorized && !*a.cancel.borrow())
-                .ok_or("connect and pair a device before mirroring")?;
-            let outbox = current.media.clone();
-            let control = current.outbox.clone();
-            shared.stop_mirror();
-            let generation = shared.mirror_generation.fetch_add(1, Ordering::AcqRel) + 1;
-            let (cancel, receiver) = watch::channel(false);
-            *shared.mirror_cancel.lock().unwrap() = Some(cancel);
-            shared.edit(|s| {
-                s.mirror.status = "starting".into();
-                s.mirror.error = None;
-                s.mirror.display_id = Some(display_id);
-                s.mirror.audio = audio;
-                s.mirror.quality = quality.clone();
-            });
-            drop(active);
-            tokio::spawn(mirror(
-                shared.clone(),
-                control,
-                outbox,
-                display_id,
-                audio,
-                quality,
-                receiver,
-                generation,
-            ));
-        }
-        Command::StopMirror => shared.stop_mirror(),
+        command @ (Command::StartMirror { .. }
+        | Command::StopMirror
+        | Command::PauseMirror
+        | Command::ResumeMirror
+        | Command::SelectMirrorDisplay { .. }) => mirror_command(&shared, command, expected)?,
         Command::PauseTransfer { id } => {
             transfer_command(&shared, id, "pause").await?;
         }
@@ -964,6 +1086,183 @@ async fn handle_command(
         }
     }
     Ok(())
+}
+
+fn mirror_command(
+    shared: &Arc<Shared>,
+    command: Command,
+    expected: Option<u64>,
+) -> Result<(), String> {
+    let active = shared.active.lock().unwrap();
+    let current = active.as_ref().filter(|a| {
+        a.authorized
+            && !*a.cancel.borrow()
+            && expected.map_or(true, |generation| generation == a.generation)
+    });
+    if matches!(command, Command::StopMirror) {
+        if expected.is_some() && current.is_none() {
+            return Err("connection no longer active".into());
+        }
+        shared.stop_mirror();
+        return Ok(());
+    }
+    let current = current.ok_or("connect and pair a device before mirroring")?;
+    let mut state = shared.state.lock().unwrap();
+    let selected = state.mirror.clone();
+    match command {
+        Command::PauseMirror => {
+            if selected.status == "paused" {
+                return Ok(());
+            }
+            if !["starting", "running"].contains(&selected.status.as_str()) {
+                return Err("mirror is not active".into());
+            }
+            shared.end_mirror_locked(&mut state, MirrorEnd::Paused);
+        }
+        Command::ResumeMirror => {
+            if ["starting", "running"].contains(&selected.status.as_str()) {
+                return Ok(());
+            }
+            if selected.status != "paused" {
+                return Err("start mirroring on the Mac before remote resume".into());
+            }
+            if expected.is_some() && !crate::capture::permission_granted() {
+                return Err("Screen Recording permission is required before remote resume".into());
+            }
+            let display = selected
+                .display_id
+                .ok_or("selected display is unavailable")?;
+            start_mirror(
+                shared,
+                current,
+                &mut state,
+                display,
+                selected.audio,
+                selected.quality,
+                expected.is_none(),
+            )?;
+        }
+        Command::SelectMirrorDisplay { display_id } => {
+            if !["starting", "running", "paused"].contains(&selected.status.as_str()) {
+                return Err("start mirroring on the Mac before remote display selection".into());
+            }
+            check_display(&state, display_id)?;
+            if selected.display_id == Some(display_id) {
+                return Ok(());
+            }
+            if selected.status == "paused" {
+                state.mirror.display_id = Some(display_id);
+            } else {
+                if expected.is_some() && !crate::capture::permission_granted() {
+                    return Err(
+                        "Screen Recording permission is required before remote display selection"
+                            .into(),
+                    );
+                }
+                start_mirror(
+                    shared,
+                    current,
+                    &mut state,
+                    display_id,
+                    selected.audio,
+                    selected.quality,
+                    expected.is_none(),
+                )?;
+            }
+        }
+        Command::StartMirror {
+            display_id,
+            audio,
+            quality,
+        } => {
+            if expected.is_some() {
+                return Err("first mirror start requires local confirmation".into());
+            }
+            start_mirror(
+                shared, current, &mut state, display_id, audio, quality, true,
+            )?;
+        }
+        _ => return Err("invalid mirror command".into()),
+    }
+    Ok(())
+}
+
+fn check_display(state: &Snapshot, id: u32) -> Result<(), String> {
+    if state.displays.iter().any(|display| display.id == id) {
+        Ok(())
+    } else {
+        Err("selected display is unavailable".into())
+    }
+}
+
+fn start_mirror(
+    shared: &Arc<Shared>,
+    current: &Active,
+    state: &mut Snapshot,
+    display_id: u32,
+    audio: bool,
+    quality: String,
+    allow_permission_request: bool,
+) -> Result<(), String> {
+    if !["smooth", "balanced", "quality"].contains(&quality.as_str()) {
+        return Err("invalid mirror quality".into());
+    }
+    check_display(state, display_id)?;
+    shared.end_mirror_locked(state, MirrorEnd::Stopped);
+    let generation = shared.mirror_generation.fetch_add(1, Ordering::AcqRel) + 1;
+    let (cancel, receiver) = watch::channel(None);
+    *shared.mirror_cancel.lock().unwrap() = Some(cancel);
+    state.mirror.status = "starting".into();
+    state.mirror.error = None;
+    state.mirror.display_id = Some(display_id);
+    state.mirror.audio = audio;
+    state.mirror.quality = quality.clone();
+    tokio::spawn(mirror(
+        shared.clone(),
+        current.outbox.clone(),
+        current.media.clone(),
+        display_id,
+        audio,
+        quality,
+        receiver,
+        generation,
+        allow_permission_request,
+    ));
+    Ok(())
+}
+
+async fn remote_command(shared: &Shared, generation: u64, command: Command) -> Result<(), String> {
+    let (reply, receive) = oneshot::channel();
+    shared
+        .commands
+        .try_send(Request {
+            command,
+            reply: Some(reply),
+            generation: Some(generation),
+        })
+        .map_err(|_| "backend busy or unavailable")?;
+    tokio::time::timeout(Duration::from_secs(5), receive)
+        .await
+        .map_err(|_| "mirror command timed out")?
+        .map_err(|_| "connection no longer active")?
+}
+
+fn mirror_reply(shared: &Shared, id: u64, result: Result<(), String>) -> Message {
+    let snapshot = shared.state.lock().unwrap();
+    Message::MirrorReply {
+        v: VERSION,
+        id,
+        ok: result.is_ok(),
+        error: result.err(),
+        state: MirrorInfo {
+            status: snapshot.mirror.status.clone(),
+            display_id: snapshot.mirror.display_id,
+            audio: snapshot.mirror.audio,
+            quality: snapshot.mirror.quality.clone(),
+            error: snapshot.mirror.error.clone(),
+            displays: snapshot.displays.clone(),
+        },
+    }
 }
 
 async fn transfer_command(shared: &Shared, id: String, action: &str) -> Result<(), String> {
@@ -1000,19 +1299,34 @@ async fn mirror(
     display: u32,
     audio: bool,
     quality: String,
-    mut cancel: watch::Receiver<bool>,
+    mut cancel: watch::Receiver<Option<MirrorEnd>>,
     generation: u64,
+    allow_permission_request: bool,
 ) {
     let stream_id = rand::random::<u64>();
-    if *cancel.borrow() {
+    if cancel.borrow().is_some() {
+        return;
+    }
+    let permit = tokio::select! {
+        biased;
+        _=cancel.changed()=>return,
+        permit=shared.capture_gate.clone().acquire_owned()=>match permit {Ok(permit)=>permit,Err(_)=>return},
+    };
+    if cancel.borrow().is_some() {
         return;
     }
     let (packets_tx, mut packets) = mpsc::channel(2);
     let started = tokio::task::spawn_blocking(move || {
-        crate::capture::Capture::start(display, audio, &quality, packets_tx)
+        crate::capture::Capture::start(
+            display,
+            audio,
+            &quality,
+            packets_tx,
+            allow_permission_request,
+        )
     })
     .await;
-    let mut capture = match started {
+    let capture = match started {
         Ok(Ok(capture)) => capture,
         Ok(Err(error)) => {
             shared.mirror_edit(generation, |s| {
@@ -1024,6 +1338,11 @@ async fn mirror(
                 }
                 .into();
                 s.mirror.error = Some(error);
+                let _ = control.try_send(Message::MirrorState {
+                    v: VERSION,
+                    status: "error".into(),
+                    stream_id,
+                });
             });
             return;
         }
@@ -1031,12 +1350,17 @@ async fn mirror(
             shared.mirror_edit(generation, |s| {
                 s.mirror.status = "error".into();
                 s.mirror.error = Some("screen capture worker failed".into());
+                let _ = control.try_send(Message::MirrorState {
+                    v: VERSION,
+                    status: "error".into(),
+                    stream_id,
+                });
             });
             return;
         }
     };
-    if *cancel.borrow() {
-        let _ = tokio::task::spawn_blocking(move || capture.stop()).await;
+    if cancel.borrow().is_some() {
+        finish_capture(capture, permit).await;
         return;
     }
     let announced = announce_mirror(
@@ -1047,22 +1371,24 @@ async fn mirror(
         stream_id,
     );
     if !announced {
-        let _ = tokio::task::spawn_blocking(move || capture.stop()).await;
+        finish_capture(capture, permit).await;
         return;
     }
     let mut packet_id = 0u64;
     let mut frames = 0u64;
     let mut bytes = 0u64;
     let mut window = Instant::now();
+    let mut failed = false;
     loop {
         tokio::select! {
             _=cancel.changed()=>break,
             packet=packets.recv()=>{
                 let Some(packet)=packet else{break};
                 if packet.kind=="error" {
+                    failed=true;
                     shared.mirror_edit(generation,|s|{s.mirror.status="error".into();s.mirror.error=Some(String::from_utf8_lossy(&packet.data).into_owned());});break;
                 }
-                if packet.data.len()>16*1024*1024 { shared.error("encoded screen packet exceeds limit");break; }
+                if packet.data.len()>16*1024*1024 {failed=true;shared.mirror_edit(generation,|s|{s.mirror.status="error".into();s.mirror.error=Some("encoded screen packet exceeds limit".into());});break;}
                 if packet.kind=="video" {frames+=1;}
                 bytes+=packet.data.len() as u64;
                 let parts=packet.data.len().max(1).div_ceil(8192) as u32;
@@ -1086,12 +1412,21 @@ async fn mirror(
             }
         }
     }
-    let _ = tokio::task::spawn_blocking(move || capture.stop()).await;
-    let _ = control.try_send(Message::MirrorState {
-        v: VERSION,
-        status: "stopped".into(),
-        stream_id,
-    });
+    finish_capture(capture, permit).await;
+    let status = if failed {
+        "error"
+    } else {
+        cancel.borrow().map_or("stopped", MirrorEnd::status)
+    };
+    let _ = tokio::time::timeout(
+        Duration::from_secs(5),
+        control.send(Message::MirrorState {
+            v: VERSION,
+            status: status.into(),
+            stream_id,
+        }),
+    )
+    .await;
     shared.mirror_edit(generation, |s| {
         if s.mirror.status == "running" {
             s.mirror.status = "stopped".into();
@@ -1099,6 +1434,18 @@ async fn mirror(
         s.mirror.fps = None;
         s.mirror.bitrate_mbps = None;
     });
+}
+
+async fn finish_capture(
+    mut capture: crate::capture::Capture,
+    permit: tokio::sync::OwnedSemaphorePermit,
+) {
+    let _ = tokio::task::spawn_blocking(move || {
+        capture.stop();
+        drop(capture);
+        drop(permit);
+    })
+    .await;
 }
 
 fn announce_mirror(

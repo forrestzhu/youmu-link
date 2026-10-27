@@ -208,6 +208,46 @@ async fn cancelled_receive_cannot_restart_in_the_middle_of_a_frame() {
     ));
 }
 
+// A raw Noise peer bypasses local Hello validation so regression tests verify
+// rejection of actual remote encrypted fields, not only our own constructor.
+async fn raw_hello_peer(mut stream: TcpStream, hello: impl FnOnce(Vec<u8>) -> Hello) {
+    let params = "Noise_XX_25519_ChaChaPoly_SHA256".parse().unwrap();
+    let keypair = snow::Builder::new(params).generate_keypair().unwrap();
+    let mut handshake = snow::Builder::new("Noise_XX_25519_ChaChaPoly_SHA256".parse().unwrap())
+        .prologue(b"youmu-link-v2")
+        .local_private_key(&keypair.private)
+        .build_responder()
+        .unwrap();
+    let mut magic = [0u8; 9];
+    stream.read_exact(&mut magic).await.unwrap();
+    assert_eq!(&magic, MAGIC);
+    let mut output = vec![0u8; MAX_CIPHERTEXT];
+    while !handshake.is_handshake_finished() {
+        if handshake.is_my_turn() {
+            let size = handshake.write_message(&[], &mut output).unwrap();
+            stream.write_u32(size as u32).await.unwrap();
+            stream.write_all(&output[..size]).await.unwrap();
+        } else {
+            let size = stream.read_u32().await.unwrap() as usize;
+            assert!(size <= 4096);
+            let mut input = vec![0u8; size];
+            stream.read_exact(&mut input).await.unwrap();
+            handshake.read_message(&input, &mut output).unwrap();
+        }
+    }
+    let mut transport = handshake.into_transport_mode().unwrap();
+    let size = stream.read_u32().await.unwrap() as usize;
+    assert!(size <= MAX_CIPHERTEXT);
+    let mut input = vec![0u8; size];
+    stream.read_exact(&mut input).await.unwrap();
+    transport.read_message(&input, &mut output).unwrap();
+    let mut plaintext = vec![];
+    ciborium::into_writer(&hello(keypair.public), &mut plaintext).unwrap();
+    let size = transport.write_message(&plaintext, &mut output).unwrap();
+    stream.write_u32(size as u32).await.unwrap();
+    stream.write_all(&output[..size]).await.unwrap();
+}
+
 #[tokio::test]
 async fn forged_device_id_is_rejected_by_authenticated_noise_key() {
     let a = Identity::generate().unwrap();
@@ -215,54 +255,20 @@ async fn forged_device_id_is_rejected_by_authenticated_noise_key() {
     let old_b = Identity::generate().unwrap();
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
-    let (a_result, _) = tokio::join!(
+    let (a_result, ()) = tokio::join!(
         async {
             let stream = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
             SecureSession::handshake(stream, true, &a, Hello::new(&a, "Quest", "quest", port)).await
         },
         async {
-            // Bypass our local Hello validation to act as an actual malicious
-            // peer: authenticate a new Noise key but claim the previous id.
-            let (mut stream, _) = listener.accept().await.unwrap();
-            let params = "Noise_XX_25519_ChaChaPoly_SHA256".parse().unwrap();
-            let keypair = snow::Builder::new(params).generate_keypair().unwrap();
-            let mut handshake =
-                snow::Builder::new("Noise_XX_25519_ChaChaPoly_SHA256".parse().unwrap())
-                    .prologue(b"youmu-link-v2")
-                    .local_private_key(&keypair.private)
-                    .build_responder()
-                    .unwrap();
-            let mut magic = [0u8; 9];
-            stream.read_exact(&mut magic).await.unwrap();
-            assert_eq!(&magic, MAGIC);
-            let mut output = vec![0u8; MAX_CIPHERTEXT];
-            while !handshake.is_handshake_finished() {
-                if handshake.is_my_turn() {
-                    let size = handshake.write_message(&[], &mut output).unwrap();
-                    stream.write_u32(size as u32).await.unwrap();
-                    stream.write_all(&output[..size]).await.unwrap();
-                } else {
-                    let size = stream.read_u32().await.unwrap() as usize;
-                    assert!(size <= 4096);
-                    let mut input = vec![0u8; size];
-                    stream.read_exact(&mut input).await.unwrap();
-                    handshake.read_message(&input, &mut output).unwrap();
-                }
-            }
-            let mut transport = handshake.into_transport_mode().unwrap();
-            let size = stream.read_u32().await.unwrap() as usize;
-            assert!(size <= MAX_CIPHERTEXT);
-            let mut input = vec![0u8; size];
-            stream.read_exact(&mut input).await.unwrap();
-            transport.read_message(&input, &mut output).unwrap();
-            let mut forged = Hello::new(&b, "Mac", "macos", port);
-            forged.public_key = keypair.public;
-            forged.device_id = old_b.device_id();
-            let mut plaintext = vec![];
-            ciborium::into_writer(&forged, &mut plaintext).unwrap();
-            let size = transport.write_message(&plaintext, &mut output).unwrap();
-            stream.write_u32(size as u32).await.unwrap();
-            stream.write_all(&output[..size]).await.unwrap();
+            let (stream, _) = listener.accept().await.unwrap();
+            raw_hello_peer(stream, |public| {
+                let mut forged = Hello::new(&b, "Mac", "macos", port);
+                forged.public_key = public;
+                forged.device_id = old_b.device_id();
+                forged
+            })
+            .await;
         }
     );
     assert!(matches!(a_result, Err(Error::IdentityChanged)));
@@ -272,6 +278,45 @@ async fn forged_device_id_is_rejected_by_authenticated_noise_key() {
     assert!(matches!(
         trust.check(&old, &b.public_key()),
         Err(Error::IdentityChanged)
+    ));
+}
+
+#[tokio::test]
+async fn encrypted_hello_v2_is_rejected_with_upgrade_before_other_field_checks() {
+    let identity = Identity::generate().unwrap();
+    let old_peer = Identity::generate().unwrap();
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    assert_eq!(ymlink_core::session::VERSION, 3);
+    assert_eq!(MAGIC, b"YL-CTRL2\0");
+    let (result, ()) = tokio::join!(
+        async {
+            let stream = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+            SecureSession::handshake(
+                stream,
+                true,
+                &identity,
+                Hello::new(&identity, "Current peer", "quest", port),
+            )
+            .await
+        },
+        async {
+            let (stream, _) = listener.accept().await.unwrap();
+            raw_hello_peer(stream, |public| {
+                let mut legacy = Hello::new(&old_peer, "", "macos", 0);
+                legacy.v = 2;
+                legacy.device_id = ymlink_core::identity::device_id(&public);
+                legacy.public_key = public;
+                legacy
+            })
+            .await;
+        }
+    );
+    assert!(matches!(
+        result,
+        Err(Error::Protocol(
+            "incompatible application version; upgrade YM_Link on both devices"
+        ))
     ));
 }
 
