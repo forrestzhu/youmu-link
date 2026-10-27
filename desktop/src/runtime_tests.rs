@@ -1,5 +1,24 @@
 use super::*;
 
+#[test]
+fn mirror_start_announcement_rejects_old_generations_and_full_control_queues() {
+    let state = Mutex::new(Snapshot::new("test".into()));
+    let current = AtomicU64::new(2);
+    let (sender, mut receiver) = mpsc::channel(1);
+    assert!(!announce_mirror(&state, &current, 1, &sender, 11));
+    assert!(receiver.try_recv().is_err());
+    assert!(announce_mirror(&state, &current, 2, &sender, 22));
+    current.store(3, Ordering::Release);
+    assert!(!announce_mirror(&state, &current, 2, &sender, 11));
+    assert!(matches!(
+        receiver.try_recv().unwrap(),
+        Message::MirrorState { stream_id: 22, .. }
+    ));
+    sender.try_send(Message::Ping { v: VERSION }).unwrap();
+    assert!(!announce_mirror(&state, &current, 3, &sender, 33));
+    assert_eq!(state.lock().unwrap().mirror.status, "error");
+}
+
 async fn wait_state(backend: &Backend, predicate: impl Fn(&Snapshot) -> bool) {
     let deadline = Instant::now() + Duration::from_secs(3);
     loop {

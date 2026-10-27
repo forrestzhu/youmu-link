@@ -1039,18 +1039,13 @@ async fn mirror(
         let _ = tokio::task::spawn_blocking(move || capture.stop()).await;
         return;
     }
-    shared.mirror_edit(generation, |s| {
-        s.mirror.status = "running".into();
-        s.mirror.permission = "granted".into();
-    });
-    let announced = tokio::select! {
-        _=cancel.changed()=>false,
-        result=control.send(Message::MirrorState {
-            v: VERSION,
-            status: "running".into(),
-            stream_id,
-        })=>result.is_ok(),
-    };
+    let announced = announce_mirror(
+        &shared.state,
+        &shared.mirror_generation,
+        generation,
+        &control,
+        stream_id,
+    );
     if !announced {
         let _ = tokio::task::spawn_blocking(move || capture.stop()).await;
         return;
@@ -1104,6 +1099,36 @@ async fn mirror(
         s.mirror.fps = None;
         s.mirror.bitrate_mbps = None;
     });
+}
+
+fn announce_mirror(
+    state: &Mutex<Snapshot>,
+    current: &AtomicU64,
+    generation: u64,
+    control: &mpsc::Sender<Message>,
+    stream_id: u64,
+) -> bool {
+    // Hold the same state gate used when a new generation starts. Enqueue without
+    // awaiting so an old task cannot publish running after the replacement stream.
+    let mut state = state.lock().unwrap();
+    if current.load(Ordering::Acquire) != generation {
+        return false;
+    }
+    if control
+        .try_send(Message::MirrorState {
+            v: VERSION,
+            status: "running".into(),
+            stream_id,
+        })
+        .is_err()
+    {
+        state.mirror.status = "error".into();
+        state.mirror.error = Some("connection busy; try starting mirror again".into());
+        return false;
+    }
+    state.mirror.status = "running".into();
+    state.mirror.permission = "granted".into();
+    true
 }
 
 fn private_directory(path: &Path) -> Result<(), String> {
