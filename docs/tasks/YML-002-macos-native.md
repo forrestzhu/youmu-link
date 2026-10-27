@@ -3,7 +3,7 @@
 Status: verifying
 Workflow: feature
 Requires-Device: yes
-Tests: core::tests::discovery、core::tests::session、core::tests::files、desktop 状态与 C ABI 测试、Swift 构建；LAN / Quest 另记设备报告
+Tests: core::tests::discovery、core::tests::session、core::tests::files、core::tests::protocol_vectors、desktop 状态与 C ABI 测试、Swift 构建；LAN / Quest 另记设备报告
 
 ## Scope
 
@@ -20,7 +20,7 @@ Tests: core::tests::discovery、core::tests::session、core::tests::files、desk
 - [x] 安全会话、配对、信任 / 遗忘 / 重连和发现回退有测试证据。
 - [x] 受限目录、range / 暂停与断点恢复有测试证据。
 - [ ] Rust 真实采集 / 编码 / 加密发送屏幕与系统音频，权限失败可恢复。
-- [ ] `harness verify`、原生构建与独立审查通过；main commit / push 与交付门禁通过。
+- [x] `harness verify`、原生构建与独立审查通过；main commit / push 与交付门禁通过（`712cabd` + `ba65b72`；向量补充后最终门禁再核验）。
 - [ ] LAN 与 Quest 文件播放 / 镜像 / 音画同步报告完成。
 
 ## Verification
@@ -32,6 +32,9 @@ Tests: core::tests::discovery、core::tests::session、core::tests::files、desk
 5. L3 / L4 / L5 → 第二设备及 Quest → not-run，等待设备与游目端实现。
 
 ## Evidence
+
+- 可审查主提交 `712cabd` 与镜像 P2 修复 `ba65b72` 均已推送 main，`check --require-pushed` 实跑 PASS。独立复核确认旧流 running 发布竞态关闭。新增固定向量由手工 CBOR 与标准库 SHA-256 独立生成，`cargo test --offline -p ymlink-core --test protocol_vectors` 1 passed；未要求跨语言 map 键顺序相同，未宣称 Kotlin 互操作已通过。
+- 最新已回读 CI run `40452957099`（受审代码 `ba65b72`）：三个任务均未启动，annotations 明确为 GitHub 账户付款 / spending limit 阻塞；属于 not-run，不标测试失败或通过，未修改账户设置。
 
 - 原生移除配对菜单与共享目录“移除”按钮已实测：测试信任和共享目录配置均回到空集合，测试设备 / 样本授权已清理。
 
@@ -55,4 +58,4 @@ Tests: core::tests::discovery、core::tests::session、core::tests::files、desk
 
 ## Next
 
-等待用户手动启动结果，核对原生窗口 / Keychain / 系统权限；完成真实采集和 LAN / Quest 联调。当前保持 verifying 与总目标 active，缺少这些证据不标 done。
+原生窗口 / Keychain / 配对 / 文件主链路已实测；等待用户确认录屏与系统权限，继续真实屏幕 / 音频采集和 LAN / Quest 联调。当前保持 verifying 与总目标 active，缺少这些证据不标 done。

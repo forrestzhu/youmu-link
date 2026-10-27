@@ -167,6 +167,8 @@ FileResponse = {kind:"shares",shares:[ShareInfo]}
 
 ## 6. 一致性与验收边界
 
+- 已提供独立手工编码的 [发现 v1 固定向量](../../core/tests/fixtures/discovery-v1/README.md)，Rust `protocol_vectors` 测试核对语义、uint 数组编码与 map 键顺序无关性。Kotlin 尚未读取对拍，L4 仍 not-run。
+
 - 当前实现与可运行检查入口分别为 `core/src/{beacon,discovery,identity,session,files}.rs`、`desktop/src/{wire,runtime,capture}.rs`；Rust 测试对端为 `desktop/src/bin/headset_stub.rs`。测试对端通过真实 TCP / Noise / SPAKE2 通信，不能视作已完成 Quest 产品端。
 - Rust 单元 / 集成、同机 loopback、原生 UI、硬件编码分别证明各自范围；结果以任务与 evidence 的实际记录为准。本文冻结字段不自动证明任一验收通过。
 - **Quest / Kotlin L4 golden 报文一致性、跨端配对、真实 LAN 双设备发现、Quest 解码 / 播放、音画同步及佩戴体验均为 not-run，尚无跨设备兼容结论。** 后续双端夹具必须按 §1 真实 uint-array 编码实现，不能误按 CBOR byte string 对拍。

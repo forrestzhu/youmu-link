@@ -13,7 +13,7 @@ YM_Link 是 [Youmu VR Player](https://github.com/forrestzhu/youmu)（游目）�
 ## 仓库状态
 
 - 阶段：用户已授权基于 demo 实现，macOS 原生客户端开发中（[YML-002](docs/tasks/YML-002-macos-native.md)）。SwiftUI / AppKit 负责界面，Rust 负责发现、加密配对、授权文件服务、传输与屏幕采集编码；架构见 [ADR-0002](docs/engineering/decisions/0002-native-desktop.md)。Windows 原生界面与游目头显侧 YM_Link 集成尚未实现。
-- 验证：Rust core 37 项测试通过；桌面后端已有真实 TCP 的单机配对、文件 range、传输控制与重连集成验证。macOS `.app` 构建和本地开发签名已通过，本机窗口已由用户与 CUA 确认，原生配对与 4 MiB 下载已实测；双机 LAN、真实 Quest 播放 / 镜像与音画同步为 **not-run**，不以测试桩代替设备验收。
+- 验证：Rust core 37 项基础回归与独立发现向量测试通过；桌面后端已有真实 TCP 的单机配对、文件 range、传输控制与重连集成验证。macOS `.app` 构建和本地开发签名已通过，本机窗口已由用户与 CUA 确认，原生配对与 4 MiB 下载已实测；双机 LAN、真实 Quest 播放 / 镜像与音画同步为 **not-run**，不以测试桩代替设备验收。
 - 许可：**暂闭源**（私有仓库，无 LICENSE 文件）。后续计划转 GitLab 分发，并在合适时机开源；在此之前不得公开仓库或对外分发。
 - 当前进度：[STATUS](docs/STATUS.md)；文档索引：[docs/README](docs/README.md)。
 
