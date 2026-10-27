@@ -147,21 +147,37 @@ impl Discovery {
         self.shared.listen_port
     }
 
-    /// Refresh interfaces and query every fallback port on every broadcast address.
+    /// Query every interface and fallback port; fail only when every probe fails.
     pub async fn rescan(&self) -> Result<()> {
         refresh_subnets(&self.shared.subnets);
         let mut targets = broadcast_targets(&self.shared);
         if self.shared.config.allow_loopback {
             targets.push(Ipv4Addr::LOCALHOST);
         }
-        for target in targets {
-            for port in beacon::BEACON_PORTS {
-                self.send_query(SocketAddr::new(IpAddr::V4(target), port))
-                    .await?;
-            }
-        }
+        self.query_targets(&targets).await?;
         broadcast_beacon(&self.shared).await;
         Ok(())
+    }
+
+    async fn query_targets(&self, targets: &[Ipv4Addr]) -> Result<()> {
+        let mut sent = false;
+        let mut last_error = None;
+        for target in targets {
+            for port in beacon::BEACON_PORTS {
+                match self
+                    .send_query(SocketAddr::new(IpAddr::V4(*target), port))
+                    .await
+                {
+                    Ok(()) => sent = true,
+                    Err(error) => last_error = Some(error),
+                }
+            }
+        }
+        if sent {
+            Ok(())
+        } else {
+            Err(last_error.unwrap_or_else(|| Error::Socket("no discovery probe targets".into())))
+        }
     }
 
     /// 向指定地址发送显式 Query；对端过滤通过后单播回复 Beacon。
@@ -499,6 +515,77 @@ async fn sweep_loop(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    async fn discovery_without_broadcast() -> Discovery {
+        let socket = bind_socket(0).await.unwrap();
+        socket.set_broadcast(false).unwrap();
+        let listen_port = socket.local_addr().unwrap().port();
+        let (shutdown, _) = watch::channel(false);
+        Discovery {
+            shared: Arc::new(Shared {
+                socket: Arc::new(socket),
+                config: Arc::new(Config::default()),
+                nonce: [42; 16],
+                listen_port,
+                subnets: Arc::new(Mutex::new(Vec::new())),
+                peers: Arc::new(Mutex::new(HashMap::new())),
+            }),
+            shutdown,
+        }
+    }
+
+    #[tokio::test]
+    async fn query_targets_survive_unreachable_broadcast_and_probe_every_port() {
+        let mut receivers = Vec::new();
+        for port in beacon::BEACON_PORTS {
+            receivers.push(UdpSocket::bind((Ipv4Addr::LOCALHOST, port)).await.unwrap());
+        }
+        let discovery = discovery_without_broadcast().await;
+        assert!(matches!(
+            discovery
+                .send_query(SocketAddr::new(
+                    IpAddr::V4(Ipv4Addr::BROADCAST),
+                    beacon::BEACON_PORTS[0],
+                ))
+                .await,
+            Err(Error::Socket(_))
+        ));
+        let result = discovery
+            .query_targets(&[
+                Ipv4Addr::BROADCAST,
+                Ipv4Addr::LOCALHOST,
+                Ipv4Addr::BROADCAST,
+            ])
+            .await;
+        assert!(
+            result.is_ok(),
+            "reachable probes must survive route errors: {result:?}"
+        );
+        for receiver in receivers {
+            let mut bytes = [0; beacon::MAX_PACKET + 1];
+            let (size, source) =
+                tokio::time::timeout(Duration::from_secs(1), receiver.recv_from(&mut bytes))
+                    .await
+                    .expect("each fallback port must receive a query")
+                    .unwrap();
+            assert_eq!(source.port(), discovery.listen_port());
+            assert!(matches!(
+                beacon::decode_packet(&bytes[..size]).unwrap(),
+                Packet::Query(_)
+            ));
+        }
+        discovery.stop();
+    }
+
+    #[tokio::test]
+    async fn query_targets_report_failure_when_no_probe_succeeds() {
+        let discovery = discovery_without_broadcast().await;
+        assert!(matches!(
+            discovery.query_targets(&[Ipv4Addr::BROADCAST]).await,
+            Err(Error::Socket(_))
+        ));
+        discovery.stop();
+    }
 
     fn subnet(ip: &str, mask: &str) -> Subnet {
         Subnet {

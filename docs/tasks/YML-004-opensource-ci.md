@@ -3,7 +3,7 @@
 Status: verifying
 Workflow: maintenance
 Requires-Device: no
-Tests: python3 -m unittest discover -s scripts -p test_*.py; harness verify; Windows build / legal bundle / package checks; GitHub Actions run diagnostics; history raw commit / tree / parent comparison; independent remote clone email verification
+Tests: python3 -m unittest discover -s scripts -p test_*.py; harness verify; Windows build / legal bundle / package checks; GitHub Actions run diagnostics; history raw commit / tree / parent comparison; independent remote clone email verification; cargo test --locked -p ymlink-core --all-targets
 
 ## Scope
 
@@ -48,3 +48,5 @@ Tests: python3 -m unittest discover -s scripts -p test_*.py; harness verify; Win
 追加[公开准备复查](../evidence/2026-10-27-public-readiness.md)：基线 `61c072f` 的 21 提交 / 281 个唯一文本 blob fresh 扫描无已确认凭据，许可 / 依赖未发现确定缺件。HEAD 一处内部名称注释已泛化，历史正文 / message 未改。基线 20 runs / 60 jobs 均 steps=0，50 个失败 job 均为账户条件，0 artifacts / releases / tags；不把背景文本视为已确认凭据泄露，公开前决定保留或清理。源码可以开发预览形式开放，Quest 真机、正式签名 / 安装器不作为源码开放的硬前置。
 
 注释 / 文档小修后实际 `harness verify` 为 Python 36 passed / 1 skipped、Rust 76 passed / 2 ignored。用户现已明确授权公开，GitHub 回读 PUBLIC / Apache-2.0，匿名仓库 API / LICENSE 200，私下报告 enabled=true；新增中英 SECURITY / CONTRIBUTING。首个公开后 run 40505699128 的 checks / windows 全部成功并上传 Windows 包；macOS Rust 构建因默认 Xcode 16.4 SDK 过旧失败，已固定镜像中 Xcode 26.3，等待新 run 验证，任务保持 verifying。完整记录见[公开与云端证据](../evidence/2026-10-27-public-launch.md)。未删除旧运行记录或追加历史改写。
+
+公开后第二跑 run 40506880396 证实 Xcode 26.3 / SDK 26.2 / Swift 6.2.4 已解决 Metal 编译问题；Mac 的端口回退回归暴露 rescan 遇不可路由广播即提前返回。已补 2 项确定性真实 UDP 回归，RED / GREEN 与两轮独立 CR 通过；完整门禁 78 Rust passed / 2 ignored、36 Python passed / 1 skipped，协议字段不变。第三跑继续核验 Mac 测试 / 应用构建 / 打包。

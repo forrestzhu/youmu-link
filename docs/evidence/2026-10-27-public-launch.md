@@ -33,3 +33,13 @@ Windows artifact 为 `YM_Link-windows-x64-7d324b572cd0c568db7d0f7c162f7e6e7374f9
 ## 仍未覆盖
 
 真实 Quest v3、双机 LAN、录屏 / 系统音频、延迟 / 弱网 / 音画同步仍待设备验收。Windows / macOS 开发 ZIP 的成功不代表正式签名、安装器、公证、Intel 或所有旧系统兼容性通过。旧历史个人演示 / 内部背景和远端旧记录仍按公开时状态保留，不宣称所有外部副本已清理。
+
+## SDK 修复后的真实回归
+
+修复提交 `0b29d8f30e1ece0d895549972415d32d06c7e7c6` 触发 [run 40506880396](https://github.com/forrestzhu/youmu-link/actions/runs/40506880396)。Linux 通过，macOS 使用 Xcode 26.3 / 新 SDK 越过 apple-metal 编译；随后 core 的 `beacon_ports_fall_back_in_order` 在 `rescan` 返回 No route to host (65) 而失败。它不是原 SDK 错误的重复。
+
+根因是 rescan 发送循环的 `await?`：第一个不可路由广播立即结束扫描，后面的有效接口 / loopback 没有机会探测。修复为尽力遍历所有目标 × 三端口，任何一次 Query 成功则返回成功，全部失败仍返回 socket 错误；单次 `send_query`、协议字段和公共配置不变。PROTOCOL 仅补充本地发送错误处理说明，不改变线版本。
+
+确定性回归使用真实 UDP socket 并关闭 SO_BROADCAST：广播发送保证失败，之后的 localhost 三端口必须各收到有效 Query，尾部再次失败不覆盖已有成功；另验证全部失败仍报错。旧提前返回实现 RED 为 1 passed / 1 failed（本机错误 10013），修复后新增 2/2 GREEN，core 全目标 46 passed。未修改网络、系统权限或录屏设置；Mac 结果仍需新 run 验证。
+
+网络修复两轮独立 CR：`public_ci_audit` 与 `public_docs` 先后复核 discovery blob `08472e5b42d3cdb3da0a5237740db647cbfe9973`，第二轮同时核对 PROTOCOL blob `b46e455cee3cbb0d70c84acdad779b7f995c7209`，均无确定问题。根代理实际完整 `harness verify` 为 Python 36 passed / 1 Unix-mode skipped、Rust 78 passed / 2 ignored，仓库检查与 rustfmt 通过；macOS 第三次云端结果待实跑。
