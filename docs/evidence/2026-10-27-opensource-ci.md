@@ -2,6 +2,8 @@
 
 日期：2026-10-27。任务：[YML-004](../tasks/YML-004-opensource-ci.md)。基线：`fb310450d50a4af86a0818a3c66ba9fb6bb72b56`。
 
+Commit: 4c2ecdcc6959cce18f2e48263bb8de4db3e4178d
+
 ## 历史与公开范围
 
 本地非浅克隆，fetch main / tags 后远端仅 main、无 tags，所有本地 refs 共 16 个历史提交。author 与 committer 分别统计，均为 6 个 `jayzero@foxmail.com`、10 个其他同一公司邮箱。当前 Git user.email 与最近两个 Windows 提交均为目标邮箱。
@@ -40,4 +42,12 @@ Actions enabled=true，现有 workflow state=active。最近旧 run [40474543136
 1. 打包器仅检查 is_symlink，不识别 Windows junction，可带入 build / legal 目录外的文件。两个入口实际隔离 junction fixture 都先 RED；改成迭代遍历，在下降 / 读文件前检查 reparse、symlink 和实际包含边界，也避免环路预遍历，回归 GREEN。
 2. Cargo 图外静态嵌入的 Rust 标准库 / 运行时许可未随包。增加精确 sysroot 的原文、版本索引与缺文件拒绝回归，GREEN。
 
-第 2 轮 reviewer 独立回跑 29 项 Python 测试、检查实际 legal bundle 与两个定点修复，判定全部关闭，无剩余确定问题。审查不代替 macOS 或 GitHub runner 实际执行；新 run 结果提交后补齐。
+第 2 轮 reviewer 独立回跑 29 项 Python 测试、检查实际 legal bundle 与两个定点修复，判定全部关闭，无剩余确定问题。审查不代替 macOS 或 GitHub runner 实际执行。
+
+## 提交后回读
+
+`4c2ecdc` 已 push main，`harness check --require-pushed` 实跑通过。GitHub repo API 仍返回 PRIVATE，licenseInfo 已识别 Apache License 2.0。新增提交 author / committer 都为目标邮箱，原 10 个旧提交未改变。
+
+新 run [40482200859](https://github.com/forrestzhu/youmu-link/actions/runs/40482200859) 为 completed / failure：checks job steps=0，annotation 再次明确为账户付款失败 / spending limit；Windows / macOS jobs skipped、steps=0，制品上传 not-run。未改账户设置，也未因阻塞擅自公开。须解除账户条件，或用户批准公开后再实际运行验证，不能保证仅改可见性就自动解除所有账户限制。
+
+本机按同一提交重新运行 Windows build / smoke、许可收集与打包，生成 `dist/packages/YM_Link-0.1.0-windows-x64-4c2ecdcc6959.zip` 及 `.zip.sha256`；独立校验 revision、CRC、SHA-256 与包内项目许可通过。该本机制品不冒充 GitHub Actions artifact。

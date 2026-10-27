@@ -19,7 +19,7 @@ Tests: python3 -m unittest discover -s scripts -p test_*.py; harness verify; Win
 - [x] CI 覆盖 Linux / Windows / macOS 测试与 Windows / macOS 开发包，使用只读权限及固定 action SHA。
 - [x] 包内包含项目与第三方许可证、正确原生制品和校验和；本机可运行的验证通过。
 - [ ] GitHub runner 实际执行测试 / 构建 / 上传成功；账户阻塞时保留 not-run 与 verifying。
-- [ ] commit / push main，check --require-pushed 通过。
+- [x] commit / push main，check --require-pushed 通过。
 
 ## Verification
 
@@ -31,6 +31,8 @@ Tests: python3 -m unittest discover -s scripts -p test_*.py; harness verify; Win
 
 两轮独立 CR 的三项 P2 均经隔离 fixture RED / GREEN 修复与复核。最终本机 Python 29 项中 28 passed / 1 Unix-mode skipped，Rust 76 passed / 2 ignored；Windows 真实 Release / smoke、legal collect、ZIP / SHA-256 独立回读和 actionlint 通过。许可包保留 128 个 Cargo 包、Rust 1.85.0 与两个实际版本 .NET runtime 原文；未把开发工具或本机路径加入制品。
 
+交付提交 `4c2ecdcc6959cce18f2e48263bb8de4db3e4178d` 已 push，远端门禁通过；GitHub 已识别 Apache-2.0 且仍 private。新 run 40482200859 checks 未启动、Windows / macOS skipped，annotation 仍为账户付款 / spending limit；实际云端测试 / 打包 / 上传 not-run。本机同提交开发包与 hash 已生成、校验通过。
+
 ## Next
 
-完成提交推送并回读新 run。真实 runner 通过需要解除账户阻塞，或用户批准公开后再实跑验证；不保证可见性变更自动解除所有账户限制。开源前由用户决定是否统一历史邮箱、清理历史示例路径与公开仓库；本次只泛化 HEAD 的示例目录，不重写历史。
+任务保持 verifying：真实 runner 通过需要解除账户阻塞，或用户批准公开后再实跑验证；不保证可见性变更自动解除所有账户限制。开源前由用户决定是否统一历史邮箱、清理历史示例路径与公开仓库；本次只泛化 HEAD 的示例目录，不重写历史。
