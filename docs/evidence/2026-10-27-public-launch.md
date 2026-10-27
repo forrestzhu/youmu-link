@@ -1,6 +1,10 @@
 # Apache-2.0 公开开发预览与首次云端执行
 
-日期：2026-10-27。任务：[YML-004](../tasks/YML-004-opensource-ci.md)。公开基线：`7d324b572cd0c568db7d0f7c162f7e6e7374f9a7`。
+日期：2026-10-27。任务：[YML-004](../tasks/archive/YML-004-opensource-ci.md)。公开基线：`7d324b572cd0c568db7d0f7c162f7e6e7374f9a7`。
+
+Commit: 627b943037df4b3223a3608c40a676a25ae65040
+Host-OS: GitHub Ubuntu 24.04 / Windows 2025 x64 / macOS 15.7.9 arm64; local Windows 11 Pro x64 build 26200
+Result: pass (source publication, CI and developer archives; real Quest / LAN acceptance excluded)
 
 ## 用户授权与公开回读
 
@@ -69,3 +73,20 @@ Mac loader 已改为相对 app Resources / host bundle / XCTest anchor 目录查
 第三跑 Windows artifact `12737465070` 的外层长度 71,886,420 bytes、GitHub digest `d5a94ec5c3e16467d5df5d52d5b52d15bbc8fa0426e73b96a4ae9b724c8eb51a`、内层 ZIP digest `d5b42fdf9efbeef32990dc3bba80900af3237de199215938eca636faefafb336` 及内外 CRC 全部通过。747 成员、BUILD-INFO revision `dd40c6c8cc29b78a532a6ca401e74c234786b41c` 正确，278 许可文本 / Cargo.lock 精确依赖清单 / 两套 .NET 8.0.32 匹配。
 
 状态 / key / PDB / log / 媒体与已知密钥签名 0；当前项目 CI / home 前缀在自有 PE 中为 0。泛化路径规则的一条候选经 PE Debug Directory / CodeView 结构确认属于微软 apphost.pdb 上游构建元数据，且与首包及官方模板相同，未归类为本项目个人信息泄漏；原路径未复制到报告。本次为静态包核验，运行证据来自对应 Windows job。
+
+## 最终三平台 GREEN 与开发包
+
+最终实现提交 `627b943037df4b3223a3608c40a676a25ae65040` 的 [run 40514312079](https://github.com/forrestzhu/youmu-link/actions/runs/40514312079) 为 completed / success，checks / windows / macos 全部 success。Mac 实测 Xcode 26.3、SDK 26.2、Swift 6.2.4：Rust 74 passed / 1 hardware ignored、Swift 4 tests / 0 failures；签名前 strip、静态链接校验、ad-hoc 签名与独立临时目录 `.app` 中英资源启动检查、许可收集 / 包隐私门禁 / ZIP / 上传全部通过。Windows 同提交 Rust / WPF / ABI / Release / smoke / legal / package / upload 全部通过；Linux Python / 仓库 / rustfmt / Rust 通过。
+
+`public_artifact_verify` 完整下载并独立核验本次两个 artifact，根代理重算本地 transport digest 也匹配 GitHub。以下是内部开发 ZIP 的摘要，区别于 GitHub 外层 artifact ZIP：
+
+| 平台 | Artifact ID | 文件数 | 内部 ZIP SHA-256 |
+| --- | --- | --- | --- |
+| macOS arm64 | 12739006358 | 288 | `f135bc883af27d710e61a46026c7cf92c9752e2b0030c684622be782778af9dc` |
+| Windows x64 | 12738537252 | 747 | `fde0ed168ea3d96da686768fa02966f438b3828b2ddd42426b478f7171161fef` |
+
+外层摘要分别为 Mac `3e162bb89709f3e2f428aa48701af743bcd360b795c1723771951a53b15bec7f`、Windows `b827cdb9d8c883c430f94009d13717fb7db65fbf1108474f100e24a34ab2fd69`。两份 artifact 的长度、内外 CRC、checksum 摘要 / 文件名、BUILD-INFO revision / platform / version、必需文件、项目许可与目标提交一致；128 项 Rust 名称 / 版本与该提交 Cargo.lock 精确相符，Rust runtime 1.85.0。Windows 的两项 .NET runtime 8.0.32 与 runtimeconfig 相符。
+
+Mac 二进制为 thin arm64 / MH_EXECUTE、Unix 0755；44 项依赖均为系统 / Swift runtime，无工作区 dylib。静态校验 ad-hoc CodeDirectory 的 SHA-256 1,258 页、Info.plist / CodeResources special slots 和 5 项资源摘要通过；英文 / 简体中文各 138 key，资源字节与该提交一致。Mac 275 份、Windows 278 份索引许可文本齐全。两包均无状态 / key / PDB / 原始日志 / 媒体文件及已知密钥签名；当前项目 CI / home 前缀为 0，Mac SwiftPM /.build/ 路径段为 0。Windows 的上游 apphost CodeView 元数据继续单独归因，不伪称所有上游构建文字均被删除。
+
+本机仅做静态归档 / Mach-O 签名完整性验证，Mac 原生运行与 codesign 验证证据来自该 runner；没有将本机静态校验当作 Apple 信任链或公证通过。制品保留 7 天，不创建正式 Release。此后仅归档任务和同步验证记录，不修改受测应用 / 协议 / 构建逻辑。

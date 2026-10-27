@@ -1,6 +1,6 @@
 # Apache-2.0 开源准备与 CI 实施计划
 
-目标：[YML-004](../tasks/YML-004-opensource-ci.md)。准备可审查的许可证、历史审计、GitHub 三平台自动测试及原生开发包；保持当前 private，公开与历史改写单独由用户决定。
+目标：[YML-004](../tasks/archive/YML-004-opensource-ci.md)。准备可审查的许可证、历史审计、GitHub 三平台自动测试及原生开发包；初期保持 private。用户后续已授权邮箱改写与公开，计划已完成；实际云端验证见[公开记录](../evidence/2026-10-27-public-launch.md)。
 
 - [x] 审计所有 refs / 历史 author 与 committer 邮箱、全部历史文本及 Cargo.lock / 原生依赖许可。记录实际差异，不用 mailmap 假装改掉原始邮箱。
 - [x] 添加 Apache-2.0 原文、项目 NOTICE、workspace SPDX 与第三方收集说明；当前 demo 个人目录泛化。许可保留上游完整文本、版权与例外条款，不将全部依赖重新标为 Apache。
@@ -9,4 +9,4 @@
 - [x] macOS 显式静态链接 Rust .a，移除 modulemap 动态 autolink，检查 otool 不指向 Rust 构建目录的 dylib；只配置不能代替 macOS 实测。
 - [x] 本机全门禁、Windows 实际构建 / 收集 / 打包 / hash 和独立审查；提交推送后回读新 workflow run。账户阻塞时记录 runner not-run，不更改账户设置。
 
-范围边界：Apache-2.0 允许商用与闭源衍生，保留许可及相关声明，提供贡献者范围的专利授权。用户后续已明确授权并完成历史 author / committer 公司邮箱修正，见[改写证据](../evidence/2026-10-27-history-email-rewrite.md)；仓库可见性、历史正文 / 路径改写与公开时点仍未授权。开源项目本身与真实 Quest 功能验收、签名分发分别记录，不混为一个完成判据。
+范围边界：Apache-2.0 允许商用与闭源衍生，保留许可及相关声明，提供贡献者范围的专利授权。用户后续已明确授权并完成历史 author / committer 公司邮箱修正，见[改写证据](../evidence/2026-10-27-history-email-rewrite.md)；仓库已按用户后续授权公开；没有追加历史正文 / 路径改写，不自动发布正式 Release。开源项目本身与真实 Quest 功能验收、签名分发分别记录，不混为一个完成判据。

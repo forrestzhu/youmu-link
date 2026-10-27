@@ -1,6 +1,6 @@
 # 开源前敏感信息与制品隐私审计
 
-日期：2026-10-27。任务：[YML-004](../tasks/YML-004-opensource-ci.md)。审计基线：`fdaa5a8e97b587735aceb5c0914ef7710986b85a`。
+日期：2026-10-27。任务：[YML-004](../tasks/archive/YML-004-opensource-ci.md)。审计基线：`fdaa5a8e97b587735aceb5c0914ef7710986b85a`。
 
 Commit: 24455748a121d23051066ff832ad5a4854c7cc05
 

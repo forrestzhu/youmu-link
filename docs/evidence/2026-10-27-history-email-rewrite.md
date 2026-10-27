@@ -1,6 +1,6 @@
 # 历史提交邮箱修正
 
-日期：2026-10-27。任务：[YML-004](../tasks/YML-004-opensource-ci.md)。用户明确要求修正历史公司邮箱，目标沿用 `jayzero@foxmail.com`。本轮授权覆盖该元数据改写及更新 main 所需的精确 lease 推送；不扩大为历史正文清理或仓库公开。
+日期：2026-10-27。任务：[YML-004](../tasks/archive/YML-004-opensource-ci.md)。用户明确要求修正历史公司邮箱，目标沿用 `jayzero@foxmail.com`。本轮授权覆盖该元数据改写及更新 main 所需的精确 lease 推送；不扩大为历史正文清理或仓库公开。
 
 ## 实施与验证
 

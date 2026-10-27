@@ -1,6 +1,6 @@
 # 开源准备、历史身份与 GitHub CI
 
-日期：2026-10-27。任务：[YML-004](../tasks/YML-004-opensource-ci.md)。基线：`fb310450d50a4af86a0818a3c66ba9fb6bb72b56`。
+日期：2026-10-27。任务：[YML-004](../tasks/archive/YML-004-opensource-ci.md)。基线：`fb310450d50a4af86a0818a3c66ba9fb6bb72b56`。
 
 Commit: 4c2ecdcc6959cce18f2e48263bb8de4db3e4178d
 
