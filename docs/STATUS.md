@@ -24,4 +24,4 @@
 
 ## 下一步
 
-双端控制代码 `3b6329b` 已有推送与远端一致性门禁证据；弱网续轮完成本地验证后随 main 交付。下一步等待用户确认真实屏幕 / 系统音频采集，再推进游目端 v3 对接及双机 LAN / Quest 文件播放、镜像和弱网验收，见 [ROADMAP](product/ROADMAP.md)。
+弱网续轮代码 `092e514` 已推送 main，`check --require-pushed` 实跑通过；新版原生窗口已打开。下一步等待用户确认真实屏幕 / 系统音频采集，再推进游目端 v3 对接及双机 LAN / Quest 文件播放、镜像和弱网验收，见 [ROADMAP](product/ROADMAP.md)。

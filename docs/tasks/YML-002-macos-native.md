@@ -37,6 +37,7 @@ Tests: core::tests::discovery、core::tests::session、core::tests::files、core
 - 弱网续轮回归：尺寸 cap 先 RED（960 上限仍生成 1920），修复后 GREEN；运行时策略先 RED（满队列两窗口未触发），修复后 GREEN。最终 `harness verify`：59 passed、0 failed、1 ignored；显式硬件合成帧编码 1 passed，视频计数实际为 1 次尝试 / 0 丢弃。真实采集、自动重启后帧 / 音频与 Quest 弱网解码仍 not-run。
 - 弱网续轮审查（`b5260fe` + 工作树）发现 fatal 媒体包可能被背压分支跳过、以及旧代际初始化错误可能丢失两项 P2。改为共享授权链的独立首错信号：fail / stop 同锁同步；Err / JoinErr 在释放 capture gate 前记录首错，UI 仍按代际更新；恢复 / 切屏共用链，仅有效的本机 Start 更新。隔离测试永久占用 capture gate，即使断言失败也不能录屏；移除保护或不保存旧启动错误时均实际 RED，补齐后 GREEN。原 reviewer 限定复审确认两条时序关闭。
 - 故障边界补齐后的完整 `harness verify`：62 passed、0 failed、1 ignored；显式硬件编码 1/1，Swift 1/1。原生包已重建与签名校验，窗口重新打开成功；未触发真实录屏 / 音频或权限申请。此处不将策略单测或合成编码作为实际弱网体验证据。
+- 弱网代码 `092e514` 已推送 main，`check --require-pushed` 实跑 PASS；任务保持 verifying，等待真实采集和设备验收。
 - 续轮差距核对：产品 F1 要求双端暂停 / 停止 / 切屏，上一实现仅本机开始 / 停止。本轮先将协议文档升 v0.4、应用 Hello / 业务 v3，补齐本机与已配对对端控制及授权边界；录屏确认仍待用户回复，不用单元测试代替实际采集。
 - 本轮独立只读复核（基线 `7614ae3` + 工作树）：镜像控制未发现新 P1 / P2；检查首次开始 / 权限请求限制、过期请求、连接代际、stop / error 解除授权与 capture gate 保留到真实 teardown。文件 actor 复核发现同连接同 id 重开会受旧 Ack 干扰，规范先明确同连接 id 不复用、最多 1024 个，重连后仍可原 id 续传，再补回归修复。
 - 本轮最终 `harness verify` PASS：57 Rust passed、0 failed、1 ignored；`swift test --package-path macos` 1/1；显式合成像素硬件编码 1/1。新增回归实际验证慢 catalog / 真实 TCP 写反压下 Stop 转发、文件工作上限与取消后真实 I/O 仍持额度、退休 id 迟到 Ack / 重开拒绝、失效本地控制不影响新任务。独立复核的 ID 复用 P2 已先 RED 后 GREEN，随后根代理回读实现与回归。
