@@ -12,13 +12,14 @@ final class ModelsTests: XCTestCase {
           "mirror":{"status":"running","permission":"granted","display_id":1,"audio":true,"quality":"balanced","fps":30.0,"bitrate_mbps":12.5,"latency_ms":null,"error":null},
           "shares":[{"id":"share-1","name":"Films","path":"/test/Films"}],
           "transfers":[{"id":"transfer-1","name":"Film.mp4","transferred":64,"total":128,"status":"transferring"}],
-          "error":null
+          "error_id":0,"error":null
         }
         """#
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         let snapshot = try decoder.decode(Snapshot.self, from: Data(json.utf8))
         XCTAssertEqual(snapshot.deviceName, "Test Mac")
+        XCTAssertEqual(snapshot.errorId, 0)
         XCTAssertTrue(try XCTUnwrap(snapshot.peers.first).trusted)
         XCTAssertEqual(snapshot.pairing?.expiresIn, 120)
         XCTAssertEqual(snapshot.mirror.displayId, 1)
@@ -56,5 +57,29 @@ final class ModelsTests: XCTestCase {
         stopped.status = "stopped"
         XCTAssertFalse(stopped.isActive)
         XCTAssertFalse(stopped.isMirroring)
+    }
+
+    func testBackendErrorsAreDeliveredOncePerEventEvenWhenTextRepeats() {
+        var cursor = SnapshotErrorCursor()
+        var snapshot = Snapshot.empty
+        XCTAssertNil(cursor.consume(snapshot))
+        snapshot.error = "folder is already shared"
+        snapshot.errorId = 1
+        XCTAssertEqual(cursor.consume(snapshot), snapshot.error)
+        XCTAssertNil(cursor.consume(snapshot))
+        snapshot.errorId = 2
+        XCTAssertEqual(cursor.consume(snapshot), snapshot.error)
+        XCTAssertNil(cursor.consume(snapshot))
+        snapshot.error = nil
+        XCTAssertNil(cursor.consume(snapshot))
+        snapshot.error = "folder is already shared"
+        XCTAssertNil(cursor.consume(snapshot))
+        snapshot.error = nil
+        snapshot.errorId = 3
+        XCTAssertNil(cursor.consume(snapshot))
+        snapshot.error = "folder is already shared"
+        XCTAssertNil(cursor.consume(snapshot))
+        snapshot.errorId = 4
+        XCTAssertEqual(cursor.consume(snapshot), snapshot.error)
     }
 }

@@ -60,7 +60,7 @@ Query  = { v: 1, query: true, tag_hash: octets(16), session_nonce: octets(16) }
 - 身份仅使用 Noise X25519 静态密钥；`device_id = hex(SHA256(noise_pub)[0..16])`。本阶段不做组内信任事件传播，因此删除未使用的 Ed25519 身份；macOS 私钥保存于 OS Keychain（service `app.youmu.link`，account `device-identity-v2`），Keychain 失败不得回退明文文件。
 - 首个传输帧为 CBOR Hello：`{v:3,tag_hash,device_id,public_key,name,platform,listen_port}`。`tag_hash` 为 octets(16)、`public_key` 为 octets(32)，device_id 为 32 个小写十六进制字符，名称 1–128 UTF-8 字节、平台 1–32 UTF-8 字节且均无控制字符、端口非零；未知字段拒绝。Hello 内的公钥与 Noise 握手认证的 remote static 必须完全相同，device_id 必须由该公钥派生；tag_hash 必须等于本机组指纹。
 - TCP 监听 IPv4；产品模式只接受 / 拨号实际接口同子网的可单播 IPv4（包括企业地址段和链路本地地址），loopback 仅显式测试配置允许。最多 4 个入站连接任务，单个主动拨号流程。双向竞争时同一身份对以 `initiator == (local.device_id < remote.device_id)` 确定首选方向，仅保留一个 active；不同设备不能顶替当前 active。
-- 已配对公钥不匹配、已绑定端点出现新身份或自动重连目标 device_id 不符均拒绝，不以新 id 静默绕过旧信任。原生界面的显式断开禁止该身份入站 / 自动重连，直到用户主动连接；断线后的已信任设备每 5s 重试一个可用候选端点，未信任设备始终需要用户连接及短码。
+- 已配对公钥不匹配、已绑定端点出现新身份或自动重连目标 device_id 不符均拒绝，不以新 id 静默绕过旧信任。主动连接同时校验实际拨号端点的 pin 与对端公告端点，Hello 中的 listen_port 不能替换实际拨号地址来绕过校验；公告端点用于后续回拨。原生界面的显式断开禁止该身份入站 / 自动重连，直到用户主动连接；断线后的已信任设备每 5s 重试一个可用候选端点，未信任设备始终需要用户连接及短码。
 
 ### 3.2 首次配对与重连
 
@@ -121,13 +121,13 @@ FileResponse = {kind:"shares",shares:[ShareInfo]}
 {kind:"transfer_error",v:3,id:text,code:text}
 ```
 
-- id 为 1–64 字节 ASCII 字母 / 数字 / `_` / `-`。每条连接最多 4 个服务端传输 job；同一连接最多接受 1024 个不同 id，任何已使用 id 不可重开，避免旧 Ack / 控制误作用于新任务。重连后可用原 id 续传；超过上限需重连。桌面任务视图最多保留 128 条最近记录。Open 的 share_id / path / version / offset 受 §4.1–§4.2 同样的授权、版本和偏移校验。
+- id 为 1–64 字节 ASCII 字母 / 数字 / `_` / `-`。每条连接最多 4 个服务端传输 job；同一连接最多接受 1024 个不同 id，任何已使用 id 不可重开，避免旧 Ack / 控制误作用于新任务。重连后可用原 id 续传；超过上限需重连。桌面任务视图最多保留 128 条记录，仅淘汰最早的 completed / cancelled / failed；活动、暂停和等待续传记录保留。若 128 条全为未完成记录，Open 返回 transfer_error 提示取消中断任务，不删除活动记录或关闭正常连接。Open 的 share_id / path / version / offset 受 §4.1–§4.2 同样的授权、版本和偏移校验。
 - 接收端先 Stat 取得 version / size，再 Open；服务端最多发送 16384B 的一块数据，然后等待 Ack。Ack.offset 必须恰好等于刚发块 offset + data 长度，不是块起始位置；错误 Ack 关闭连接。仅接收端成功落盘后才能 Ack，服务端接到 Ack 才推进下一块。offset 等于 total 时返回空 data、eof=true，仍需要 Ack；空文件同理。
 - 接收端逐块核对 id、连续 offset、固定 total / version、数据长度和 eof 与末尾位置一致；不符即停止，不能把不同版本拼接。服务端在每块读取前后核对文件版本；错误发 transfer_error，不携带本地绝对路径。`code` 当前是路径无关的错误文本（FileError 的显示文本或 `transfer timed out`），不是 §4.2 的 FileResponse.error 枚举编码；接收方应作为错误展示，恢复前重新 Stat。
 - action 仅为 `pause` / `resume` / `cancel`，可由接收端或桌面原生控制发起。pause 停止新块，已经在途的一块仍可到达并 Ack；resume 继续当前 job；cancel 移除 job，本连接已使用且不再活动的 id 的迟到 Ack 被忽略。未知任务或非法 action 是协议错误；本地已经终态的过期控制只报告 UI 错误，不关闭正常连接。
 - 传输活动时间在 Open / 合法 Ack 更新；包括暂停在内，超过 300s 无活动的 job 在 60s 会话维护 tick 检查时失败、移除并发 transfer_error。阈值为 300s，检查不是精确计时器；过期后需接收端重新 Open。
-- 断开销毁该连接的服务 job；尚未完成的桌面记录进入 `waiting`，等待接收端重新打开。此时桌面的 resume 不伪造服务 job，仅提示由接收端恢复；cancel 可本地关闭 waiting 记录。
-- 接收端保留部分文件及 version / total / 已落盘 offset；重连后先 Stat 核对原 version / size，再用同一来源及已落盘 offset 发新的 Open。变化则拒绝混合续传。Rust `headset_stub` 使用 `.part` + 本地 JSON checkpoint，最终以不覆盖已有目标的方式完成；取消 / 失败时保留部分文件供用户处理。服务端 completed 仅代表全部字节获 Ack，不独立证明接收端最终文件命名或解码成功。
+- 断开或首选连接接替时销毁旧连接的服务 job；在同一 active 门禁下，旧连接尚未完成的桌面记录进入 `waiting`，等待接收端重新打开。此时桌面的 resume 不伪造服务 job，仅提示由接收端恢复；cancel 可本地关闭 waiting 记录。
+- 接收端保留部分文件及 version / total / 已落盘 offset；重连后先 Stat 核对原 version / size，再用同一来源及已落盘 offset 发新的 Open。变化则拒绝混合续传。Rust `headset_stub` 使用 `.part` + 本地 JSON checkpoint schema 3，绑定已认证的来源 device_id；旧 schema 或缺少来源字段时拒绝并保留原文件，最终以不覆盖已有目标的方式完成；取消 / 失败时保留部分文件供用户处理。服务端 completed 仅代表全部字节获 Ack，不独立证明接收端最终文件命名或解码成功。
 
 参考：[cap-std capability 目录 API](https://docs.rs/cap-std/latest/cap_std/fs/struct.Dir.html)。
 

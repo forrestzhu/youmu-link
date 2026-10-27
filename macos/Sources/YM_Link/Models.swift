@@ -11,12 +11,23 @@ struct Snapshot: Decodable {
     var mirror: MirrorState
     var shares: [Share]
     var transfers: [Transfer]
+    var errorId: UInt64
     var error: String?
 
     static let empty = Snapshot(
         deviceName: "", status: "starting", listenPort: 0, discoveryPort: 0,
-        peers: [], pairing: nil, displays: [], mirror: .empty, shares: [], transfers: [], error: nil
+        peers: [], pairing: nil, displays: [], mirror: .empty, shares: [], transfers: [], errorId: 0, error: nil
     )
+}
+
+struct SnapshotErrorCursor {
+    private var lastId: UInt64 = 0
+
+    mutating func consume(_ snapshot: Snapshot) -> String? {
+        guard snapshot.errorId != lastId else { return nil }
+        lastId = snapshot.errorId
+        return snapshot.error
+    }
 }
 
 struct Peer: Decodable, Identifiable {

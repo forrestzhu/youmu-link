@@ -56,7 +56,7 @@ impl Backend {
             {
                 let mut state = state_task.lock().unwrap_or_else(|e| e.into_inner());
                 state.status = "error".into();
-                state.error = Some(error);
+                state.set_error(error);
             }
         });
         Ok(Self {
@@ -159,7 +159,7 @@ impl Shared {
         edit(&mut self.state.lock().unwrap_or_else(|e| e.into_inner()));
     }
     fn error(&self, error: impl Into<String>) {
-        self.edit(|s| s.error = Some(error.into()));
+        self.edit(|s| s.set_error(error));
     }
     fn stop_mirror(&self) {
         self.end_mirror(MirrorEnd::Stopped);
@@ -267,9 +267,9 @@ async fn run(
             {
                 state.shares.push(share);
             } else {
-                state.error = Some(
+                state.set_error(
                     "a shared folder is unavailable; add it again after reconnecting the disk"
-                        .into(),
+                        .to_string(),
                 );
             }
         }
@@ -449,6 +449,10 @@ async fn connection(
     {
         let trust = shared.trust.lock().await;
         if expected.as_ref().is_some_and(|id| *id != remote.device_id)
+            || (initiator
+                && trust
+                    .check_endpoint(&remote, &session.remote_key(), &address.to_string())
+                    .is_err())
             || trust
                 .check_endpoint(&remote, &session.remote_key(), &endpoint)
                 .is_err()
@@ -488,6 +492,9 @@ async fn connection(
                 return;
             }
             let _ = old.cancel.send(true);
+            // Handoff owns the active gate: old serve writers cannot publish
+            // after these records become interrupted and the new owner starts.
+            shared.edit(Snapshot::interrupt_transfers);
         }
         *active = Some(Active {
             generation,
@@ -517,13 +524,9 @@ async fn connection(
                     peer.status = "disconnected".into();
                 }
             }
-            for transfer in &mut s.transfers {
-                if ["transferring", "paused"].contains(&transfer.status.as_str()) {
-                    transfer.status = "waiting".into();
-                }
-            }
+            s.interrupt_transfers();
             if let Err(error) = result {
-                s.error = Some(error.to_string());
+                s.set_error(error.to_string());
             }
         });
     }
@@ -732,18 +735,18 @@ async fn serve(
                     WriterEvent::Finished(result) => return result,
                     WriterEvent::TransferAction { id, action, accepted } => {
                         if !transfers.contains_key(&id) {
-                            shared.error("transfer no longer active");
+                            shared.publish(generation, false, |s| s.set_error("transfer no longer active"));
                             let _ = accepted.send(false);
                             continue;
                         }
-                        match transfer_action(&shared, &id, &action) {
+                        match transfer_action(&shared, &id, &action, Some(generation)) {
                             Ok(()) => {
                                 if action == "cancel" { transfers.remove(&id); }
                                 // The writer already owns this Action, so it writes it before
                                 // any newly scheduled resumed chunk, without blocking this actor.
                                 let _ = accepted.send(true);
                             }
-                            Err(error) => { shared.error(error.to_string()); let _ = accepted.send(false); }
+                            Err(error) => { shared.publish(generation, false, |s| s.set_error(error.to_string())); let _ = accepted.send(false); }
                         }
                     }
                 }
@@ -773,11 +776,23 @@ async fn serve(
                         if transfers.len() >= 4 {
                             return Err(session::Error::Protocol("invalid transfer request"));
                         }
-                        shared.edit(|s| {
-                            s.transfers.retain(|t| t.id != id);
-                            if s.transfers.len() >= 128 { s.transfers.remove(0); }
-                            s.transfers.push(Transfer{id:id.clone(),name:path.rsplit('/').next().unwrap_or("file").into(),transferred:offset,total:offset,status:"transferring".into()});
-                        });
+                        let mut recorded = false;
+                        if !shared.publish(generation, false, |state| {
+                            state.transfers.retain(|t| t.id != id);
+                            if state.transfers.len() >= 128 {
+                                if let Some(index) = state.transfers.iter().position(|t| ["completed", "cancelled", "failed"].contains(&t.status.as_str())) {
+                                    state.transfers.remove(index);
+                                }
+                            }
+                            if state.transfers.len() < 128 {
+                                state.transfers.push(Transfer{id:id.clone(),name:path.rsplit('/').next().unwrap_or("file").into(),transferred:offset,total:offset,status:"transferring".into()});
+                                recorded = true;
+                            }
+                        }) { return Err(session::Error::Protocol("connection no longer active")); }
+                        if !recorded {
+                            enqueue(&control, Message::TransferError{v:VERSION,id,code:"too many unfinished transfers; cancel an interrupted transfer".into()})?;
+                            continue;
+                        }
                         transfers.insert(id,TransferJob{share_id,path,version,offset,awaiting:None,read_pending:false,last_activity:Instant::now()});
                     }
                     Message::TransferAck{v:VERSION,id,offset} => {
@@ -788,12 +803,12 @@ async fn serve(
                         if job.awaiting != Some(offset) { return Err(session::Error::Protocol("invalid transfer acknowledgment")); }
                         job.offset = offset; job.awaiting = None;job.last_activity=Instant::now();
                         let mut complete = false;
-                        shared.edit(|s| { if let Some(t) = s.transfers.iter_mut().find(|t| t.id == id) { t.transferred = offset; complete = offset == t.total; if complete { t.status = "completed".into(); } } });
+                        if !shared.publish(generation, false, |s| { if let Some(t) = s.transfers.iter_mut().find(|t| t.id == id) { t.transferred = offset; complete = offset == t.total; if complete { t.status = "completed".into(); } } }) { return Err(session::Error::Protocol("connection no longer active")); }
                         if complete { transfers.remove(&id); }
                     }
                     Message::TransferAction{v:VERSION,id,action} => {
                         if !transfers.contains_key(&id) { return Err(session::Error::Protocol("unknown transfer")); }
-                        transfer_action(&shared,&id,&action)?;
+                        transfer_action(&shared,&id,&action,Some(generation))?;
                         if action == "cancel" { transfers.remove(&id); }
                     }
                     _ => return Err(session::Error::Protocol("unsupported application frame")),
@@ -808,7 +823,7 @@ async fn serve(
                         job.read_pending=false;
                         match response {
                             FileResponse::Read{offset,total,version,data,eof}=>{
-                                shared.edit(|s|{if let Some(t)=s.transfers.iter_mut().find(|t|t.id==id){t.total=total;}});
+                                if !shared.publish(generation,false,|s|{if let Some(t)=s.transfers.iter_mut().find(|t|t.id==id){t.total=total;}}) { return Err(session::Error::Protocol("connection no longer active")); }
                                 if transfer_running(&shared,&id) {
                                     job.awaiting=Some(offset+data.len()as u64);
                                     enqueue(&control,Message::TransferChunk{v:VERSION,id,offset,total,version,data,eof})?;
@@ -816,7 +831,7 @@ async fn serve(
                             }
                             response=>{
                                 transfers.remove(&id);
-                                shared.edit(|s|{if let Some(t)=s.transfers.iter_mut().find(|t|t.id==id){t.status="failed".into();}});
+                                if !shared.publish(generation,false,|s|{if let Some(t)=s.transfers.iter_mut().find(|t|t.id==id){t.status="failed".into();}}) { return Err(session::Error::Protocol("connection no longer active")); }
                                 enqueue(&control,Message::TransferError{v:VERSION,id,code:format_file_error(response)})?;
                             }
                         }
@@ -827,7 +842,7 @@ async fn serve(
                 let expired:Vec<_>=transfers.iter().filter(|(_,job)|job.last_activity.elapsed()>=Duration::from_secs(300)).map(|(id,_)|id.clone()).collect();
                 for id in expired {
                     transfers.remove(&id);
-                    shared.edit(|s|{if let Some(t)=s.transfers.iter_mut().find(|t|t.id==id){t.status="failed".into();}});
+                    if !shared.publish(generation,false,|s|{if let Some(t)=s.transfers.iter_mut().find(|t|t.id==id){t.status="failed".into();}}) { return Err(session::Error::Protocol("connection no longer active")); }
                     enqueue(&control,Message::TransferError{v:VERSION,id,code:"transfer timed out".into()})?;
                 }
             }
@@ -945,19 +960,35 @@ fn valid_transfer_id(id: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
 }
 
-fn transfer_action(shared: &Shared, id: &str, action: &str) -> session::Result<()> {
+fn transfer_action(
+    shared: &Shared,
+    id: &str,
+    action: &str,
+    expected: Option<u64>,
+) -> session::Result<()> {
     let status = match action {
         "pause" => "paused",
         "resume" => "transferring",
         "cancel" => "cancelled",
         _ => return Err(session::Error::Protocol("invalid transfer action")),
     };
+    let active = shared.active.lock().unwrap();
+    if expected.is_some_and(|generation| {
+        !active
+            .as_ref()
+            .is_some_and(|a| a.generation == generation && a.authorized && !*a.cancel.borrow())
+    }) {
+        return Err(session::Error::Protocol("connection no longer active"));
+    }
     let mut state = shared.state.lock().unwrap();
     let transfer = state
         .transfers
         .iter_mut()
         .find(|t| t.id == id)
         .ok_or(session::Error::Protocol("unknown transfer"))?;
+    if expected.is_none() && transfer.status != "waiting" {
+        return Err(session::Error::Protocol("transfer no longer waiting"));
+    }
     if transfer.status == "completed" || transfer.status == "cancelled" {
         return Err(session::Error::Protocol("transfer already finished"));
     }
@@ -1296,7 +1327,7 @@ async fn transfer_command(shared: &Shared, id: String, action: &str) -> Result<(
         .any(|t| t.id == id && t.status == "waiting");
     if waiting {
         if action == "cancel" {
-            transfer_action(shared, &id, action).map_err(|e| e.to_string())?;
+            transfer_action(shared, &id, action, None).map_err(|e| e.to_string())?;
             return Ok(());
         }
         return Err("the receiving device must resume this interrupted transfer".into());

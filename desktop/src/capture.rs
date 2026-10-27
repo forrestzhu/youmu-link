@@ -297,17 +297,21 @@ mod platform {
         }
 
         fn fail(&self, message: &str) {
-            {
+            let running = {
                 let mut failure = self
                     .failure
                     .0
                     .lock()
                     .unwrap_or_else(|error| error.into_inner());
-                if !self.running.load(Ordering::SeqCst) || failure.is_some() {
+                if failure.is_some() {
                     return;
                 }
                 *failure = Some(message.into());
                 self.failed.store(true, Ordering::SeqCst);
+                self.running.load(Ordering::SeqCst)
+            };
+            if !running {
+                return;
             }
             // Never block Apple's output queue or silently lose a fatal error to backpressure.
             let packet = self.packet("error", "", 0, false, message.as_bytes().to_vec());
@@ -315,6 +319,12 @@ mod platform {
             self.runtime.spawn(async move {
                 let _ = sender.send(packet).await;
             });
+        }
+
+        fn check_stop_result<T, E>(&self, result: Result<T, E>, message: &str) {
+            if result.is_err() {
+                self.fail(message);
+            }
         }
 
         fn send_video(&self, sample: &CMSampleBuffer) -> Result<(), String> {
@@ -489,12 +499,12 @@ mod platform {
     ) {
         // SAFETY: Encoder owns the stable Box until CompleteFrames + Invalidate finish.
         let output = &*(context as *const Arc<Output>);
-        if !output.running.load(Ordering::SeqCst) || output.failed.load(Ordering::SeqCst) {
-            return;
-        }
         if status != 0 {
             output.video_drops.fetch_add(1, Ordering::Relaxed);
             output.fail("The hardware video encoder stopped unexpectedly");
+            return;
+        }
+        if !output.running.load(Ordering::SeqCst) || output.failed.load(Ordering::SeqCst) {
             return;
         }
         if flags & 2 != 0 || sample.is_null() {
@@ -641,7 +651,11 @@ mod platform {
             if !self.session.is_null() {
                 // CompleteFrames waits for all pending output callbacks before the context is freed.
                 unsafe {
-                    VTCompressionSessionCompleteFrames(self.session, CMTime::INVALID);
+                    let status = VTCompressionSessionCompleteFrames(self.session, CMTime::INVALID);
+                    self.context.check_stop_result(
+                        if status == 0 { Ok(()) } else { Err(status) },
+                        "Unable to finish hardware video encoding",
+                    );
                     VTCompressionSessionInvalidate(self.session);
                     CFRelease(self.session.cast());
                 }
@@ -827,9 +841,13 @@ mod platform {
                 self.output.running.store(false, Ordering::SeqCst);
             }
             if let Some(mut stream) = self.stream.take() {
-                let _ = stream.stop_capture();
+                self.output
+                    .check_stop_result(stream.stop_capture(), "Unable to stop screen capture");
                 for (handler, kind) in self.handlers.drain(..) {
-                    let _ = stream.remove_output_handler(handler, kind);
+                    self.output.check_stop_result(
+                        stream.remove_output_handler(handler, kind),
+                        "Unable to remove screen capture output",
+                    );
                 }
                 drop(stream);
             }
@@ -953,6 +971,97 @@ mod platform {
             output.fail("later error must not overwrite the cause");
             assert_eq!(failure.message().as_deref(), Some("first fatal error"));
             assert!(output.failed.load(Ordering::SeqCst));
+        }
+
+        fn stopped_output() -> (Arc<Output>, tokio::sync::mpsc::Receiver<MediaPacket>) {
+            let (sender, receiver) = tokio::sync::mpsc::channel(1);
+            (
+                Arc::new(Output {
+                    sender,
+                    runtime: tokio::runtime::Handle::current(),
+                    running: AtomicBool::new(false),
+                    failed: AtomicBool::new(false),
+                    need_keyframe: AtomicBool::new(true),
+                    audio_config_sent: AtomicBool::new(false),
+                    video_attempts: AtomicU64::new(0),
+                    video_drops: AtomicU64::new(0),
+                    failure: Arc::new(Failure::default()),
+                    width: 64,
+                    height: 64,
+                }),
+                receiver,
+            )
+        }
+
+        fn assert_restart_rejected(output: &Output, message: &str) {
+            // Assert the guard is armed before attempting start: a regression
+            // cannot accidentally reach display enumeration or permission APIs.
+            assert_eq!(output.failure.message().as_deref(), Some(message));
+            assert!(output.failed.load(Ordering::SeqCst));
+            let result = Capture::start(
+                0,
+                false,
+                "invalid",
+                output.sender.clone(),
+                false,
+                Some(0),
+                Arc::clone(&output.failure),
+            );
+            assert_eq!(result.err().as_deref(), Some(message));
+        }
+
+        #[tokio::test]
+        async fn stopped_delegate_error_latches_failure_without_emitting_media() {
+            let (output, mut receiver) = stopped_output();
+            Delegate(Arc::clone(&output)).did_stop_with_error(
+                screencapturekit::error::SCError::CaptureStopFailed("test failure".into()),
+            );
+            let message =
+                "Screen capture stopped; check the display and Screen Recording permission";
+            assert_restart_rejected(&output, message);
+            output.fail("later failure");
+            assert_eq!(output.failure.message().as_deref(), Some(message));
+            tokio::task::yield_now().await;
+            assert!(receiver.try_recv().is_err());
+        }
+
+        #[tokio::test]
+        async fn stopped_encoder_error_latches_failure_without_emitting_media() {
+            let (output, mut receiver) = stopped_output();
+            let mut context = Box::new(Arc::clone(&output));
+            // Only the error path runs, so no sample or platform API is accessed.
+            unsafe {
+                encoded(
+                    (&mut *context as *mut Arc<Output>).cast(),
+                    ptr::null_mut(),
+                    -1,
+                    0,
+                    ptr::null_mut(),
+                )
+            };
+            assert_restart_rejected(&output, "The hardware video encoder stopped unexpectedly");
+            tokio::task::yield_now().await;
+            assert!(receiver.try_recv().is_err());
+        }
+
+        #[tokio::test]
+        async fn stopped_cleanup_errors_latch_failure_and_keep_the_first_cause() {
+            for message in [
+                "Unable to stop screen capture",
+                "Unable to remove screen capture output",
+                "Unable to finish hardware video encoding",
+            ] {
+                let (output, mut receiver) = stopped_output();
+                output.check_stop_result(Ok::<(), i32>(()), message);
+                assert!(output.failure.message().is_none());
+                // Feed only a result, never a native capture or encoder session.
+                output.check_stop_result(Err::<(), i32>(-1), message);
+                assert_restart_rejected(&output, message);
+                output.check_stop_result(Err::<(), i32>(-2), "later cleanup failure");
+                assert_eq!(output.failure.message().as_deref(), Some(message));
+                tokio::task::yield_now().await;
+                assert!(receiver.try_recv().is_err());
+            }
         }
 
         #[tokio::test]

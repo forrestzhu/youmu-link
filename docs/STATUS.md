@@ -12,13 +12,14 @@
 | Rust 桌面后端 | C ABI + 单设备状态、取消 / 重连、16KiB 停等 Ack 传输；读写与文件工作分别调度，慢磁盘 / socket 不阻塞停止指令。文件工作每连接 4 项、真实 I/O 跨连接全局 4 项；同连接传输 id 不复用，防迟到确认误作用于新任务。 |
 | macOS 原生应用 | `dist/YM_Link.app` 已重建、签名校验并打开；Workspace 冗余标题已隐藏，布局核验通过。本轮生产包经两次原生配对验证 v3 镜像查询与首次远端恢复拒绝；测试信任已清理。之前已实测原生目录授权、重启保留与 4 MiB 下载 / SHA-256 / 完成页。Swift 测试 1/1；仅本机 arm64 / macOS 27.0.1 实测，macOS 14 / Intel not-run。 |
 | 镜像 | Rust ScreenCaptureKit + VideoToolbox 硬件 H.264、系统 PCM 与加密分片、双端控制、持续背压降分辨率实现就位。首次开始必须本机确认；独立故障信号跨暂停 / 恢复保存，采集或初始化失败不能自动重启，对端不请求系统权限。真实硬件合成帧编码单测通过；真实采集 / 弱网切档、权限恢复、Quest 解码 / 音画同步 / 延迟仍 not-run。 |
-| harness / CI | 弱网续轮 `harness verify`：62 Rust 用例通过、1 个硬件测试默认 ignored；另显式硬件编码用例通过，Swift 1/1。最近回读 `ba65b72` 的 CI run 40452957099，三项因账户付款 / spending limit 未启动（not-run）；未更改账户设置。 |
+| harness / CI | 两轮 CR 修复后 `harness verify`：70 Rust passed、1 个硬件用例默认 ignored；另显式硬件编码通过，Swift 2/2、签名构建与原生启动通过。最近回读 `ba65b72` 的 CI run 40452957099，三项因账户付款 / spending limit 未启动（not-run）；未更改账户设置。 |
 
 ## 当前工作与待验收
 
 | 工作 | 当前结论 / 下一动作 |
 | --- | --- |
 | [YML-002 原生 macOS 实现](tasks/YML-002-macos-native.md) | verifying：双端控制、传输边界与弱网策略自动回归通过；真实屏幕 / 系统音频采集等待用户确认，弱网切档与 Quest 验收未完成。 |
+| [用户追加两轮 CR](evidence/2026-10-27-native-two-round-cr.md) | 完成：首轮 3 P2 / 1 P3、第二轮 2 P3，全部修复并复核关闭；覆盖端点 pin、采集 teardown、传输历史 / 连接交接、重复错误事件和测试桩换源续传。 |
 | 本地启动 | 用户手动启动已确认成功，CUA 已取得窗口。早期自动启动入口出现 SIGKILL 的原因不明，未据此修改应用生命周期或系统安全策略。 |
 | 真实 LAN / Quest | not-run：本轮用现有 SDK 的 ADB 实查为 0 个连接设备；相邻游目源码尚无 YM_Link v3 客户端，YM-276 仍是桌面启动 / 头显设计范围。暂无第二设备或 v3 互操作证据，Rust 测试桩不代替真机。 |
 

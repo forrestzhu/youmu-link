@@ -13,8 +13,8 @@ use ymlink_core::session::{Hello, Pairing, SecureReader, SecureSession, SecureWr
 use ymlink_desktop::wire::{Message, MirrorAction, VERSION};
 
 type Result<T> = std::result::Result<T, Box<dyn Error + Send + Sync>>;
-// Local checkpoint schema is unchanged when the application wire version changes.
-const DOWNLOAD_STATE_VERSION: u8 = 2;
+// Local checkpoint schema is independent of the application wire version.
+const DOWNLOAD_STATE_VERSION: u8 = 3;
 
 fn failure(message: &'static str) -> Box<dyn Error + Send + Sync> {
     std::io::Error::other(message).into()
@@ -69,6 +69,7 @@ async fn run() -> Result<()> {
             .authorize(&mut trust, Pairing::ReconnectOnly)
             .await?;
     }
+    let source_device_id = session.remote().device_id.clone();
     let (mut reader, mut writer) = session.into_split()?;
     eprintln!("Authenticated encrypted test connection established.");
     let command = args[1].as_str();
@@ -137,6 +138,7 @@ async fn run() -> Result<()> {
             download(
                 &mut reader,
                 &mut writer,
+                &source_device_id,
                 &args[2],
                 &args[3],
                 Path::new(&args[4]),
@@ -312,6 +314,7 @@ async fn stat(
 #[serde(deny_unknown_fields)]
 struct Resume {
     v: u8,
+    source_device_id: String,
     share_id: String,
     path: String,
     version: String,
@@ -335,6 +338,7 @@ fn sidecar(path: &Path, suffix: &str) -> PathBuf {
 impl Download {
     fn open(
         destination: &Path,
+        source_device_id: &str,
         share: &str,
         path: &str,
         version: &str,
@@ -364,9 +368,14 @@ impl Download {
             if bytes.len() > 16_384 {
                 return Err(failure("download metadata exceeds limit"));
             }
-            let state: Resume =
-                serde_json::from_slice(&bytes).map_err(|_| failure("invalid download metadata"))?;
-            if state.v != DOWNLOAD_STATE_VERSION
+            let state: Resume = serde_json::from_slice(&bytes)
+                .map_err(|_| failure("invalid download metadata; old partial download retained"))?;
+            if state.v != DOWNLOAD_STATE_VERSION {
+                return Err(failure(
+                    "unsupported download checkpoint version; old partial download retained",
+                ));
+            }
+            if state.source_device_id != source_device_id
                 || state.share_id != share
                 || state.path != path
                 || state.version != version
@@ -396,6 +405,7 @@ impl Download {
             (
                 Resume {
                     v: DOWNLOAD_STATE_VERSION,
+                    source_device_id: source_device_id.into(),
                     share_id: share.into(),
                     path: path.into(),
                     version: version.into(),
@@ -498,6 +508,7 @@ fn same_file(left: &fs::Metadata, right: &fs::Metadata) -> bool {
 async fn download(
     reader: &mut SecureReader,
     writer: &mut SecureWriter,
+    source_device_id: &str,
     share: &str,
     path: &str,
     destination: &Path,
@@ -506,7 +517,14 @@ async fn download(
     let version = entry
         .version
         .ok_or_else(|| failure("selected entry is not a file"))?;
-    let mut download = Download::open(destination, share, path, &version, entry.size)?;
+    let mut download = Download::open(
+        destination,
+        source_device_id,
+        share,
+        path,
+        &version,
+        entry.size,
+    )?;
     let resumed_from = download.state.offset;
     let id = format!("test-{:016x}", rand::random::<u64>());
     writer
@@ -914,24 +932,61 @@ mod tests {
         fs::create_dir(&directory).unwrap();
         let destination = directory.join("movie");
         let version = "a".repeat(64);
-        let mut download = Download::open(&destination, "share", "movie", &version, 6).unwrap();
+        let mut download =
+            Download::open(&destination, "desktop-a", "share", "movie", &version, 6).unwrap();
         download.append(0, 6, &version, b"abc", false).unwrap();
         assert!(download.append(0, 6, &version, b"bad", false).is_err());
         drop(download);
-        assert!(Download::open(&destination, "share", "movie", &"b".repeat(64), 6).is_err());
-        let mut resumed = Download::open(&destination, "share", "movie", &version, 6).unwrap();
+        let part = sidecar(&destination, ".part");
+        let metadata = sidecar(&destination, ".part.json");
+        let saved_metadata = fs::read(&metadata).unwrap();
+        assert!(Download::open(&destination, "desktop-b", "share", "movie", &version, 6).is_err());
+        assert_eq!(fs::read(&part).unwrap(), b"abc");
+        assert_eq!(fs::read(&metadata).unwrap(), saved_metadata);
+        let saved_state: serde_json::Value = serde_json::from_slice(&saved_metadata).unwrap();
+        assert_eq!(saved_state["offset"], 3);
+        assert_eq!(saved_state["source_device_id"], "desktop-a");
+        for (schema, missing_source) in [(2, true), (2, false), (3, true)] {
+            let mut old_state = saved_state.clone();
+            old_state["v"] = serde_json::json!(schema);
+            if missing_source {
+                old_state
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("source_device_id");
+            }
+            let old_metadata = serde_json::to_vec(&old_state).unwrap();
+            fs::write(&metadata, &old_metadata).unwrap();
+            assert!(
+                Download::open(&destination, "desktop-a", "share", "movie", &version, 6).is_err()
+            );
+            assert_eq!(fs::read(&part).unwrap(), b"abc");
+            assert_eq!(fs::read(&metadata).unwrap(), old_metadata);
+        }
+        fs::write(&metadata, &saved_metadata).unwrap();
+        assert!(Download::open(
+            &destination,
+            "desktop-a",
+            "share",
+            "movie",
+            &"b".repeat(64),
+            6
+        )
+        .is_err());
+        let mut resumed =
+            Download::open(&destination, "desktop-a", "share", "movie", &version, 6).unwrap();
         assert_eq!(resumed.state.offset, 3);
         resumed.append(3, 6, &version, b"def", true).unwrap();
         fs::write(&destination, b"keep me").unwrap();
         assert!(resumed.finish(&destination).is_err());
         assert_eq!(fs::read(&destination).unwrap(), b"keep me");
         fs::remove_file(&destination).unwrap();
-        Download::open(&destination, "share", "movie", &version, 6)
+        Download::open(&destination, "desktop-a", "share", "movie", &version, 6)
             .unwrap()
             .finish(&destination)
             .unwrap();
         assert_eq!(fs::read(&destination).unwrap(), b"abcdef");
-        assert!(Download::open(&destination, "share", "movie", &version, 6).is_err());
+        assert!(Download::open(&destination, "desktop-a", "share", "movie", &version, 6).is_err());
         fs::remove_dir_all(directory).unwrap();
     }
 

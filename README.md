@@ -87,3 +87,5 @@ cargo run --locked -p ymlink-desktop --bin headset_stub -- 192.168.1.10:PORT mir
 ```
 
 测试桩每次启动生成临时身份，须重新配对；测试后可在桌面删除这些测试设备。下载不会覆盖现有目标，保留匹配的中间文件可续传。镜像输出为 `screen.h264` 与 `system-audio.f32le`，仅证明收到完整编码帧 / 音频包，不证明 Quest 可解码或音画同步。请勿把用户媒体、输出文件或原始路径日志提交到仓库。
+
+下载 checkpoint schema 3 绑定已认证的来源设备身份；更换来源或使用旧 checkpoint 时会明确拒绝并保留原文件，不能混合续传。该本地格式版本独立于网络应用协议。

@@ -366,7 +366,10 @@ async fn isolated_file_server() -> (
     let (commands, mut requests) = mpsc::channel::<Request>(8);
     let responder = AbortTask(tokio::spawn(async move {
         while let Some(request) = requests.recv().await {
-            observed.lock().unwrap().error = Some("test mirror command processed".into());
+            observed
+                .lock()
+                .unwrap()
+                .set_error("test mirror command processed");
             if let Some(reply) = request.reply {
                 let _ = reply.send(Err("policy-only test; no recording is started".into()));
             }
@@ -901,4 +904,459 @@ fn transfer_id_history_has_a_hard_session_limit() {
     assert!(remember_transfer_id(&mut ids, "transfer-0").is_err());
     assert!(remember_transfer_id(&mut ids, "one-too-many").is_err());
     assert_eq!(ids.len(), MAX_TRANSFER_IDS);
+}
+
+#[test]
+fn repeated_snapshot_errors_have_distinct_event_ids() {
+    let mut state = Snapshot::new("test".into());
+    assert_eq!(state.error_id, 0);
+    state.set_error("folder is already shared");
+    assert_eq!(state.error_id, 1);
+    state.set_error("folder is already shared");
+    assert_eq!(state.error_id, 2);
+    state.error = None;
+    state.set_error("folder is already shared");
+    assert_eq!(state.error_id, 3);
+    assert_eq!(serde_json::to_value(&state).unwrap()["error_id"], 3);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn manual_dial_checks_the_actual_endpoint_before_untrusted_advertised_port() {
+    let (shared, mut writer, _incoming, _read, server, _commands) = isolated_file_server().await;
+    writer.send(&Message::Bye { v: VERSION }).await.unwrap();
+    server.await.unwrap().unwrap();
+    *shared.active.lock().unwrap() = None;
+    shared.edit(|state| {
+        state.listen_port = 32000;
+        state.error = None;
+    });
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let pinned = Identity::generate().unwrap();
+    let pinned_hello = Hello::new(&pinned, "pinned Mac", "macos", address.port());
+    shared
+        .trust
+        .lock()
+        .await
+        .remember_endpoint(
+            &pinned_hello,
+            &pinned.public_key(),
+            Some(address.to_string()),
+        )
+        .unwrap();
+    let changed = Identity::generate().unwrap();
+    let advertised_port = if address.port() == 65535 {
+        1
+    } else {
+        address.port() + 1
+    };
+    let client = TcpStream::connect(address).await.unwrap();
+    let app = shared.clone();
+    let connection_task = tokio::spawn(async move {
+        connection(app, client, address, true, None, true).await;
+    });
+    let (socket, _) = listener.accept().await.unwrap();
+    let _remote = SecureSession::handshake(
+        socket,
+        false,
+        &changed,
+        Hello::new(&changed, "replacement", "headset-test", advertised_port),
+    )
+    .await
+    .unwrap();
+    let rejected = tokio::time::timeout(Duration::from_millis(750), async {
+        loop {
+            if shared.state.lock().unwrap().error.as_deref()
+                == Some("paired identity key changed; forget the old device before pairing again")
+            {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await;
+    connection_task.abort();
+    let _ = connection_task.await;
+    assert!(
+        rejected.is_ok(),
+        "changed identity at the dialed endpoint was not rejected before pairing"
+    );
+    assert!(shared.state.lock().unwrap().pairing.is_none());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn completed_history_never_evicts_a_paused_transfer() {
+    let (shared, mut writer, mut incoming, _read, server, _commands) = isolated_file_server().await;
+    let directory =
+        std::env::temp_dir().join(format!("ymlink-history-{:016x}", rand::random::<u64>()));
+    std::fs::create_dir(&directory).unwrap();
+    std::fs::write(directory.join("long"), vec![7; 32_768]).unwrap();
+    std::fs::write(directory.join("short"), b"x").unwrap();
+    let versions = {
+        let mut catalog = shared.catalog.lock().unwrap();
+        catalog
+            .add("share".into(), "test".into(), &directory)
+            .unwrap();
+        ["long", "short"].map(|path| {
+            match catalog.handle(FileRequest::Stat {
+                share_id: "share".into(),
+                path: path.into(),
+            }) {
+                FileResponse::Stat { entry } => entry.version.unwrap(),
+                _ => panic!("expected test file metadata"),
+            }
+        })
+    };
+    let open = |id: String, path: &str, version: &str| Message::TransferOpen {
+        v: VERSION,
+        id,
+        share_id: "share".into(),
+        path: path.into(),
+        version: version.into(),
+        offset: 0,
+    };
+    writer
+        .send(&open("long".into(), "long", &versions[0]))
+        .await
+        .unwrap();
+    assert!(
+        matches!(next(&mut incoming, &mut writer).await, Message::TransferChunk { id, offset: 0, data, .. } if id == "long" && data.len() == 16_384)
+    );
+    writer
+        .send(&Message::TransferAction {
+            v: VERSION,
+            id: "long".into(),
+            action: "pause".into(),
+        })
+        .await
+        .unwrap();
+    writer
+        .send(&Message::TransferAck {
+            v: VERSION,
+            id: "long".into(),
+            offset: 16_384,
+        })
+        .await
+        .unwrap();
+    for index in 0..128 {
+        let id = format!("short-{index}");
+        writer
+            .send(&open(id.clone(), "short", &versions[1]))
+            .await
+            .unwrap();
+        assert!(
+            matches!(next(&mut incoming, &mut writer).await, Message::TransferChunk { id: received, data, eof: true, .. } if received == id && data == b"x")
+        );
+        writer
+            .send(&Message::TransferAck {
+                v: VERSION,
+                id,
+                offset: 1,
+            })
+            .await
+            .unwrap();
+    }
+    let retained = shared
+        .state
+        .lock()
+        .unwrap()
+        .transfers
+        .iter()
+        .any(|t| t.id == "long" && t.status == "paused");
+    if retained {
+        writer
+            .send(&Message::TransferAction {
+                v: VERSION,
+                id: "long".into(),
+                action: "resume".into(),
+            })
+            .await
+            .unwrap();
+        assert!(
+            matches!(next(&mut incoming, &mut writer).await, Message::TransferChunk { id, offset: 16_384, data, eof: true, .. } if id == "long" && data == vec![7; 16_384])
+        );
+        writer
+            .send(&Message::TransferAck {
+                v: VERSION,
+                id: "long".into(),
+                offset: 32_768,
+            })
+            .await
+            .unwrap();
+    }
+    writer.send(&Message::Bye { v: VERSION }).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(2), server)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    std::fs::remove_dir_all(directory).unwrap();
+    assert!(
+        retained,
+        "completed history evicted the paused transfer and stalled its live job"
+    );
+    assert!(shared.state.lock().unwrap().transfers.len() <= 128);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn unfinished_history_refuses_new_jobs_without_dropping_records_or_connection() {
+    let (shared, mut writer, mut incoming, _read, server, _commands) = isolated_file_server().await;
+    shared.edit(|s| {
+        s.transfers = (0..128)
+            .map(|index| Transfer {
+                id: format!("waiting-{index}"),
+                name: "sample".into(),
+                transferred: 0,
+                total: 1,
+                status: "waiting".into(),
+            })
+            .collect()
+    });
+    let open = |id: &str| Message::TransferOpen {
+        v: VERSION,
+        id: id.into(),
+        share_id: "missing".into(),
+        path: "sample".into(),
+        version: "version".into(),
+        offset: 0,
+    };
+    writer.send(&open("new")).await.unwrap();
+    assert!(
+        matches!(next(&mut incoming, &mut writer).await, Message::TransferError { id, code, .. } if id == "new" && code == "too many unfinished transfers; cancel an interrupted transfer")
+    );
+    assert_eq!(shared.state.lock().unwrap().transfers.len(), 128);
+    transfer_command(&shared, "waiting-0".into(), "cancel")
+        .await
+        .unwrap();
+    writer.send(&open("after-cancel")).await.unwrap();
+    assert!(
+        matches!(next(&mut incoming, &mut writer).await, Message::TransferError { id, code, .. } if id == "after-cancel" && code != "too many unfinished transfers; cancel an interrupted transfer")
+    );
+    assert!(shared
+        .state
+        .lock()
+        .unwrap()
+        .transfers
+        .iter()
+        .any(|t| t.id == "waiting-127"));
+    writer
+        .send(&Message::FileRequest {
+            v: VERSION,
+            id: 900,
+            request: FileRequest::Shares,
+        })
+        .await
+        .unwrap();
+    assert!(matches!(
+        next(&mut incoming, &mut writer).await,
+        Message::FileResponse { id: 900, .. }
+    ));
+    writer.send(&Message::Bye { v: VERSION }).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(2), server)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn preferred_connection_handoff_preserves_interrupted_transfer_controls() {
+    async fn attach(
+        shared: Arc<Shared>,
+        peer: &Identity,
+        initiator: bool,
+    ) -> (
+        session::SecureReader,
+        session::SecureWriter,
+        tokio::task::JoinHandle<()>,
+    ) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let client = TcpStream::connect(listener.local_addr().unwrap())
+            .await
+            .unwrap();
+        let (accepted, _) = listener.accept().await.unwrap();
+        let (local, remote) = if initiator {
+            (client, accepted)
+        } else {
+            (accepted, client)
+        };
+        let address = local.peer_addr().unwrap();
+        let task = tokio::spawn(connection(
+            shared.clone(),
+            local,
+            address,
+            initiator,
+            None,
+            false,
+        ));
+        let mut session = SecureSession::handshake(
+            remote,
+            !initiator,
+            peer,
+            Hello::new(peer, "Quest test", "headset-test", 32009),
+        )
+        .await
+        .unwrap();
+        let mut trust = TrustStore::memory();
+        trust
+            .remember(session.remote(), &session.remote_key())
+            .unwrap();
+        session
+            .authorize(&mut trust, Pairing::ReconnectOnly)
+            .await
+            .unwrap();
+        let preferred = initiator == (shared.identity.device_id() < peer.device_id());
+        tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                if shared
+                    .active
+                    .lock()
+                    .unwrap()
+                    .as_ref()
+                    .is_some_and(|active| active.authorized && active.preferred == preferred)
+                {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        let (read, write) = session.into_split().unwrap();
+        (read, write, task)
+    }
+
+    let (shared, mut fixture_writer, _incoming, _read, fixture_server, _commands) =
+        isolated_file_server().await;
+    fixture_writer
+        .send(&Message::Bye { v: VERSION })
+        .await
+        .unwrap();
+    fixture_server.await.unwrap().unwrap();
+    *shared.active.lock().unwrap() = None;
+    shared.edit(|state| state.listen_port = 32000);
+    let peer = Identity::generate().unwrap();
+    shared
+        .trust
+        .lock()
+        .await
+        .remember(
+            &Hello::new(&peer, "Quest test", "headset-test", 32009),
+            &peer.public_key(),
+        )
+        .unwrap();
+    let directory =
+        std::env::temp_dir().join(format!("ymlink-handoff-{:016x}", rand::random::<u64>()));
+    std::fs::create_dir(&directory).unwrap();
+    std::fs::write(directory.join("long"), vec![7u8; 32_768]).unwrap();
+    let version = {
+        let mut catalog = shared.catalog.lock().unwrap();
+        catalog
+            .add("share".into(), "test".into(), &directory)
+            .unwrap();
+        match catalog.handle(FileRequest::Stat {
+            share_id: "share".into(),
+            path: "long".into(),
+        }) {
+            FileResponse::Stat { entry } => entry.version.unwrap(),
+            _ => panic!("expected test file metadata"),
+        }
+    };
+    let preferred_initiator = shared.identity.device_id() < peer.device_id();
+    let (read, mut write, old_connection) =
+        attach(shared.clone(), &peer, !preferred_initiator).await;
+    let (mut incoming, _reader) = receiver(read);
+    write
+        .send(&Message::TransferOpen {
+            v: VERSION,
+            id: "long".into(),
+            share_id: "share".into(),
+            path: "long".into(),
+            version,
+            offset: 0,
+        })
+        .await
+        .unwrap();
+    assert!(matches!(
+        next(&mut incoming, &mut write).await,
+        Message::TransferChunk {
+            offset: 0,
+            data,
+            eof: false,
+            ..
+        } if data.len() == 16_384
+    ));
+    write
+        .send(&Message::TransferAction {
+            v: VERSION,
+            id: "long".into(),
+            action: "pause".into(),
+        })
+        .await
+        .unwrap();
+    write
+        .send(&Message::TransferAck {
+            v: VERSION,
+            id: "long".into(),
+            offset: 16_384,
+        })
+        .await
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            if shared
+                .state
+                .lock()
+                .unwrap()
+                .transfers
+                .iter()
+                .any(|transfer| {
+                    transfer.id == "long"
+                        && transfer.status == "paused"
+                        && transfer.transferred == 16_384
+                })
+            {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+
+    // Complete the competing preferred connection only after the original
+    // connection has real paused work. No capture or OS permissions are used.
+    let (_new_read, mut new_write, new_connection) =
+        attach(shared.clone(), &peer, preferred_initiator).await;
+    tokio::time::timeout(Duration::from_secs(2), old_connection)
+        .await
+        .unwrap()
+        .unwrap();
+    let interrupted = shared.state.lock().unwrap().transfers[0].status.clone();
+    transfer_command(&shared, "long".into(), "cancel")
+        .await
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            let state = shared.state.lock().unwrap();
+            if state.transfers[0].status == "cancelled"
+                || state.error.as_deref() == Some("transfer no longer active")
+            {
+                break;
+            }
+            drop(state);
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    let cancelled = shared.state.lock().unwrap().transfers[0].status.clone();
+    new_write.send(&Message::Bye { v: VERSION }).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(2), new_connection)
+        .await
+        .unwrap()
+        .unwrap();
+    std::fs::remove_dir_all(directory).unwrap();
+    assert_eq!(interrupted, "waiting");
+    assert_eq!(cancelled, "cancelled");
 }

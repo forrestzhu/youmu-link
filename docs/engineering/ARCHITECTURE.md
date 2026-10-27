@@ -1,6 +1,6 @@
 # YM_Link 架构
 
-状态：v0.3（2026-10-27）。macOS 原生实现推进中；现行桌面决策见 [ADR-0002](decisions/0002-native-desktop.md)，线上报文以 [PROTOCOL](PROTOCOL.md) 为准。
+状态：v0.4（2026-10-27）。macOS 原生实现推进中；现行桌面决策见 [ADR-0002](decisions/0002-native-desktop.md)，线上报文以 [PROTOCOL](PROTOCOL.md) 为准。
 
 ## 组件与职责
 
@@ -25,6 +25,7 @@ macOS 原生应用                           Meta Quest 3 / 3S（待集成）
 - **`core/`**：跨平台协议核心。`beacon` / `discovery` 管理 UDP 发现；`identity` / `session` 管理静态身份、持久信任、Noise 与 SPAKE2；`files` 提供 capability 约束的目录授权、分页、metadata 与 range。不依赖 UI 或 HTTP 框架。
 - **`desktop/`**：Rust 桌面业务与平台层。`runtime` 管理单一活动连接、取消、重连、配对、传输及镜像任务；`capture` 调用 macOS ScreenCaptureKit / VideoToolbox；`wire` 定义加密业务消息；C ABI 暴露 `ymlink_create`、`ymlink_command`、`ymlink_snapshot` 与释放函数。
 - **`macos/`**：SwiftUI / AppKit 窗口、控件、目录选择器、中英文展示和系统设置入口。经 C ABI 向 Rust 发命令并读取快照，不实现网络、配对或文件授权规则。Swift Package 链接 Rust 静态库，无 WebView。
+- **错误事件**：本地 C ABI snapshot 的 `error_id` 从 0 开始，每次全局错误递增；`error` 为最后一条错误或 null。原生界面按事件 id 消费，重复轮询不重弹，相同文本的新错误仍可提示。清空错误不制造新事件；该字段不进入网络应用 v3 报文。
 - **`headset_stub`**：独立 Rust 测试进程，验证加密控制 / 文件 / 传输 / 媒体帧接收；临时身份不代表真实头显实现。
 - **游目头显端**：继续在游目 app 内以 Kotlin 实现同一协议，不改用 Rust JNI；原 [ADR-0001](decisions/0001-platform.md) 的双端实现与互操作约束保留。Windows 原生 UI 和采集适配尚待实现。
 

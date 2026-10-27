@@ -49,7 +49,7 @@ final class DesktopModel: ObservableObject {
     private let queue = DispatchQueue(label: "app.youmu.link.backend", qos: .userInitiated)
     private nonisolated let backend = Backend()
     private var timer: DispatchSourceTimer?
-    private var lastSnapshotError: String?
+    private var errorCursor = SnapshotErrorCursor()
     private var didReportReadError = false
 
     init() {
@@ -133,10 +133,9 @@ final class DesktopModel: ObservableObject {
                 guard let self else { return }
                 if snapshot.pairing == nil && value.pairing != nil { pairingDraft = "" }
                 snapshot = value
-                if let message = value.error, message != lastSnapshotError {
+                if let message = errorCursor.consume(value) {
                     error = backendMessage(message)
                 }
-                lastSnapshotError = value.error
                 didReportReadError = false
             }
         } catch {

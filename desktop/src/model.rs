@@ -78,6 +78,7 @@ pub struct Snapshot {
     pub mirror: Mirror,
     pub shares: Vec<Share>,
     pub transfers: Vec<Transfer>,
+    pub error_id: u64,
     pub error: Option<String>,
 }
 
@@ -94,7 +95,21 @@ impl Snapshot {
             mirror: Mirror::default(),
             shares: vec![],
             transfers: vec![],
+            error_id: 0,
             error: None,
+        }
+    }
+
+    pub fn set_error(&mut self, error: impl Into<String>) {
+        self.error_id = self.error_id.wrapping_add(1);
+        self.error = Some(error.into());
+    }
+
+    pub fn interrupt_transfers(&mut self) {
+        for transfer in &mut self.transfers {
+            if ["transferring", "paused"].contains(&transfer.status.as_str()) {
+                transfer.status = "waiting".into();
+            }
         }
     }
 }
