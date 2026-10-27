@@ -1,6 +1,7 @@
-//! macOS capture and hardware H.264 encoding. No media or user paths are logged.
+//! Native capture and H.264 encoding. No media or user paths are logged.
 
 use serde::{Deserialize, Serialize};
+#[cfg(not(target_os = "windows"))]
 use tokio::sync::mpsc::Sender;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1140,17 +1141,22 @@ mod platform {
 #[cfg(target_os = "macos")]
 pub use platform::{displays, permission_granted, Capture};
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
+mod windows;
+#[cfg(target_os = "windows")]
+pub use windows::{displays, permission_granted, Capture};
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 pub fn displays() -> Result<Vec<Display>, String> {
     Ok(Vec::new())
 }
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 pub fn permission_granted() -> bool {
     false
 }
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 pub struct Capture;
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 impl Capture {
     pub fn start(
         _: u32,
@@ -1164,7 +1170,7 @@ impl Capture {
         if let Some(message) = failure.message() {
             return Err(message);
         }
-        Err("Native screen capture is currently available on macOS only".into())
+        Err("Native screen capture is available on Windows and macOS".into())
     }
     pub fn stop(&mut self) {}
     pub fn dimensions(&self) -> (u32, u32) {

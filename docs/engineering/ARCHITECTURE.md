@@ -1,6 +1,6 @@
 # YM_Link 架构
 
-状态：v0.4（2026-10-27）。macOS 原生实现推进中；现行桌面决策见 [ADR-0002](decisions/0002-native-desktop.md)，线上报文以 [PROTOCOL](PROTOCOL.md) 为准。
+状态：v0.5（2026-10-27）。macOS / Windows 原生实现；桌面决策见 [ADR-0002](decisions/0002-native-desktop.md)、[ADR-0003](decisions/0003-windows-native.md)，线上报文以 [PROTOCOL](PROTOCOL.md) 为准。
 
 ## 组件与职责
 
@@ -23,22 +23,23 @@ macOS 原生应用                           Meta Quest 3 / 3S（待集成）
 ```
 
 - **`core/`**：跨平台协议核心。`beacon` / `discovery` 管理 UDP 发现；`identity` / `session` 管理静态身份、持久信任、Noise 与 SPAKE2；`files` 提供 capability 约束的目录授权、分页、metadata 与 range。不依赖 UI 或 HTTP 框架。
-- **`desktop/`**：Rust 桌面业务与平台层。`runtime` 管理单一活动连接、取消、重连、配对、传输及镜像任务；`capture` 调用 macOS ScreenCaptureKit / VideoToolbox；`wire` 定义加密业务消息；C ABI 暴露 `ymlink_create`、`ymlink_command`、`ymlink_snapshot` 与释放函数。
+- **`desktop/`**：Rust 桌面业务与平台层。`runtime` 管理单一活动连接、取消、重连、配对、传输及镜像任务；`capture` 调用 macOS ScreenCaptureKit / VideoToolbox，Windows 适配使用 WGC / Media Foundation / WASAPI；`wire` 定义加密业务消息；C ABI 暴露 `ymlink_create`、`ymlink_command`、`ymlink_snapshot` 与释放函数。macOS 链接 staticlib，Windows 加载 cdylib。
 - **`macos/`**：SwiftUI / AppKit 窗口、控件、目录选择器、中英文展示和系统设置入口。经 C ABI 向 Rust 发命令并读取快照，不实现网络、配对或文件授权规则。Swift Package 链接 Rust 静态库，无 WebView。
+- **`windows/`**：WPF / .NET 8 原生窗口、目录选择与中英文 JSON 资源。每用户单实例，串行后台 ABI 调用与 SafeHandle 保证窗口关闭等待在途读写后释放后端。目录和语言选择由前端提交，权限与业务状态由 Rust 决定。
 - **错误事件**：本地 C ABI snapshot 的 `error_id` 从 0 开始，每次全局错误递增；`error` 为最后一条错误或 null。原生界面按事件 id 消费，重复轮询不重弹，相同文本的新错误仍可提示。清空错误不制造新事件；该字段不进入网络应用 v3 报文。
 - **`headset_stub`**：独立 Rust 测试进程，验证加密控制 / 文件 / 传输 / 媒体帧接收；临时身份不代表真实头显实现。
-- **游目头显端**：继续在游目 app 内以 Kotlin 实现同一协议，不改用 Rust JNI；原 [ADR-0001](decisions/0001-platform.md) 的双端实现与互操作约束保留。Windows 原生 UI 和采集适配尚待实现。
+- **游目头显端**：继续在游目 app 内以 Kotlin 实现同一协议，不改用 Rust JNI；原 [ADR-0001](decisions/0001-platform.md) 的双端实现与互操作约束保留。
 
 ## 连接与数据面
 
 - **发现**：各接口定向广播及全局广播，向全部 UDP 候选端口 47610–47612 发送 CBOR beacon / Query；报文上限 512B、60s 心跳、Query 单播回复带冷却。nonce 用于自回环与重启识别；报文只含分组指纹、nonce、端口与能力，不包含设备身份。当前未实现 mDNS。
 - **TCP**：系统分配业务监听端口并在 beacon 公告，与 UDP 绑定端口分离。双向拨号按 device_id 排序消除重复连接，运行时只保留一个活动设备；无中心服务、无公网中继。
 - **会话**：控制前缀 `YL-CTRL2\0` 后做 Noise XX 完整握手；加密 Hello 校验应用版本 `v:3`、tag、静态公钥及由公钥派生的 device_id。首次桌面显示六位码、头显输入，以 SPAKE2 + HMAC 绑定握手；双方均已持久信任才可免配对重连。
-- **权限**：macOS 私钥存 Keychain；信任元数据与显式授权的共享目录保存在私有应用数据目录。信任撤销取消对应连接；路径只以共享 id + 相对路径跨端传输，文件打开受 capability 根约束。
+- **权限**：macOS 私钥存 Keychain，Windows 存 Credential Manager；失败拒绝启动，不回退明文。信任元数据与显式授权的共享目录保存在私有应用数据目录；Windows 使用当前用户 / SYSTEM 的受保护 ACL 并拒绝 reparse 根。信任撤销取消对应连接；路径只以共享 id + 相对路径跨端传输，文件打开受 capability 根约束。Windows 版本 token 同时绑定文件 ID 和 ChangeTime，避免同大小 / 时间换源混合续传。
 - **文件与传输**：复用已授权的加密控制连接，提供 Shares / List / Stat / Read。16KiB range 支持 seek 与断点；传输为分块 + Ack、暂停 / 取消 / 续传。断线后由接收方核对版本并重新打开原任务，桌面保留等待状态。
 - **镜像**：Rust 调用 ScreenCaptureKit 采集所选显示器及可选系统音频，VideoToolbox 硬件编码 H.264，视频 AVCC 配置与帧、系统 PCM 音频按带时间戳的媒体消息分片进入同一加密连接。使用有界队列、丢帧后请求关键帧；画质档位是采集配置，实际 FPS / 码率由发送数据统计，不将配置值当作实测性能。
 
-当前业务连接复用替代早期三个独立 magic lane 的设计；准确帧界限、字段、错误码与版本见协议 §3–§5。HEVC、Windows Graphics Capture、头显解码与弱网体验仍需后续实现或实测。
+Windows 镜像使用 WGC free-threaded frame pool / D3D11 读回、CPU NV12 缩放与系统同步 H.264 MFT，转换为同样的 AVCC 媒体消息；系统音频使用 WASAPI loopback、48 kHz / stereo f32le。当前未实现异步硬件 MFT，不能沿用 macOS 硬件性能结论。准确字段、错误码与版本见协议 §3–§5；HEVC、头显解码与弱网体验仍需后续实现或实测。
 
 ## 状态与生命周期
 

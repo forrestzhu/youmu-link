@@ -162,6 +162,84 @@ fn invalid_paths_unknown_or_removed_shares_have_the_same_denial() {
     assert!(catalog.shares().is_empty());
 }
 
+#[cfg(windows)]
+#[test]
+fn windows_replacement_with_same_size_and_timestamps_invalidates_resume() {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Storage::FileSystem::{GetFileTime, SetFileTime};
+    let fixture = Fixture::new();
+    let path = fixture.0.join("film.mkv");
+    fs::write(&path, b"old film").unwrap();
+    let catalog = fixture.catalog();
+    let old_version = stat(&catalog, "film.mkv").version.unwrap();
+    let source = fs::File::open(&path).unwrap();
+    unsafe {
+        let mut created = std::mem::zeroed();
+        let mut modified = std::mem::zeroed();
+        assert_ne!(
+            GetFileTime(
+                source.as_raw_handle(),
+                &mut created,
+                std::ptr::null_mut(),
+                &mut modified
+            ),
+            0
+        );
+        fs::write(fixture.0.join("replacement"), b"new film").unwrap();
+        let replacement = fs::OpenOptions::new()
+            .write(true)
+            .open(fixture.0.join("replacement"))
+            .unwrap();
+        assert_ne!(
+            SetFileTime(
+                replacement.as_raw_handle(),
+                &created,
+                std::ptr::null(),
+                &modified
+            ),
+            0
+        );
+    }
+    drop(source);
+    fs::rename(fixture.0.join("replacement"), &path).unwrap();
+    assert_eq!(
+        read(&catalog, "film.mkv", &old_version, 0, 8),
+        FileResponse::Error {
+            code: FileError::Changed
+        }
+    );
+    assert_ne!(stat(&catalog, "film.mkv").version.unwrap(), old_version);
+}
+
+#[cfg(windows)]
+#[test]
+fn windows_ambiguous_names_and_device_paths_are_denied_before_open() {
+    let fixture = Fixture::new();
+    let catalog = fixture.catalog();
+    for path in [
+        "NUL",
+        "nul.mkv",
+        "CON",
+        "sub/COM1.txt",
+        "AUX",
+        "LPT9",
+        "film.",
+        "film ",
+        "sub /file",
+    ] {
+        assert_eq!(
+            catalog.handle(FileRequest::Stat {
+                share_id: "films".into(),
+                path: path.into()
+            }),
+            FileResponse::Error {
+                code: FileError::Denied
+            },
+            "{path}"
+        );
+    }
+}
+
 #[test]
 fn request_limits_bound_allocation_and_noise_frame_size() {
     let fixture = Fixture::new();

@@ -14,6 +14,8 @@
 
 CI workflow 目前配置 Ubuntu / Windows，macOS 原生构建与系统 API 由本地执行。CI 是否实际运行以任务记录为准，workflow 存在不等于测试通过。
 
+Windows CI 另运行 WPF Release 构建与 .NET 控制台测试；无交互屏幕采集，不将 CI 构建视为原生窗口验收。
+
 ## 现有覆盖与边界
 
 - `core/src/beacon.rs`：8 项单测，CBOR 编解码、512B、字段 / 版本 / 长度与 tag_hash。
@@ -57,6 +59,24 @@ python3 scripts/harness.py check --require-pushed
 本机 Apple Silicon / macOS 27.0.1 / Xcode 27 的结果单独记录；macOS 14 是部署目标，旧系统与 Intel 验证为 not-run。`.app` 需检查界面启动、空态、配对取消、目录选择 / 撤销、显示器枚举、录屏权限拒绝与恢复、开始 / 停止镜像和任务控制。
 
 真实屏幕与系统音频采集需系统授权。未取得权限或设备不足时记录限制，不伪造包数、帧率、延迟或同步效果；不能仅凭 Info.plist、部署版本或成功编译推断系统兼容性。
+
+## Windows 本机核验
+
+本次实际主机为 Windows 11 专业版 x64 build 26200、Rust 1.85 / .NET SDK 8.0.405。Windows 10 1903+ 是 WGC 部署目标，旧系统 / ARM64 未验证。界面核验覆盖窗口启动、空态、显示器枚举、中英文切换、重新扫描与关闭；配对 / 文件 / 控制另由真实 TCP 自动测试证明单机逻辑。
+
+- `core/tests/windows_platform.rs`：受保护私有 ACL、重开状态目录、普通文件拒绝、无需 symlink 权限的 junction 拒绝与 capability 越界测试。
+- `core/tests/files.rs`：Windows DOS 设备 / 歧义路径拒绝，同大小 / 相同创建及修改时间换源仍使版本 token 失效。
+- `core::identity::windows_tests`：独立测试凭据创建 / 读取保持同一身份，损坏数据 fail-closed，清理只删除测试条目。
+- runtime 真实 TCP 配对覆盖 Windows / macOS / headset-test 与双向发起角色；反复 Backend 创建与销毁，检测 WinRT 生命周期回归。
+- `capture::windows::tests`：NV12 / 尺寸边界、AnnexB→AVCC / avcC、背压关键帧与故障保留、反复新 COM apartment 查询。合成帧原生编码与实际采集分别显式 ignored，默认门禁不录屏。
+
+```powershell
+dotnet run --project windows/Tests/YM_Link.Tests.csproj -c Release
+python3 scripts/build_windows.py --smoke-test
+cargo test --locked -p ymlink-desktop native_encoder_emits_avcc_keyframe_without_screen_capture -- --ignored --nocapture
+```
+
+真实采集用例 `real_display_and_system_audio_capture_stop_cleanly` 还要求显式 `YM_LINK_CAPTURE_TEST=1`，会实际读取屏幕与系统音频，未经本机确认不运行；本轮 not-run。WASAPI 端点静音时可无音频包，不能据此认定音画同步已验证。CPU 编码路径的实际分辨率 / FPS、真实 LAN / Quest 播放和弱网验收分别记录，不从合成帧推断。
 
 ## 证据纪律
 

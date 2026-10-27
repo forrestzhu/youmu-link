@@ -57,7 +57,7 @@ Query  = { v: 1, query: true, tag_hash: octets(16), session_nonce: octets(16) }
 
 - TCP 控制连接前缀为 `YL-CTRL2\0`（9 字节）；其后每帧为大端 `u32` 长度 + 消息。Noise 握手帧上限 4096B，传输密文上限 65535B（明文最多 65519B）；零长度、超限或截断即关闭连接。完整握手限时 5s。
 - Noise `Noise_XX_25519_ChaChaPoly_SHA256`，prologue `b"youmu-link-v2"`；每次 TCP 连接完整握手。业务不会复用旧会话 token。双方独立、顺序递增的 Noise nonce 从 0 开始；不发送明文业务内容。
-- 身份仅使用 Noise X25519 静态密钥；`device_id = hex(SHA256(noise_pub)[0..16])`。本阶段不做组内信任事件传播，因此删除未使用的 Ed25519 身份；macOS 私钥保存于 OS Keychain（service `app.youmu.link`，account `device-identity-v2`），Keychain 失败不得回退明文文件。
+- 身份仅使用 Noise X25519 静态密钥；`device_id = hex(SHA256(noise_pub)[0..16])`。本阶段不做组内信任事件传播，因此删除未使用的 Ed25519 身份；macOS 私钥保存于 OS Keychain，Windows 保存于 Credential Manager（service `app.youmu.link`，account `device-identity-v2`），系统凭据存储失败不得回退明文文件。信任与目录配置置于当前用户私有目录；Windows 设置仅当前用户与 SYSTEM 可访问的受保护继承 ACL，并拒绝 junction / reparse 根。
 - 首个传输帧为 CBOR Hello：`{v:3,tag_hash,device_id,public_key,name,platform,listen_port}`。`tag_hash` 为 octets(16)、`public_key` 为 octets(32)，device_id 为 32 个小写十六进制字符，名称 1–128 UTF-8 字节、平台 1–32 UTF-8 字节且均无控制字符、端口非零；未知字段拒绝。Hello 内的公钥与 Noise 握手认证的 remote static 必须完全相同，device_id 必须由该公钥派生；tag_hash 必须等于本机组指纹。
 - TCP 监听 IPv4；产品模式只接受 / 拨号实际接口同子网的可单播 IPv4（包括企业地址段和链路本地地址），loopback 仅显式测试配置允许。最多 4 个入站连接任务，单个主动拨号流程。双向竞争时同一身份对以 `initiator == (local.device_id < remote.device_id)` 确定首选方向，仅保留一个 active；不同设备不能顶替当前 active。
 - 已配对公钥不匹配、已绑定端点出现新身份或自动重连目标 device_id 不符均拒绝，不以新 id 静默绕过旧信任。主动连接同时校验实际拨号端点的 pin 与对端公告端点，Hello 中的 listen_port 不能替换实际拨号地址来绕过校验；公告端点用于后续回拨。原生界面的显式断开禁止该身份入站 / 自动重连，直到用户主动连接；断线后的已信任设备每 5s 重试一个可用候选端点，未信任设备始终需要用户连接及短码。
@@ -65,7 +65,7 @@ Query  = { v: 1, query: true, tag_hash: octets(16), session_nonce: octets(16) }
 ### 3.2 首次配对与重连
 
 - Hello 后双方发送加密 `{kind:"known",v:3,known:bool}`；只有双方都已持久信任对方的本次 Noise 静态公钥，才可跳过首次配对。任何一端忘记信任都必须重新配对；单方宣称 `known=true` 不足以放行业务。
-- 桌面端显示随机均匀六位数字码，头显端输入。显示 / 输入角色独立于 TCP 发起方；当前两台 macOS 桌面互测时，TCP responder 显示、initiator 输入。平台标识 `headset-test` 的 Rust 测试对端始终输入桌面显示的码。码有效期 300s（单调时钟）；取消、过期、错误码或连接断开立即废弃本次配对。
+- 桌面端显示随机均匀六位数字码，头显端输入。显示 / 输入角色独立于 TCP 发起方；Windows / macOS 桌面互测时，TCP responder 显示、initiator 输入。平台标识 `headset-test` 的 Rust 测试对端始终输入桌面显示的码。码有效期 300s（单调时钟）；取消、过期、错误码或连接断开立即废弃本次配对。
 - 配对使用 SPAKE2 Ed25519Group：显示方 `start_a`，输入方 `start_b`。身份串分别为 `b"youmu-link-display-v2" || handshake_hash` 与 `b"youmu-link-enter-v2" || handshake_hash`，将 PAKE 结果绑定本次 Noise 握手，抵抗中继和跨连接重用。先各发 `{kind:"spake",v:3,message:octets(33)}`，再计算共享 key。
 - 双向 key confirmation 使用 HMAC-SHA256：key 为 SPAKE2 输出，消息分别为 `b"youmu-link-confirm-display-v2" || handshake_hash` 与 `b"youmu-link-confirm-enter-v2" || handshake_hash`；传输 `{kind:"confirm",v:3,mac:octets(32)}`，常量时间验 MAC，随后双方发送 `{kind:"accepted",v:3}`。任何失败即关闭连接、不保存信任、不开放文件或镜像业务。
 - 运行时按来源 IP 跨连接限制 60s 内最多 5 次首次配对；每条连接仅允许一次 SPAKE2 尝试。限速在生成 / 展示新配对码前检查，避免攻击者无限重连猜码。
@@ -104,7 +104,7 @@ FileResponse = {kind:"shares",shares:[ShareInfo]}
 ### 4.2 分页、流式读取与断点
 
 - List 按 UTF-8 文件名的字节序升序，cursor 为上一页最后一个已返回文件名（exclusive），limit 必须为 1–256。单页另设保守 48KiB 内容预算，防止长路径列表超出 Noise 明文上限；`next_cursor=null` 表示本次枚举已结束。并发目录增删采用尽力而为分页，需要一致视图时客户端重扫。
-- Stat 的普通文件 `version` 是不透明的 64 字符 SHA-256 token；macOS / Unix 以同一文件句柄的设备号、inode、大小、mtime 与 ctime 纳秒值派生，目录为 null。它是变化检测 token，不是文件内容哈希；不承诺本地恶意写入者保留所有 metadata 时的内容完整性。
+- Stat 的普通文件 `version` 是不透明的 64 字符 SHA-256 token；macOS / Unix 以同一文件句柄的设备号、inode、大小、mtime 与 ctime 纳秒值派生；Windows 以同一 capability 文件句柄的 volume serial、file index、大小、创建 / 修改时间与 ChangeTime 派生。目录为 null。它是变化检测 token，不是文件内容哈希；不承诺本地恶意写入者保留所有 metadata 时的内容完整性。Windows 拒绝 DOS 设备名及尾随点 / 空格等歧义组件；不会将这些请求映射为设备或其他路径。
 - Read 要求 version 与当前同 fd metadata 相同，offset 不大于大小，length 为 1–16384 字节。读取后再次复核同 fd metadata，变化 / 替换 / 截短均返回 `changed` 并丢弃本块。数据按剩余大小截短；offset 等于大小返回空数据与 eof=true。单块最坏 CBOR uint 数组编码仍小于 §3 的 65519B 明文限制。
 - 流式播放使用 Read range / seek；当前桌面实现提供加密范围读取服务，Quest Media3 的实际解码 / 播放仍为 not-run。接收端处理落盘、文件名冲突与原子完成，本服务只读，不允许远端写入电脑。下载使用下节停等传输。
 - 错误码为 `denied` / `invalid_request` / `unavailable` / `not_file` / `not_directory` / `changed`。未授权 share、非法路径与越界访问返回 denied，错误不含本机路径或授权外文件存在性。客户端不得把错误正文作为路径日志记录。
@@ -161,8 +161,12 @@ FileResponse = {kind:"shares",shares:[ShareInfo]}
 
 ### 5.3 系统音频与错误
 
+- Windows 使用 Windows Graphics Capture / D3D11 采集本机确认的显示器、CPU NV12 缩放与系统 Media Foundation 同步 H.264 编码器，输出同样的 avcC 配置与四字节 NAL 长度帧；当前不是异步硬件 MFT。显示器 ID 取系统 DISPLAYn 的 n，不截断 HMONITOR 指针。显示器移除或尺寸变化报错并要求本机重新开始，不将其他屏幕内容自动当成原授权来源。所选档位及背压规则同 §5.2，实际吞吐与延迟待实测。
+- Windows NV12 为 BT.601 limited；系统编码器未输出对应色彩描述时，在已验证的 Main SPS 中显式写入 VUI matrix=6 / full_range=false，primaries / transfer 保持 unspecified=2。配置与帧内 SPS 一致处理，保留其他 SPS / VUI 字段，不依赖接收端按 HD / SD 猜矩阵；非法 / 不支持的 SPS 明确失败。
+
 - 用户可选择系统音频。ScreenCaptureKit 请求 48000Hz、双声道系统音频（排除本进程声音），实际采样格式逐包核验为线性 PCM 32 位浮点、小端、48000Hz、2ch；平面音频转为交错排列，未知格式报错，不把未知数据误标为 PCM。
 - `audio_config` 的 codec 为 `pcm-f32le`，data 为 UTF-8 JSON `{"sample_rate":48000,"channels":2,"sample_format":"f32le","interleaved":true}`；`audio` 为左右声道交错 f32le 原始样本（每帧 8B）。关闭音频时不注册音频 output、不发送音频包。
+- Windows 系统音频使用默认渲染端点 WASAPI shared loopback，请求 48 kHz / stereo / f32le 并启用系统采样率转换；静音标志产生零样本，无效时间戳包丢弃。WGC 的 SystemRelativeTime 与 WASAPI 的 QPC 100ns 时间基于同一 epoch 转为微秒。端点不可用 / 格式不支持明确失败，可在本机关闭系统音频后重试；不请求麦克风、不自行改变默认音频设备。Windows loopback 包括所选默认渲染端点的声音，不承诺排除本进程声音。
 - 异步采集 / 编码失败以内部 `kind=error` 包向运行时上报（data 为不含文件路径的 UTF-8 错误），由运行时停止镜像并更新 UI；该内部包不作为视频帧发送给对端。拥塞可丢弃完整音频包，接收端按 PTS 跳过空隙。
 - 真实 Quest 解码、音画同步、延迟 / 帧率与弱网体验仍需双端实测；单机硬件编码测试只证明本机采集 / 编码 API 路径。
 

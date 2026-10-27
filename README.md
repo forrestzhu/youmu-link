@@ -12,7 +12,7 @@ YM_Link 是 [Youmu VR Player](https://github.com/forrestzhu/youmu)（游目）�
 
 ## 仓库状态
 
-- 阶段：用户已授权基于 demo 实现，macOS 原生客户端开发中（[YML-002](docs/tasks/YML-002-macos-native.md)）。SwiftUI / AppKit 负责界面，Rust 负责发现、加密配对、授权文件服务、传输与屏幕采集编码；架构见 [ADR-0002](docs/engineering/decisions/0002-native-desktop.md)。Windows 原生界面与游目头显侧 YM_Link 集成尚未实现。
+- 阶段：macOS 使用 SwiftUI / AppKit（[YML-002](docs/tasks/YML-002-macos-native.md)），Windows 使用 WPF / .NET 8（[YML-003](docs/tasks/YML-003-windows-native.md)）；Rust 共用发现、加密配对、授权文件服务、传输与镜像控制，采集编码按平台适配。决策见 [ADR-0002](docs/engineering/decisions/0002-native-desktop.md) / [ADR-0003](docs/engineering/decisions/0003-windows-native.md)。游目头显侧 YM_Link v3 集成与真实设备验收仍待推进。
 - 验证：Rust core 39 项回归通过（含独立发现向量与应用版本拒绝）；桌面后端已有真实 TCP 的单机配对、文件 range、传输控制与重连集成验证。macOS `.app` 构建和本地开发签名已通过，本机窗口已由用户与 CUA 确认，原生配对与 4 MiB 下载已实测；双机 LAN、真实 Quest 播放 / 镜像与音画同步为 **not-run**，不以测试桩代替设备验收。
 - 许可：**暂闭源**（私有仓库，无 LICENSE 文件）。后续计划转 GitLab 分发，并在合适时机开源；在此之前不得公开仓库或对外分发。
 - 当前进度：[STATUS](docs/STATUS.md)；文档索引：[docs/README](docs/README.md)。
@@ -22,14 +22,29 @@ YM_Link 是 [Youmu VR Player](https://github.com/forrestzhu/youmu)（游目）�
 | 路径 | 内容 |
 | --- | --- |
 | `core/` | `ymlink-core`：UDP 发现、Noise / SPAKE2、身份与信任、授权目录与文件 range 服务 |
-| `desktop/` | `ymlink-desktop`：Rust 桌面状态、连接 / 传输、macOS 采集与硬件 H.264 编码、C ABI、头显测试桩 |
+| `desktop/` | `ymlink-desktop`：Rust 桌面状态、连接 / 传输、macOS / Windows 采集编码、C ABI、头显测试桩 |
 | `macos/` | SwiftUI / AppKit 原生界面、目录选择器、中英文资源与 Swift 模型测试 |
-| `scripts/` | harness 任务闭环、仓库检查与本地 `.app` 构建 |
+| `windows/` | WPF 原生界面、中英文资源、模型 / 本地化 / ABI 生命周期测试 |
+| `scripts/` | harness 任务闭环、仓库检查、macOS `.app` / Windows 开发目录构建 |
 | `docs/` | 产品定义、架构、协议、测试策略与任务记录 |
 | `design/prototypes/` | 可点击 demo 原型 |
 | `.github/workflows/` | CI（仓库检查 + Rust 矩阵测试） |
 
 ## 快速开始
+
+Windows 需要 Rust MSVC 工具链、.NET 8 SDK 与 Python 3.10+。当前构建 win-x64，WGC 显示器采集目标 Windows 10 1903+；本机验证为 Windows 11 专业版 x64 build 26200，其他系统 / ARM64 not-run。
+
+```powershell
+# 默认自包含 .NET 运行时的本地未签名开发目录；检查生产 DLL 启动与关闭
+python3 scripts/build_windows.py --smoke-test
+./dist/YM_Link/YM_Link.exe
+
+# 单独原生模型 / 中英文 / 生命周期检查
+dotnet run --project windows/Tests/YM_Link.Tests.csproj
+# 加 --debug --framework-dependent 可缩短开发构建；需要 .NET 8 Windows Desktop Runtime
+```
+
+Windows 窗口可切换系统语言 / English / 简体中文，设备面板显示 TCP / UDP 端口并提供手动 IPv4:端口连接。发现不到时先核对同一局域网、访客网隔离与系统对应用的专用网络访问权限；应用不会自动改防火墙。选择“授权文件夹”后才开放该目录，未配对设备不可访问。录屏首次开始弹出本机确认，系统音频可关闭。当前 Windows 使用系统软件 H.264 编码与 CPU 缩放；不把配置档位当作实际性能，不承诺硬件编码、Quest 播放或延迟达标。开发目录不是安装器或已签名分发包。
 
 macOS 构建目标为 **macOS 14+**。当前只在 **Apple Silicon、macOS 27.0.1、Xcode 27** 开发机验证；尚未在 macOS 14 或 Intel Mac 上运行，不能据此承诺这些环境已通过兼容性验收。需要本机 Rust / Cargo、Python 3.10+ 与 Xcode 的 Swift 工具链。
 

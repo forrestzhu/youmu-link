@@ -35,3 +35,13 @@ jobs:
         run: cargo fmt --all --check
       - name: Tests
         run: cargo test --workspace --all-targets
+      - uses: actions/setup-dotnet@v4
+        if: runner.os == 'Windows'
+        with:
+          dotnet-version: '8.0.x'
+      - name: Windows native models and localization
+        if: runner.os == 'Windows'
+        run: dotnet run --project windows/Tests/YM_Link.Tests.csproj
+      - name: Windows native build
+        if: runner.os == 'Windows'
+        run: dotnet build windows/YM_Link/YM_Link.csproj --configuration Release

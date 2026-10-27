@@ -55,10 +55,17 @@ impl Identity {
         }
     }
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(windows)]
+    pub fn load_or_create(_state_dir: &Path) -> Result<Self> {
+        let entry = keyring::Entry::new("app.youmu.link", "device-identity-v2")
+            .map_err(|_| Error::Storage("cannot open identity Credential Manager entry".into()))?;
+        load_windows_identity(&entry)
+    }
+
+    #[cfg(not(any(target_os = "macos", windows)))]
     pub fn load_or_create(_state_dir: &Path) -> Result<Self> {
         Err(Error::Storage(
-            "persistent identity is currently supported on macOS only".into(),
+            "persistent identity requires macOS or Windows".into(),
         ))
     }
 
@@ -72,6 +79,30 @@ impl Identity {
 
     pub(crate) fn secret_key(&self) -> &[u8] {
         self.secret.as_ref()
+    }
+}
+
+#[cfg(windows)]
+fn load_windows_identity(entry: &keyring::Entry) -> Result<Identity> {
+    match entry.get_secret() {
+        Ok(secret) => {
+            let secret = Zeroizing::new(secret);
+            let bytes: [u8; 32] = secret
+                .as_slice()
+                .try_into()
+                .map_err(|_| Error::Storage("invalid identity Credential Manager entry".into()))?;
+            Ok(Identity::from_secret(bytes))
+        }
+        Err(keyring::Error::NoEntry) => {
+            let identity = Identity::generate()?;
+            entry
+                .set_secret(identity.secret.as_ref())
+                .map_err(|_| Error::Storage("cannot save identity in Credential Manager".into()))?;
+            Ok(identity)
+        }
+        Err(_) => Err(Error::Storage(
+            "cannot read identity from Credential Manager".into(),
+        )),
     }
 }
 
@@ -214,23 +245,8 @@ impl TrustStore {
             .parent()
             .filter(|parent| !parent.as_os_str().is_empty())
             .ok_or_else(|| Error::Storage("trust store needs an application directory".into()))?;
-        fs::create_dir_all(parent)
-            .map_err(|_| Error::Storage("cannot create trust directory".into()))?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            if fs::symlink_metadata(parent)
-                .map_err(|_| Error::Storage("cannot inspect trust directory".into()))?
-                .file_type()
-                .is_symlink()
-            {
-                return Err(Error::Storage(
-                    "trust directory must not be a symlink".into(),
-                ));
-            }
-            fs::set_permissions(parent, fs::Permissions::from_mode(0o700))
-                .map_err(|_| Error::Storage("cannot secure trust directory".into()))?;
-        }
+        crate::storage::private_directory(parent)
+            .map_err(|_| Error::Storage("cannot secure trust directory".into()))?;
         let temp = parent.join(format!(".trust-{:016x}.tmp", rand::random::<u64>()));
         let result = (|| -> Result<()> {
             let mut options = OpenOptions::new();
@@ -256,5 +272,29 @@ impl TrustStore {
             let _ = fs::remove_file(temp);
         }
         result
+    }
+}
+
+#[cfg(all(test, windows))]
+mod windows_tests {
+    use super::*;
+    #[test]
+    fn credential_identity_survives_reload_and_rejects_corruption() {
+        let account = format!("test-{:016x}", rand::random::<u64>());
+        let entry = keyring::Entry::new("app.youmu.link.tests", &account).unwrap();
+        struct Cleanup(keyring::Entry);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = self.0.delete_credential();
+            }
+        }
+        let cleanup = Cleanup(entry);
+        let first = load_windows_identity(&cleanup.0).unwrap();
+        let second = load_windows_identity(&cleanup.0).unwrap();
+        assert_eq!(first.public_key(), second.public_key());
+        assert_eq!(cleanup.0.get_secret().unwrap().len(), 32);
+        cleanup.0.set_secret(b"corrupt").unwrap();
+        assert!(load_windows_identity(&cleanup.0).is_err());
+        assert_eq!(cleanup.0.get_secret().unwrap(), b"corrupt");
     }
 }

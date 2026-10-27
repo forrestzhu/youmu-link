@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../YM_Link/YM_Link.csproj" />
+    <EmbeddedResource Include="../YM_Link/App.xaml" Link="App.xaml" />
+    <EmbeddedResource Include="../YM_Link/MainWindow.xaml" Link="MainWindow.xaml" />
+    <EmbeddedResource Include="../../desktop/src/capture/windows.rs" Link="WindowsCaptureErrors.rs" />
+  </ItemGroup>
+</Project>

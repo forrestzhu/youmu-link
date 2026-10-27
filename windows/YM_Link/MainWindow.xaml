@@ -1,0 +1,131 @@
+<Window x:Class="YM_Link.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="YM_Link" Width="1120" Height="760" MinWidth="820" MinHeight="580" WindowStartupLocation="CenterScreen" Loaded="WindowLoaded" Closing="WindowClosing">
+  <Grid>
+    <Grid.ColumnDefinitions><ColumnDefinition Width="264" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+    <Border Background="{DynamicResource SidebarSurface}" BorderBrush="{DynamicResource Hairline}" BorderThickness="0,0,1,0">
+      <Grid Margin="18,22,18,16">
+        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+        <StackPanel Margin="0,0,0,24">
+          <TextBlock Text="YM_Link" FontSize="24" FontWeight="SemiBold" />
+          <TextBlock x:Name="DeviceName" Style="{StaticResource Secondary}" Margin="0,4,0,0" TextTrimming="CharacterEllipsis" />
+        </StackPanel>
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+          <StackPanel>
+            <DockPanel Margin="0,0,0,10"><TextBlock Text="{DynamicResource devices}" FontWeight="SemiBold" /><TextBlock x:Name="PeerCount" TextAlignment="Right" Style="{StaticResource Secondary}" /></DockPanel>
+            <TextBlock x:Name="DiscoveryHint" Text="{DynamicResource same_network_hint}" Style="{StaticResource Secondary}" Margin="0,0,0,12" />
+            <ListBox x:Name="PeerList" SelectionChanged="PeerSelectionChanged" Background="Transparent" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled" AutomationProperties.Name="{DynamicResource devices}">
+              <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem"><Setter Property="Padding" Value="8,10" /><Setter Property="Margin" Value="0,0,0,6" /><Setter Property="HorizontalContentAlignment" Value="Stretch" /></Style></ListBox.ItemContainerStyle>
+              <ListBox.ItemTemplate><DataTemplate><StackPanel>
+                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+                <TextBlock Text="{Binding Address}" FontSize="12" Margin="0,4,0,0" />
+                <TextBlock Text="{Binding StatusText}" FontSize="12" Margin="0,5,0,0" />
+                <TextBlock Text="{Binding TrustText}" FontSize="11" Margin="0,3,0,0" />
+              </StackPanel></DataTemplate></ListBox.ItemTemplate>
+            </ListBox>
+            <TextBlock x:Name="DeviceHint" Text="{DynamicResource device_details}" Style="{StaticResource Secondary}" Margin="0,4,0,10" />
+            <WrapPanel Margin="0,0,0,6"><Button x:Name="ConnectButton" Content="{DynamicResource connect}" Click="ConnectPeer" IsEnabled="False" /><Button x:Name="DisconnectButton" Content="{DynamicResource disconnect}" Click="DisconnectPeer" IsEnabled="False" /></WrapPanel>
+            <Button x:Name="ForgetButton" Content="{DynamicResource forget_device}" Click="ForgetPeer" IsEnabled="False" HorizontalAlignment="Left" Margin="0,0,0,20" />
+            <Button x:Name="RescanButton" Content="{DynamicResource rescan}" Click="Rescan" HorizontalAlignment="Left" Margin="0,0,0,12" />
+            <Expander Header="{DynamicResource connect_address}" Margin="0,0,0,20">
+              <StackPanel Margin="0,10,2,0">
+                <TextBlock Text="{DynamicResource address_hint}" Style="{StaticResource Secondary}" />
+                <TextBlock Text="{DynamicResource firewall_hint}" Style="{StaticResource Secondary}" Margin="0,8,0,0" />
+                <TextBox x:Name="AddressDraft" MaxLength="64" Margin="0,10,0,5" KeyDown="AddressKeyDown" AutomationProperties.Name="{DynamicResource device_address}" />
+                <TextBlock Text="{DynamicResource manual_address_example}" Style="{StaticResource Secondary}" Margin="0,0,0,8" />
+                <Button x:Name="AddressConnectButton" Content="{DynamicResource connect}" Click="ConnectAddress" HorizontalAlignment="Left" />
+              </StackPanel>
+            </Expander>
+          </StackPanel>
+        </ScrollViewer>
+        <StackPanel Grid.Row="2" Margin="0,16,0,0">
+          <TextBlock Text="{DynamicResource language}" Style="{StaticResource Secondary}" Margin="0,0,0,5" />
+          <ComboBox x:Name="LanguageChoice" SelectionChanged="LanguageChanged" AutomationProperties.Name="{DynamicResource language}">
+            <ComboBoxItem Tag="system" Content="{DynamicResource system_language}" /><ComboBoxItem Tag="en" Content="{DynamicResource language_english}" /><ComboBoxItem Tag="zh-Hans" Content="{DynamicResource language_chinese}" />
+          </ComboBox>
+          <TextBlock Text="{DynamicResource local_private}" Style="{StaticResource Secondary}" Margin="0,14,0,0" />
+        </StackPanel>
+      </Grid>
+    </Border>
+    <Grid Grid.Column="1">
+      <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+      <StackPanel Margin="28,24,28,18">
+        <TextBlock Text="{DynamicResource app_description}" Style="{StaticResource Secondary}" />
+        <Border x:Name="ErrorPanel" Visibility="Collapsed" Padding="12" Background="{DynamicResource ErrorSurface}" CornerRadius="8" Margin="0,14,0,0">
+          <DockPanel><Button DockPanel.Dock="Right" Content="{DynamicResource dismiss}" Click="DismissError" Margin="12,0,0,0" VerticalAlignment="Center" /><TextBlock x:Name="ErrorText" Foreground="{DynamicResource ErrorInk}" VerticalAlignment="Center" AutomationProperties.LiveSetting="Assertive" /></DockPanel>
+        </Border>
+      </StackPanel>
+      <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="28,0,28,28">
+        <StackPanel>
+          <Border x:Name="PairingPanel" Visibility="Collapsed" Padding="18" Background="{DynamicResource SoftSurface}" CornerRadius="10" Margin="0,0,0,24">
+            <StackPanel>
+              <TextBlock Text="{DynamicResource pair_device}" FontSize="19" FontWeight="SemiBold" />
+              <TextBlock x:Name="PairingPeer" Margin="0,6,0,0" />
+              <TextBlock x:Name="PairingHint" Style="{StaticResource Secondary}" Margin="0,8,0,12" />
+              <TextBox x:Name="PairingDraft" FontFamily="Consolas" FontSize="32" MaxLength="6" TextAlignment="Center" MaxWidth="280" HorizontalAlignment="Left" TextChanged="PairingTextChanged" KeyDown="PairingKeyDown" AutomationProperties.Name="{DynamicResource pairing_code}" />
+              <TextBlock x:Name="PairingExpiry" Style="{StaticResource Secondary}" Margin="0,10,0,12" />
+              <WrapPanel><Button Content="{DynamicResource cancel}" Click="CancelPairing" /><Button x:Name="PairConfirmButton" Content="{DynamicResource confirm}" Click="ConfirmPairing" Style="{StaticResource PrimaryButton}" /><TextBlock x:Name="WaitingPair" Text="{DynamicResource waiting_confirmation}" Style="{StaticResource Secondary}" VerticalAlignment="Center" /></WrapPanel>
+            </StackPanel>
+          </Border>
+          <Border x:Name="ConnectionNotice" Background="{DynamicResource SoftSurface}" CornerRadius="8" Padding="15" Margin="0,0,0,24">
+            <StackPanel><TextBlock x:Name="ConnectionTitle" FontWeight="SemiBold" /><TextBlock Text="{DynamicResource connection_hint}" Style="{StaticResource Secondary}" Margin="0,5,0,0" /></StackPanel>
+          </Border>
+          <TabControl Background="Transparent" BorderThickness="0" Padding="0,22,0,0" AutomationProperties.Name="{DynamicResource workspace}">
+            <TabItem Header="{DynamicResource mirror}">
+              <StackPanel>
+                <TextBlock Text="{DynamicResource mirror}" FontSize="25" FontWeight="SemiBold" />
+                <TextBlock Text="{DynamicResource mirror_subtitle}" Style="{StaticResource Secondary}" Margin="0,6,0,24" />
+                <DockPanel Margin="0,0,0,12"><Button x:Name="RefreshButton" DockPanel.Dock="Right" Content="{DynamicResource refresh}" Click="RefreshDisplays" Margin="12,0,0,0" /><TextBlock Text="{DynamicResource choose_display}" FontWeight="SemiBold" VerticalAlignment="Center" /></DockPanel>
+                <ComboBox x:Name="DisplayChoice" DisplayMemberPath="Label" SelectionChanged="DisplaySelectionChanged" AutomationProperties.Name="{DynamicResource choose_display}" />
+                <Border Background="{DynamicResource SoftSurface}" CornerRadius="10" Padding="24" Margin="0,14,0,0">
+                  <StackPanel>
+                    <Viewbox Height="72" Width="96" Margin="0,4,0,15" IsHitTestVisible="False"><Path Data="M 3,3 L 69,3 L 69,45 L 3,45 Z M 36,45 L 36,57 M 23,57 L 49,57" Stroke="{DynamicResource SecondaryInk}" StrokeThickness="2" StrokeLineJoin="Round" /></Viewbox>
+                    <TextBlock x:Name="DisplaySummary" TextAlignment="Center" FontWeight="SemiBold" FontSize="16" />
+                    <TextBlock x:Name="DisplayHint" TextAlignment="Center" Style="{StaticResource Secondary}" Margin="0,6,0,4" />
+                  </StackPanel>
+                </Border>
+                <Border BorderBrush="{DynamicResource Hairline}" BorderThickness="0,1,0,0" Margin="0,24,0,0" Padding="0,20,0,0">
+                  <WrapPanel>
+                    <StackPanel Width="220" Margin="0,0,24,16"><TextBlock Text="{DynamicResource system_audio}" FontWeight="SemiBold" Margin="0,0,0,10" /><CheckBox x:Name="AudioChoice" IsChecked="True" Content="{DynamicResource share_audio}" MinHeight="32" VerticalContentAlignment="Center" /></StackPanel>
+                    <StackPanel Width="200" Margin="0,0,0,16"><TextBlock Text="{DynamicResource quality}" FontWeight="SemiBold" Margin="0,0,0,8" /><ComboBox x:Name="QualityChoice" SelectedIndex="1" AutomationProperties.Name="{DynamicResource quality}"><ComboBoxItem Tag="smooth" Content="{DynamicResource quality_smooth}" /><ComboBoxItem Tag="balanced" Content="{DynamicResource quality_balanced}" /><ComboBoxItem Tag="quality" Content="{DynamicResource quality_quality}" /></ComboBox></StackPanel>
+                  </WrapPanel>
+                </Border>
+                <WrapPanel Margin="0,8,0,12"><Button x:Name="StartButton" Content="{DynamicResource start_mirror}" Click="StartMirror" Style="{StaticResource PrimaryButton}" /><Button x:Name="PauseButton" Content="{DynamicResource pause_mirror}" Click="PauseMirror" /><Button x:Name="ResumeButton" Content="{DynamicResource resume_mirror}" Click="ResumeMirror" Style="{StaticResource PrimaryButton}" /><Button x:Name="StopButton" Content="{DynamicResource stop_mirror}" Click="StopMirror" /></WrapPanel>
+                <TextBlock x:Name="MirrorHint" Style="{StaticResource Secondary}" />
+                <TextBlock x:Name="MirrorError" Foreground="{DynamicResource ErrorInk}" Margin="0,10,0,0" />
+                <TextBlock Text="{DynamicResource screen_permission}" Style="{StaticResource Secondary}" Margin="0,18,0,0" />
+              </StackPanel>
+            </TabItem>
+            <TabItem Header="{DynamicResource shares}">
+              <StackPanel>
+                <TextBlock Text="{DynamicResource shares}" FontSize="25" FontWeight="SemiBold" /><TextBlock Text="{DynamicResource shares_subtitle}" Style="{StaticResource Secondary}" Margin="0,6,0,24" />
+                <DockPanel Margin="0,0,0,14"><Button x:Name="AddShareButton" DockPanel.Dock="Right" Content="{DynamicResource add_share}" Click="AddShare" Style="{StaticResource PrimaryButton}" Margin="12,0,0,0" /><TextBlock Text="{DynamicResource authorized_folders}" FontWeight="SemiBold" VerticalAlignment="Center" /></DockPanel>
+                <TextBlock Text="{DynamicResource share_boundary}" Style="{StaticResource Secondary}" Margin="0,0,0,16" />
+                <StackPanel x:Name="NoShares" Margin="0,30,0,30"><TextBlock Text="{DynamicResource no_shares}" FontSize="18" FontWeight="SemiBold" /><TextBlock Text="{DynamicResource no_shares_hint}" Style="{StaticResource Secondary}" Margin="0,8,0,0" /></StackPanel>
+                <ListBox x:Name="ShareList" Background="Transparent" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled" AutomationProperties.Name="{DynamicResource authorized_folders}">
+                  <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem"><Setter Property="HorizontalContentAlignment" Value="Stretch" /><Setter Property="Padding" Value="0,12" /></Style></ListBox.ItemContainerStyle>
+                  <ListBox.ItemTemplate><DataTemplate><DockPanel><Button DockPanel.Dock="Right" Content="{DynamicResource remove}" Tag="{Binding Id}" Click="RemoveShare" Margin="12,0,0,0" VerticalAlignment="Center" /><StackPanel><TextBlock Text="{Binding Name}" FontWeight="SemiBold" /><TextBox Text="{Binding Path, Mode=OneWay}" IsReadOnly="True" BorderThickness="0" Background="Transparent" FontSize="12" Padding="0,4,0,0" MinHeight="0" TextWrapping="Wrap" AutomationProperties.Name="{Binding Name}" /></StackPanel></DockPanel></DataTemplate></ListBox.ItemTemplate>
+                </ListBox>
+              </StackPanel>
+            </TabItem>
+            <TabItem Header="{DynamicResource transfers}">
+              <StackPanel>
+                <TextBlock Text="{DynamicResource transfers}" FontSize="25" FontWeight="SemiBold" /><TextBlock Text="{DynamicResource transfers_subtitle}" Style="{StaticResource Secondary}" Margin="0,6,0,24" />
+                <StackPanel x:Name="NoTransfers" Margin="0,30,0,30"><TextBlock Text="{DynamicResource no_transfers}" FontSize="18" FontWeight="SemiBold" /><TextBlock Text="{DynamicResource no_transfers_hint}" Style="{StaticResource Secondary}" Margin="0,8,0,0" /></StackPanel>
+                <ItemsControl x:Name="TransferList">
+                  <ItemsControl.ItemTemplate><DataTemplate><Border BorderBrush="{DynamicResource Hairline}" BorderThickness="0,0,0,1" Padding="0,0,0,18" Margin="0,0,0,18"><StackPanel>
+                    <DockPanel><TextBlock Text="{Binding StatusText}" DockPanel.Dock="Right" Margin="12,0,0,0" FontSize="12" /><TextBlock Text="{Binding Name}" FontWeight="SemiBold" /></DockPanel>
+                    <ProgressBar Value="{Binding Fraction, Mode=OneWay}" Maximum="1" Height="6" Margin="0,12,0,10" AutomationProperties.Name="{Binding Name}" />
+                    <TextBlock Text="{Binding SizeText}" Style="{StaticResource Secondary}" />
+                    <TextBlock Text="{Binding Hint}" Style="{StaticResource Secondary}" Margin="0,4,0,0" />
+                    <WrapPanel Margin="0,10,0,0"><Button Content="{DynamicResource pause}" Tag="{Binding Id}" Click="PauseTransfer" IsEnabled="{Binding CanPause}" /><Button Content="{DynamicResource resume}" Tag="{Binding Id}" Click="ResumeTransfer" IsEnabled="{Binding CanResume}" /><Button Content="{DynamicResource cancel}" Tag="{Binding Id}" Click="CancelTransfer" IsEnabled="{Binding CanCancel}" /></WrapPanel>
+                  </StackPanel></Border></DataTemplate></ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </TabItem>
+          </TabControl>
+          <TextBlock Text="{DynamicResource privacy_note}" Style="{StaticResource Secondary}" Margin="0,30,0,0" />
+        </StackPanel>
+      </ScrollViewer>
+      <Border Grid.Row="2" BorderBrush="{DynamicResource Hairline}" BorderThickness="0,1,0,0" Padding="22,12"><DockPanel><TextBlock Text="{DynamicResource local_network}" DockPanel.Dock="Right" Style="{StaticResource Secondary}" /><StackPanel><TextBlock x:Name="FooterStatus" Style="{StaticResource Secondary}" AutomationProperties.LiveSetting="Polite" /><TextBlock x:Name="FooterPorts" Style="{StaticResource Secondary}" FontSize="11" Margin="0,3,12,0" /></StackPanel></DockPanel></Border>
+    </Grid>
+  </Grid>
+</Window>

@@ -226,6 +226,7 @@ fn native_backend_pairs_serves_ranges_controls_transfer_reconnects_and_cancels()
         let identity=Identity::generate().unwrap();let mut trust=TrustStore::memory();
         let stream=TcpStream::connect(("127.0.0.1",port)).await.unwrap();
         let mut session=SecureSession::handshake(stream,true,&identity,Hello::new(&identity,"Quest test","headset-test",32009)).await.unwrap();
+        assert_eq!(session.remote().platform, std::env::consts::OS);
         assert!(session.needs_pairing(&trust).await.unwrap());
         wait_state(&backend,|s|s.pairing.is_some()).await;
         let code=backend.state.lock().unwrap().pairing.as_ref().unwrap().code.clone().unwrap();
@@ -300,6 +301,147 @@ fn native_backend_pairs_serves_ranges_controls_transfer_reconnects_and_cancels()
     drop(client);
     drop(backend);
     std::fs::remove_dir_all(temp).unwrap();
+}
+
+#[test]
+fn authorized_folders_survive_backend_restart_and_revocation_stays_revoked() {
+    let temp = std::env::temp_dir().join(format!("ymlink-restart-{:016x}", rand::random::<u64>()));
+    let root = temp.join("media");
+    std::fs::create_dir_all(&root).unwrap();
+    let path = temp.join("state");
+    let identity = Identity::generate().unwrap();
+    let client = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let start = || {
+        Backend::start_inner(
+            path.clone(),
+            "Restart test".into(),
+            Some(identity.clone()),
+            true,
+        )
+        .unwrap()
+    };
+    let backend = start();
+    let original = client.block_on(async {
+        wait_state(&backend, |s| s.listen_port != 0).await;
+        backend
+            .command(&json!({"action":"add_share","path":root.to_str().unwrap()}).to_string())
+            .unwrap();
+        wait_state(&backend, |s| s.shares.len() == 1).await;
+        backend.state.lock().unwrap().shares[0].clone()
+    });
+    drop(backend);
+    let backend = start();
+    client.block_on(async {
+        wait_state(&backend, |s| s.listen_port != 0).await;
+        let restored = backend.state.lock().unwrap().shares.clone();
+        assert_eq!(restored.len(), 1);
+        assert_eq!(restored[0].id, original.id);
+        assert_eq!(restored[0].path, original.path);
+        backend
+            .command(&json!({"action":"remove_share","id":original.id}).to_string())
+            .unwrap();
+        wait_state(&backend, |s| s.shares.is_empty()).await;
+    });
+    drop(backend);
+    let backend = start();
+    client.block_on(async {
+        wait_state(&backend, |s| s.listen_port != 0).await;
+        assert!(backend.state.lock().unwrap().shares.is_empty());
+    });
+    drop(backend);
+    std::fs::remove_dir_all(temp).unwrap();
+}
+
+#[test]
+fn native_runtime_pairs_windows_macos_and_headset_roles_in_both_directions() {
+    // Desktop responders display the code and desktop initiators enter it;
+    // against a Quest peer the local desktop always displays the code.
+    for (platform, initiator, mode) in [
+        ("windows", true, "enter"),
+        ("windows", false, "display"),
+        ("macos", true, "enter"),
+        ("macos", false, "display"),
+        ("headset-test", true, "display"),
+        ("headset-test", false, "display"),
+    ] {
+        let temp =
+            std::env::temp_dir().join(format!("ymlink-roles-{:016x}", rand::random::<u64>()));
+        let backend = Backend::start_inner(
+            temp.clone(),
+            "Test desktop".into(),
+            Some(Identity::generate().unwrap()),
+            true,
+        )
+        .unwrap();
+        let client = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        client.block_on(async {
+            wait_state(&backend, |s| s.listen_port != 0).await;
+            let port = backend.state.lock().unwrap().listen_port;
+            let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+            let remote_port = listener.local_addr().unwrap().port();
+            let stream = if initiator {
+                backend
+                    .command(
+                        &json!({"action":"connect","address":format!("127.0.0.1:{remote_port}")})
+                            .to_string(),
+                    )
+                    .unwrap();
+                tokio::time::timeout(Duration::from_secs(3), listener.accept())
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .0
+            } else {
+                TcpStream::connect(("127.0.0.1", port)).await.unwrap()
+            };
+            let identity = Identity::generate().unwrap();
+            let mut session = SecureSession::handshake(
+                stream,
+                !initiator,
+                &identity,
+                Hello::new(&identity, "Remote test", platform, remote_port),
+            )
+            .await
+            .unwrap();
+            assert_eq!(session.remote().platform, std::env::consts::OS);
+            let mut trust = TrustStore::memory();
+            assert!(session.needs_pairing(&trust).await.unwrap());
+            wait_state(&backend, |s| s.pairing.is_some()).await;
+            let pairing = backend.state.lock().unwrap().pairing.clone().unwrap();
+            assert_eq!(
+                pairing.mode, mode,
+                "remote {platform}, local initiator {initiator}"
+            );
+            let remote_role = if mode == "enter" {
+                assert!(pairing.code.is_none());
+                backend
+                    .command(r#"{"action":"pair","code":"123456"}"#)
+                    .unwrap();
+                Pairing::Display {
+                    code: "123456".into(),
+                    expires_at: Instant::now() + Duration::from_secs(30),
+                }
+            } else {
+                Pairing::Enter {
+                    code: pairing.code.unwrap(),
+                }
+            };
+            session.authorize(&mut trust, remote_role).await.unwrap();
+            wait_state(&backend, |s| s.status == "connected").await;
+            let (_, mut writer) = session.into_split().unwrap();
+            writer.send(&Message::Bye { v: VERSION }).await.unwrap();
+            wait_state(&backend, |s| s.status != "connected").await;
+        });
+        drop(client);
+        drop(backend);
+        std::fs::remove_dir_all(temp).unwrap();
+    }
 }
 
 async fn isolated_file_server() -> (
@@ -621,6 +763,7 @@ async fn file_work_is_bounded_and_cancelled_requests_do_not_emit_chunks() {
         .unwrap()
         .unwrap()
         .unwrap();
+    shared.catalog.lock().unwrap().remove("share");
     std::fs::remove_dir_all(directory).unwrap();
 }
 
@@ -887,6 +1030,7 @@ async fn retired_transfer_ack_is_ignored_but_reopening_its_id_is_rejected() {
     if rejected.is_err() {
         server.abort();
     }
+    shared.catalog.lock().unwrap().remove("share");
     std::fs::remove_dir_all(directory).unwrap();
     assert!(
         matches!(rejected, Ok(Ok(Err(session::Error::Protocol(_))))),
@@ -1090,6 +1234,7 @@ async fn completed_history_never_evicts_a_paused_transfer() {
         .unwrap()
         .unwrap()
         .unwrap();
+    shared.catalog.lock().unwrap().remove("share");
     std::fs::remove_dir_all(directory).unwrap();
     assert!(
         retained,
@@ -1356,6 +1501,7 @@ async fn preferred_connection_handoff_preserves_interrupted_transfer_controls() 
         .await
         .unwrap()
         .unwrap();
+    shared.catalog.lock().unwrap().remove("share");
     std::fs::remove_dir_all(directory).unwrap();
     assert_eq!(interrupted, "waiting");
     assert_eq!(cancelled, "cancelled");

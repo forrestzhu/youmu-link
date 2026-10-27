@@ -274,7 +274,7 @@ impl FileCatalog {
                 }
                 let mut file = root.open_file(&path)?;
                 let before = file.metadata().map_err(io_error)?;
-                if file_version(&before)? != version {
+                if file_version(&file, &before)? != version {
                     return Err(FileError::Changed);
                 }
                 if offset > before.len() {
@@ -284,7 +284,7 @@ impl FileCatalog {
                 file.seek(SeekFrom::Start(offset)).map_err(io_error)?;
                 let mut data = vec![0; count];
                 file.read_exact(&mut data).map_err(|_| FileError::Changed)?;
-                if file_version(&file.metadata().map_err(io_error)?)? != version {
+                if file_version(&file, &file.metadata().map_err(io_error)?)? != version {
                     return Err(FileError::Changed);
                 }
                 Ok(FileResponse::Read {
@@ -310,8 +310,9 @@ impl SharedRoot {
         let (size, version) = if metadata.is_dir() {
             (0, None)
         } else if metadata.is_file() {
-            let actual = self.open_file(path)?.metadata().map_err(io_error)?;
-            (actual.len(), Some(file_version(&actual)?))
+            let file = self.open_file(path)?;
+            let actual = file.metadata().map_err(io_error)?;
+            (actual.len(), Some(file_version(&file, &actual)?))
         } else {
             return Err(FileError::NotFile);
         };
@@ -361,12 +362,39 @@ fn valid_path(path: &str) -> bool {
         || (path.len() <= 4096
             && !path.contains(['\\', ':'])
             && !path.chars().any(char::is_control)
-            && path
-                .split('/')
-                .all(|part| !part.is_empty() && part.len() <= 255 && part != "." && part != ".."))
+            && path.split('/').all(|part| {
+                !part.is_empty()
+                    && part.len() <= 255
+                    && part != "."
+                    && part != ".."
+                    && platform_component(part)
+            }))
 }
 
-fn file_version(metadata: &Metadata) -> Result<String, FileError> {
+#[cfg(not(windows))]
+fn platform_component(_: &str) -> bool {
+    true
+}
+
+#[cfg(windows)]
+fn platform_component(part: &str) -> bool {
+    if part.ends_with([' ', '.']) {
+        return false;
+    }
+    let stem = part
+        .split('.')
+        .next()
+        .unwrap_or_default()
+        .to_ascii_uppercase();
+    !matches!(
+        stem.as_str(),
+        "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$"
+    ) && !((stem.starts_with("COM") || stem.starts_with("LPT"))
+        && (matches!(stem.as_bytes().get(3), Some(b'1'..=b'9')) && stem.len() == 4
+            || matches!(&stem[3..], "¹" | "²" | "³")))
+}
+
+fn file_version(_file: &cap_std::fs::File, metadata: &Metadata) -> Result<String, FileError> {
     let mut digest = Sha256::new();
     digest.update(metadata.len().to_le_bytes());
     #[cfg(unix)]
@@ -388,6 +416,34 @@ fn file_version(metadata: &Metadata) -> Result<String, FileError> {
                 .duration_since(std::time::UNIX_EPOCH)
                 .map_err(|_| FileError::Unavailable)?;
             digest.update(time.as_nanos().to_le_bytes());
+        }
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::io::AsRawHandle;
+        use windows_sys::Win32::Storage::FileSystem::{
+            FileBasicInfo, GetFileInformationByHandle, GetFileInformationByHandleEx,
+            BY_HANDLE_FILE_INFORMATION, FILE_BASIC_INFO,
+        };
+        // Query the capability-opened file itself: equal size / creation / mtime
+        // on a replacement must not authorize continuing the previous stream.
+        unsafe {
+            let mut info: BY_HANDLE_FILE_INFORMATION = std::mem::zeroed();
+            let mut basic: FILE_BASIC_INFO = std::mem::zeroed();
+            if GetFileInformationByHandle(_file.as_raw_handle(), &mut info) == 0
+                || GetFileInformationByHandleEx(
+                    _file.as_raw_handle(),
+                    FileBasicInfo,
+                    (&mut basic as *mut FILE_BASIC_INFO).cast(),
+                    std::mem::size_of::<FILE_BASIC_INFO>() as u32,
+                ) == 0
+            {
+                return Err(FileError::Unavailable);
+            }
+            digest.update(info.dwVolumeSerialNumber.to_le_bytes());
+            digest.update(info.nFileIndexHigh.to_le_bytes());
+            digest.update(info.nFileIndexLow.to_le_bytes());
+            digest.update(basic.ChangeTime.to_le_bytes());
         }
     }
     Ok(format!("{:x}", digest.finalize()))

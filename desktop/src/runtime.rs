@@ -434,7 +434,7 @@ async fn connection(
         let s = shared.state.lock().unwrap();
         (s.device_name.clone(), s.listen_port)
     };
-    let local = Hello::new(&shared.identity, name, "macos", port);
+    let local = Hello::new(&shared.identity, name, std::env::consts::OS, port);
     let session = match SecureSession::handshake(stream, initiator, &shared.identity, local).await {
         Ok(session) => session,
         Err(error) => {
@@ -559,7 +559,7 @@ async fn authorize_and_serve(
             ));
         }
         let deadline = Instant::now() + session::PAIRING_TTL;
-        let display = remote.platform != "macos" || !initiator;
+        let display = !matches!(remote.platform.as_str(), "macos" | "windows") || !initiator;
         if display {
             let code = session::new_pairing_code();
             if !shared.publish(generation, false, |s| {
@@ -1168,7 +1168,7 @@ fn mirror_command(
                 return Ok(());
             }
             if selected.status != "paused" {
-                return Err("start mirroring on the Mac before remote resume".into());
+                return Err("first mirror start requires local confirmation".into());
             }
             if expected.is_some() && !crate::capture::permission_granted() {
                 return Err("Screen Recording permission is required before remote resume".into());
@@ -1189,7 +1189,7 @@ fn mirror_command(
         }
         Command::SelectMirrorDisplay { display_id } => {
             if !["starting", "running", "paused"].contains(&selected.status.as_str()) {
-                return Err("start mirroring on the Mac before remote display selection".into());
+                return Err("first mirror start requires local confirmation".into());
             }
             check_display(&state, display_id)?;
             if selected.display_id == Some(display_id) {
@@ -1630,21 +1630,8 @@ fn announce_mirror(
 }
 
 fn private_directory(path: &Path) -> Result<(), String> {
-    std::fs::create_dir_all(path).map_err(|_| "cannot create application data directory")?;
-    if std::fs::symlink_metadata(path)
-        .map_err(|_| "cannot inspect application data directory")?
-        .file_type()
-        .is_symlink()
-    {
-        return Err("application data directory must not be a symlink".into());
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
-            .map_err(|_| "cannot secure application data directory")?;
-    }
-    Ok(())
+    ymlink_core::storage::private_directory(path)
+        .map_err(|_| "cannot secure application data directory".into())
 }
 
 fn save_shares(path: &Path, shares: &[Share]) -> Result<(), String> {

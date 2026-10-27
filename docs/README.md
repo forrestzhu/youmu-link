@@ -12,12 +12,14 @@
 | 测试策略 | [engineering/TESTING](engineering/TESTING.md) |
 | 技术决策记录 | [engineering/decisions/](engineering/decisions/) |
 | 当前桌面技术栈 | [ADR-0002：macOS 原生界面与 Rust 后端](engineering/decisions/0002-native-desktop.md) |
+| Windows 原生技术栈 | [ADR-0003：Windows 原生界面与 Rust 平台适配](engineering/decisions/0003-windows-native.md) |
 | macOS 实施顺序与验收合同 | [plans/2026-10-27-macos-native](plans/2026-10-27-macos-native.md) |
 | macOS 构建、启动与头显测试桩 | [仓库 README](../README.md) |
 | 开发流程与 harness | [harness/README](harness/README.md) |
 | harness 改进提案 | [harness/IMPROVEMENT](harness/IMPROVEMENT.md) |
 | 任务记录 | [tasks/](tasks/)（归档在 `tasks/archive/`） |
 | 当前 macOS 实现任务 | [YML-002](tasks/YML-002-macos-native.md) |
+| 当前 Windows 实现任务 | [YML-003](tasks/YML-003-windows-native.md)、[实施计划](plans/2026-10-27-windows-native.md) |
 | 框架与 demo 启动记录 | [YML-001（归档）](tasks/archive/YML-001-bootstrap.md) |
 | demo 原型 | [../design/prototypes/](../design/prototypes/) |
 

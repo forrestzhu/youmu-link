@@ -7,3 +7,5 @@ __pycache__/
 /macos/.build/
 /macos/.swiftpm/
 /dist/
+/windows/**/bin/
+/windows/**/obj/
