@@ -2,6 +2,8 @@
 
 日期：2026-10-27。任务：[YML-004](../tasks/YML-004-opensource-ci.md)。审计基线：`fdaa5a8e97b587735aceb5c0914ef7710986b85a`。
 
+Commit: 24455748a121d23051066ff832ad5a4854c7cc05
+
 ## 结论与范围
 
 未发现已确认的访问令牌、密码、私钥、带凭据 URL 或用户身份 / 信任状态文件。发现旧 Windows 开发包的 Rust DLL 嵌入了构建机的用户目录、Cargo 源码目录和工作区路径，已修复构建并重打包。当前 demo 设备名、测试公网子网与文档内部参考名称也已泛化。
@@ -44,6 +46,14 @@
 第 1 轮 `privacy_cr1` 受审基线 `fdaa5a8` 后的路径修复树，确认 P2：直接在 UTF-16LE 原始字节替换斜杠会破坏某些中文字符，使隐私门禁漏检。用合成中文用户名及跨 1 MiB 边界样本独立复现 RED，另复现字节 lower 导致不同汉字误匹配。改为完整 encoded 字符的字节正则，仅对 ASCII 字符匹配大小写、对分隔符匹配两种形式，原始文件字节保持不变；新增两项回归 GREEN，并支持混合分隔符。
 
 第 2 轮 `privacy_cr2` 受审 helper blob `4084932f67de5c36ef63744ef58c62f2f3ce9668` / tests blob `c19f514531bbc3725bc094dec8c94abebe800a72`，独立复跑 37 项 Python 测试及 8/8 内存检测夹具，覆盖 Unicode、编码、分隔符和跨块边界，复核构建 / 打包集成与报告限制；首轮 P2 关闭，无新增确定问题。随后根代理从最终源码重跑 Windows Release / WPF / 真实 DLL 并发与生命周期 / startup-snapshot-shutdown smoke，全部通过。审查不代替真实 macOS 或云端 runner 验证。
+
+## 最终实现提交与包复核
+
+实现提交 `24455748a121d23051066ff832ad5a4854c7cc05` 的 author / committer 均为目标邮箱。受审候选源码快照的 Gitleaks 扫描为 896,319 bytes / 0 findings；提交后重新扫描全部 19 个可达提交，为 989,278 bytes / 0 findings。最终 ZIP 安全展开后扫描 1,698,682 bytes / 0 findings，均 exit 0。扫描配置与上述阳性控制一致。
+
+从最终源码构建、重新收集精确依赖许可后生成 `dist/packages/YM_Link-0.1.0-windows-x64-24455748a121.zip`，不分发先前未提交树的临时包。独立制品审计重新检查全 747 个成员：已列出的本机信息与已知 token / 私钥签名 0 命中，状态 / 信任 / 共享 / 凭据 / key / PDB 文件 0 个；CRC 通过，464/464 当前构建文件哈希一致，BUILD-INFO revision 准确、checksum 摘要及文件名正确。
+
+最终 ZIP SHA-256：`67f4ecad735293d6364627f932383c73f36679ec55cdfa10f1689e82bfdc35d9`；最终 Rust DLL SHA-256：`7ff5aa8d9cdbd3cff24db877857eb0748a321b05189a8a316703bce66d3ff1f2`。最终包结论仍限静态扫描和实际 Windows smoke，不能外推到 macOS 包、未扫描外部副本或真实 Quest / LAN 验收。
 
 ## 尚未清理的历史与外部副本
 

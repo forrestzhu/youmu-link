@@ -14,7 +14,7 @@
 | Windows 原生应用 | WPF / .NET 8 + Rust DLL，自包含 win-x64 开发目录 `dist/YM_Link`；中英切换、设备 / 镜像 / 目录 / 传输入口，Credential Manager 身份与私有 ACL。Windows 11 Pro x64 build 26200 实际构建 / 启动 / 干净关闭通过；原生数据行模板、ABI 生命周期与跨平台配对回归通过。Windows 10 / ARM64、安装器 / 签名分发 not-run。见 [YML-003](tasks/YML-003-windows-native.md)。 |
 | 镜像 | Rust ScreenCaptureKit + VideoToolbox 硬件 H.264、系统 PCM 与加密分片、双端控制、持续背压降分辨率实现就位。首次开始必须本机确认；独立故障信号跨暂停 / 恢复保存，采集或初始化失败不能自动重启，对端不请求系统权限。真实硬件合成帧编码单测通过；真实采集 / 弱网切档、权限恢复、Quest 解码 / 音画同步 / 延迟仍 not-run。 |
 | Windows 镜像 | Rust WGC / D3D11、CPU NV12 转换与系统 Media Foundation 软件 H.264、WASAPI loopback，复用 v3 AVCC / PCM 输出与双端控制。合成 HD 编码及实际 SPS 色彩标记检查通过；修复 WinRT 工厂缓存跨 apartment 销毁造成的反复启动崩溃。真实屏幕 / 系统音频采集及性能 not-run，不推断硬件编码性能。 |
-| harness / CI | 交付 `4c2ecdc` 配置三平台测试与 main 开发 ZIP；固定 action SHA、只读 token、制品保留 7 天。本机 Rust 76 passed / 2 ignored，Python 28 passed / 1 Unix-mode skipped，Windows Release / legal / ZIP / hash 通过。新 run 40482200859 checks 因账户级托管运行条件限制未启动，Windows / macOS skipped、上传 not-run；未改账户设置。 |
+| harness / CI | 交付 `4c2ecdc` 配置三平台测试与 main 开发 ZIP；固定 action SHA、只读 token、制品保留 7 天。隐私修复 `2445574` 的本机门禁 Rust 76 passed / 2 ignored、Python 36 passed / 1 Unix-mode skipped；最终 Windows Release / native ABI / smoke / legal / ZIP / hash 与全包独立隐私复核通过。此前 run 40482200859 checks 因账户级托管运行条件限制未启动，Windows / macOS skipped、上传 not-run；未改账户设置。 |
 
 ## 当前工作与待验收
 

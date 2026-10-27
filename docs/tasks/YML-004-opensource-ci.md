@@ -37,6 +37,8 @@ Tests: python3 -m unittest discover -s scripts -p test_*.py; harness verify; Win
 
 基线 `fdaa5a8` 的 18 个提交 / 245 个文本 blob 及 Windows 开发包完成独立审计。显式默认规则的 Gitleaks 8.30.1 扫描历史、源码快照与展开包均 0 findings，合成阳性控制正确检测。旧 Rust DLL 内嵌本机路径已经构建 remap 修复，打包新增自有二进制隐私门禁；实际 Windows Release / ABI / smoke 通过。当前文档、演示设备名与发现测试地址已泛化。追加 `harness verify` 为 36 Python passed / 1 skipped，76 Rust passed / 2 ignored。完整范围、确认问题、验证与历史残留见 [敏感信息审计](../evidence/2026-10-27-sensitive-information-audit.md)。原历史和远端运行记录尚未清理，macOS 包未实测，不把 0 findings 当作全局无敏感保证。
 
+隐私修复交付 `24455748a121d23051066ff832ad5a4854c7cc05`；追加两轮独立 CR，首轮 UTF-16LE 中文路径 P2 经 RED / GREEN 修复，次轮复核关闭。提交后 19 个可达提交及新 ZIP 展开内容的 Gitleaks 均 0 findings。最终 Windows 包独立复核全部 747 成员、464/464 应用文件、CRC / revision / SHA-256 通过，本机路径与已知凭据签名 0 命中。3 份旧 / 审计临时 ZIP 及 checksum 已从分发输出隔离，详细 hash 见报告。
+
 ## Next
 
 任务保持 verifying：真实 runner 通过需要解除账户阻塞，或用户批准公开后再实跑验证；不保证可见性变更自动解除所有账户限制。开源前由用户决定是否统一历史邮箱、清理历史示例路径与公开仓库；当前 HEAD 与新 Windows 包已作隐私修复；已推送历史及远端运行记录清理仍待用户明确决定。
