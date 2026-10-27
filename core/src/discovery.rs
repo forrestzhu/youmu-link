@@ -21,12 +21,14 @@ pub struct Config {
     pub heartbeat: Duration,
     pub peer_expiry: Duration,
     pub sweep_interval: Duration,
-    /// 仅测试 / CI：接受 loopback 源（默认拒绝，真实网络要求同网段私有地址）。
+    /// 仅测试 / CI：接受 loopback 源（默认拒绝，真实网络要求实际接口同子网单播地址）。
     pub allow_loopback: bool,
     /// 绑定固定端口（默认按 `beacon::BEACON_PORTS` 顺序回退）。
     pub listen_port: Option<u16>,
     /// 固定会话 nonce（默认随机）；测试确定性用。
     pub session_nonce: Option<[u8; 16]>,
+    /// Business TCP port announced in beacons; UDP binding stays independent.
+    pub advertised_port: Option<u16>,
 }
 
 impl Default for Config {
@@ -41,6 +43,7 @@ impl Default for Config {
             allow_loopback: false,
             listen_port: None,
             session_nonce: None,
+            advertised_port: None,
         }
     }
 }
@@ -144,6 +147,23 @@ impl Discovery {
         self.shared.listen_port
     }
 
+    /// Refresh interfaces and query every fallback port on every broadcast address.
+    pub async fn rescan(&self) -> Result<()> {
+        refresh_subnets(&self.shared.subnets);
+        let mut targets = broadcast_targets(&self.shared);
+        if self.shared.config.allow_loopback {
+            targets.push(Ipv4Addr::LOCALHOST);
+        }
+        for target in targets {
+            for port in beacon::BEACON_PORTS {
+                self.send_query(SocketAddr::new(IpAddr::V4(target), port))
+                    .await?;
+            }
+        }
+        broadcast_beacon(&self.shared).await;
+        Ok(())
+    }
+
     /// 向指定地址发送显式 Query；对端过滤通过后单播回复 Beacon。
     pub async fn send_query(&self, to: SocketAddr) -> Result<()> {
         let query = Query::new(&self.shared.config.tag, self.shared.nonce);
@@ -196,14 +216,21 @@ fn self_beacon(shared: &Shared) -> Beacon {
     Beacon::new(
         &shared.config.tag,
         shared.nonce,
-        shared.listen_port,
+        shared.config.advertised_port.unwrap_or(shared.listen_port),
         &caps,
         shared.config.discoverable,
     )
 }
 
 fn refresh_subnets(subnets: &Mutex<Vec<Subnet>>) {
-    let list = if_addrs::get_if_addrs()
+    let list = interface_subnets();
+    if let Ok(mut guard) = subnets.lock() {
+        *guard = list;
+    }
+}
+
+fn interface_subnets() -> Vec<Subnet> {
+    if_addrs::get_if_addrs()
         .map(|interfaces| {
             interfaces
                 .iter()
@@ -220,16 +247,39 @@ fn refresh_subnets(subnets: &Mutex<Vec<Subnet>>) {
                     }),
                     IfAddr::V6(_) => None,
                 })
+                .filter(|subnet| subnet_bounds(subnet).is_some())
                 .collect()
         })
-        .unwrap_or_default();
-    if let Ok(mut guard) = subnets.lock() {
-        *guard = list;
-    }
+        .unwrap_or_default()
 }
 
-fn same_subnet(a: Ipv4Addr, b: Ipv4Addr, mask: Ipv4Addr) -> bool {
-    (a & mask) == (b & mask)
+/// Use current interface masks rather than RFC1918 classification: enterprise
+/// LANs can use public address ranges, and direct links can use 169.254/16.
+pub fn is_lan_source(source: IpAddr, allow_loopback: bool) -> bool {
+    allowed_source(source, &interface_subnets(), allow_loopback)
+}
+
+fn unicast_v4(ip: Ipv4Addr) -> bool {
+    // Exclude 0/8, loopback, multicast, reserved 240/4 and limited broadcast.
+    (1..224).contains(&ip.octets()[0]) && !ip.is_loopback()
+}
+
+fn subnet_bounds(subnet: &Subnet) -> Option<(Ipv4Addr, Ipv4Addr)> {
+    let mask = u32::from(subnet.netmask);
+    if !unicast_v4(subnet.ip) || mask == 0 || mask.leading_ones() + mask.trailing_zeros() != 32 {
+        return None;
+    }
+    let network = subnet.ip & subnet.netmask;
+    let broadcast = network | !subnet.netmask;
+    if subnet.ip == network
+        || subnet.ip == broadcast
+        || subnet
+            .broadcast
+            .is_some_and(|reported| reported != broadcast)
+    {
+        return None;
+    }
+    Some((network, broadcast))
 }
 
 fn allowed_source(src: IpAddr, subnets: &[Subnet], allow_loopback: bool) -> bool {
@@ -239,12 +289,14 @@ fn allowed_source(src: IpAddr, subnets: &[Subnet], allow_loopback: bool) -> bool
     if ip.is_loopback() {
         return allow_loopback;
     }
-    if !(ip.is_private() && !ip.is_broadcast() && !ip.is_multicast() && !ip.is_unspecified()) {
+    if !unicast_v4(ip) {
         return false;
     }
-    subnets
-        .iter()
-        .any(|subnet| same_subnet(ip, subnet.ip, subnet.netmask))
+    subnets.iter().any(|subnet| {
+        subnet_bounds(subnet).is_some_and(|(network, broadcast)| {
+            ip & subnet.netmask == network && ip != network && ip != broadcast
+        })
+    })
 }
 
 async fn heartbeat_loop(shared: Arc<Shared>, mut shutdown: watch::Receiver<bool>) {
@@ -265,20 +317,25 @@ async fn broadcast_beacon(shared: &Shared) {
     let Ok(bytes) = self_beacon(shared).encode() else {
         return;
     };
+    for target in broadcast_targets(shared) {
+        for port in beacon::BEACON_PORTS {
+            let _ = shared
+                .socket
+                .send_to(&bytes, SocketAddr::new(IpAddr::V4(target), port))
+                .await;
+        }
+    }
+}
+
+fn broadcast_targets(shared: &Shared) -> Vec<Ipv4Addr> {
     let mut targets: Vec<Ipv4Addr> = Vec::new();
     if let Ok(guard) = shared.subnets.lock() {
         targets.extend(guard.iter().filter_map(|subnet| subnet.broadcast));
     }
     targets.push(Ipv4Addr::BROADCAST);
-    for target in targets {
-        let _ = shared
-            .socket
-            .send_to(
-                &bytes,
-                SocketAddr::new(IpAddr::V4(target), shared.listen_port),
-            )
-            .await;
-    }
+    targets.sort_unstable();
+    targets.dedup();
+    targets
 }
 
 async fn listen_loop(
@@ -286,7 +343,8 @@ async fn listen_loop(
     events: mpsc::Sender<Event>,
     mut shutdown: watch::Receiver<bool>,
 ) {
-    let mut buffer = [0u8; beacon::MAX_PACKET];
+    // One extra byte distinguishes a 512-byte packet from a truncated datagram.
+    let mut buffer = [0u8; beacon::MAX_PACKET + 1];
     let mut cooldowns: HashMap<IpAddr, Instant> = HashMap::new();
     loop {
         let (size, source) = tokio::select! {
@@ -334,31 +392,13 @@ async fn listen_loop(
                     caps: received.caps,
                     session_nonce: received.session_nonce,
                 };
-                let discovered = match shared.peers.lock() {
-                    Ok(mut peers) => {
-                        let now = Instant::now();
-                        match peers.get_mut(&snapshot.addr) {
-                            Some(entry) => {
-                                let changed =
-                                    entry.snapshot.session_nonce != snapshot.session_nonce;
-                                entry.snapshot = snapshot.clone();
-                                entry.last_seen = now;
-                                changed
-                            }
-                            None => {
-                                peers.insert(
-                                    snapshot.addr,
-                                    PeerEntry {
-                                        snapshot: snapshot.clone(),
-                                        last_seen: now,
-                                    },
-                                );
-                                true
-                            }
-                        }
-                    }
+                let (discovered, evicted) = match shared.peers.lock() {
+                    Ok(mut peers) => record_peer(&mut peers, snapshot.clone()),
                     Err(_) => continue,
                 };
+                if let Some(ip) = evicted {
+                    let _ = events.send(Event::PeerExpired(ip)).await;
+                }
                 // 只有新地址或 nonce 变化才对外发事件；同 nonce 心跳只刷新存活时间。
                 if discovered {
                     let _ = events.send(Event::PeerDiscovered(snapshot)).await;
@@ -368,6 +408,39 @@ async fn listen_loop(
     }
 }
 
+fn record_peer(
+    peers: &mut HashMap<IpAddr, PeerEntry>,
+    snapshot: PeerSnapshot,
+) -> (bool, Option<IpAddr>) {
+    let now = Instant::now();
+    if let Some(entry) = peers.get_mut(&snapshot.addr) {
+        let changed = entry.snapshot.session_nonce != snapshot.session_nonce
+            || entry.snapshot.listen_port != snapshot.listen_port;
+        entry.snapshot = snapshot;
+        entry.last_seen = now;
+        return (changed, None);
+    }
+    let evicted = if peers.len() >= 128 {
+        peers
+            .iter()
+            .min_by_key(|(_, entry)| entry.last_seen)
+            .map(|(ip, _)| *ip)
+    } else {
+        None
+    };
+    if let Some(ip) = evicted {
+        peers.remove(&ip);
+    }
+    peers.insert(
+        snapshot.addr,
+        PeerEntry {
+            snapshot,
+            last_seen: now,
+        },
+    );
+    (true, evicted)
+}
+
 fn cooldown_allows(cooldowns: &mut HashMap<IpAddr, Instant>, source: IpAddr) -> bool {
     let now = Instant::now();
     if let Some(last) = cooldowns.get(&source) {
@@ -375,8 +448,14 @@ fn cooldown_allows(cooldowns: &mut HashMap<IpAddr, Instant>, source: IpAddr) -> 
             return false;
         }
     }
-    if cooldowns.len() > 256 {
-        cooldowns.retain(|_, last| now.duration_since(*last) < Duration::from_secs(60));
+    if cooldowns.len() >= 256 && !cooldowns.contains_key(&source) {
+        if let Some(oldest) = cooldowns
+            .iter()
+            .min_by_key(|(_, last)| **last)
+            .map(|(ip, _)| *ip)
+        {
+            cooldowns.remove(&oldest);
+        }
     }
     cooldowns.insert(source, now);
     true
@@ -414,5 +493,127 @@ async fn sweep_loop(
         for addr in expired {
             let _ = events.send(Event::PeerExpired(addr)).await;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn subnet(ip: &str, mask: &str) -> Subnet {
+        Subnet {
+            ip: ip.parse().unwrap(),
+            netmask: mask.parse().unwrap(),
+            broadcast: None,
+        }
+    }
+
+    #[test]
+    fn enterprise_and_link_local_unicast_follow_interface_subnets() {
+        let enterprise = [subnet("30.234.34.1", "255.255.255.0")];
+        assert!(allowed_source(
+            "30.234.34.23".parse().unwrap(),
+            &enterprise,
+            false
+        ));
+        assert!(!allowed_source(
+            "8.8.8.8".parse().unwrap(),
+            &enterprise,
+            false
+        ));
+        let direct = [subnet("169.254.10.1", "255.255.0.0")];
+        assert!(allowed_source(
+            "169.254.99.8".parse().unwrap(),
+            &direct,
+            false
+        ));
+    }
+
+    #[test]
+    fn network_broadcast_and_special_sources_are_never_production_peers() {
+        let interfaces = [subnet("30.234.34.1", "255.255.255.0")];
+        for source in [
+            "30.234.34.0",
+            "30.234.34.255",
+            "255.255.255.255",
+            "224.0.0.1",
+            "240.0.0.1",
+            "0.0.0.0",
+            "0.1.2.3",
+            "127.0.0.1",
+            "::1",
+        ] {
+            assert!(
+                !allowed_source(source.parse().unwrap(), &interfaces, false),
+                "invalid source {source}"
+            );
+        }
+        assert!(allowed_source("127.0.0.1".parse().unwrap(), &[], true));
+        assert!(!allowed_source("::1".parse().unwrap(), &[], true));
+        let private = [subnet("10.0.0.1", "255.255.255.0")];
+        assert!(!allowed_source(
+            "10.0.0.255".parse().unwrap(),
+            &private,
+            false
+        ));
+    }
+
+    #[test]
+    fn invalid_interfaces_and_zero_or_noncontiguous_masks_cannot_admit_peers() {
+        for interface in [
+            subnet("10.0.0.1", "0.0.0.0"),
+            subnet("10.0.0.1", "255.0.255.0"),
+            subnet("10.0.0.0", "255.255.255.0"),
+            subnet("10.0.0.255", "255.255.255.0"),
+            subnet("0.0.0.0", "255.255.255.0"),
+            subnet("127.0.0.1", "255.255.255.0"),
+            subnet("224.0.0.1", "255.255.255.0"),
+            subnet("240.0.0.1", "255.255.255.0"),
+            Subnet {
+                broadcast: Some("8.8.8.8".parse().unwrap()),
+                ..subnet("10.0.0.1", "255.255.255.0")
+            },
+        ] {
+            for source in ["10.0.0.23", "10.23.0.5", "240.0.0.2"] {
+                assert!(
+                    !allowed_source(source.parse().unwrap(), &[interface], false),
+                    "invalid interface {interface:?} admitted {source}"
+                );
+            }
+        }
+        assert!(!allowed_source("10.0.0.23".parse().unwrap(), &[], false));
+    }
+
+    #[test]
+    fn candidate_lru_and_query_cooldowns_have_hard_limits() {
+        let mut peers = HashMap::new();
+        let mut cooldowns = HashMap::new();
+        let first = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1));
+        for n in 1..=300u16 {
+            let addr = IpAddr::V4(Ipv4Addr::new(10, 0, (n / 256) as u8, (n % 256) as u8));
+            let (new, _) = record_peer(
+                &mut peers,
+                PeerSnapshot {
+                    addr,
+                    listen_port: 32001,
+                    caps: vec![],
+                    session_nonce: vec![1; 16],
+                },
+            );
+            assert!(new);
+            assert!(peers.len() <= 128);
+            assert!(cooldown_allows(&mut cooldowns, addr));
+            assert!(cooldowns.len() <= 256);
+        }
+        assert!(!peers.contains_key(&first));
+        let latest = IpAddr::V4(Ipv4Addr::new(10, 0, 1, 44));
+        assert!(!cooldown_allows(&mut cooldowns, latest));
+        let snapshot = peers[&latest].snapshot.clone();
+        assert!(!record_peer(&mut peers, snapshot.clone()).0);
+        let changed = PeerSnapshot {
+            listen_port: 32002,
+            ..snapshot
+        };
+        assert!(record_peer(&mut peers, changed).0);
     }
 }

@@ -1,0 +1,2 @@
+"NSScreenCaptureUsageDescription" = "YM_Link 通过加密局域网连接，将你选择的屏幕和可选系统音频发送到已配对的游目头显。";
+"NSLocalNetworkUsageDescription" = "YM_Link 在本地网络发现游目头显，并与已配对的设备加密共享屏幕和授权目录。";

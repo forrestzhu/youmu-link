@@ -1,55 +1,52 @@
 # YM_Link 架构
 
-状态：v0.1（2026-10-27）。组件与职责划分；协议细节见 [PROTOCOL](PROTOCOL.md)。
+状态：v0.2（2026-10-27）。macOS 原生实现推进中；现行桌面决策见 [ADR-0002](decisions/0002-native-desktop.md)，线上报文以 [PROTOCOL](PROTOCOL.md) 为准。
 
-## 组件图
+## 组件与职责
 
-```
-┌─ Windows / macOS ──────────────────────────┐      ┌─ Meta Quest 3 / 3S ──────────────┐
-│ youmu-link（Tauri 2 壳）                    │      │ 游目 Youmu VR Player              │
-│  ┌─ 前端 UI（桌面窗口）────────────────┐    │      │  ┌─ YM_Link 面板（Compose）────┐  │
-│  │ 设备列表 / 配对 / 屏幕选择 / 共享目录 │    │      │  │ 发现 / 配对 / 电脑屏幕 /     │  │
-│  └──────────────┬──────────────────────┘    │      │  │ 电脑文件 / 传输任务          │  │
-│                 │ command / event API        │      │  └──────────────┬─────────────┘  │
-│  ┌─ ymlink-core（Rust，tokio）────────▼────┐ │      │  ┌─ ymlink-kotlin（协议实现）──▼─┐  │
-│  │ discovery（UDP 广播 + mDNS）             │◄┼─────┼─►│ discovery / session / lane   │  │
-│  │ session（Noise XX + SPAKE2 配对）        │ │ LAN │  └──────────────┬───────────────┘  │
-│  │ lanes：files / mirror（TCP）            │ │      │                 │ Surface / 流     │
-│  │ capture（ScreenCaptureKit / WGC）       │      │  Media3 解码渲染 / 本地存储        │
-│  └────────────────────────────────────────┘ │      └──────────────────────────────────┘
-└────────────────────────────────────────────┘
-```
-
-## 职责划分
-
-- **ymlink-core（桌面）**：全部网络与采集逻辑；UI 只经 command / event API 交互（klip 验证过的分层）。crate 内模块：`beacon` / `discovery`（M0 已建骨架）、`identity` / `pairing` / `session`（M2）、`files` / `mirror` lane（M3 / M4）。
-- **ymlink-kotlin（头显）**：在游目 app 内以 Kotlin 实现同一协议（UDP / TCP / Noise / SPAKE2 均有成熟 JVM / Android 库）。**不复用 Rust FFI**：避免交叉编译与 JNI 维护，代价是协议规范 + 互操作测试必须作为唯一真源（见 [ADR-0001](decisions/0001-platform.md)）。
-- **连接拓扑**：对等 P2P，双端都监听 TCP（端口写入发现报文），双向拨号用 device_id 大小做 initiator 去重（同 klip，避免双连接）；无中心服务、无云依赖。
-
-## 数据面
-
-- **发现**：UDP 广播 beacon（CBOR、≤512B、60s 心跳）+ 显式 Query 单播回复 + mDNS 辅助（`_youmu-link._tcp.local.`）；身份零暴露，详见 PROTOCOL §2。
-- **会话**：所有业务流量走 Noise XX（`Noise_XX_25519_ChaChaPoly_SHA256`），每次连接完整握手，静态密钥 TOFU + keyring；首次配对用 SPAKE2 六位短码。
-- **lane 复用**：单一 TCP listener，accept 后按 magic 前缀分流（控制 / 文件 / 镜像），同 klip 的 lane 模型；具体前缀与帧格式在 M2 / M3 实现 PROTOCOL §4-§5 时冻结。
-- **文件 lane**：浏览（List / Stat）、流式播放（Range 语义）、传输（分块 + Ack + 断点）。
-- **镜像 lane**：采集帧 → 平台硬件编码（H.264/HEVC）→ 帧封装传输 → 头显 Media3 解码 → Surface。编码参数档位与延迟基准 M4 实测定。
-
-## 状态机（连接视角，双端一致）
-
-```
-discovered ──connect──► connecting ──noise handshake──► pairing(首连) ──短码确认──► paired
-                          │                                │                     │
-                          └──────── 公钥已信任则直接进入 ◄────────────────────────┘
-paired ──idle 超时──► disconnected ──beacon/重试──► connecting …
+```text
+macOS 原生应用                           Meta Quest 3 / 3S（待集成）
+┌──────────────────────────────┐         ┌─────────────────────────┐
+│ SwiftUI / AppKit             │         │ 游目 YM_Link 面板       │
+│ 设备 / 镜像 / 共享目录 / 传输 │         │ Kotlin / Compose        │
+└──────────────┬───────────────┘         └────────────┬────────────┘
+               │ C ABI command / snapshot                        │
+┌──────────────▼───────────────┐         ┌────────────▼────────────┐
+│ ymlink-desktop（Rust）       │         │ Kotlin 协议实现         │
+│ 连接状态 / 传输 / 平台采集   │         │ discovery / session     │
+│ ScreenCaptureKit            │         │ files / media           │
+│ VideoToolbox H.264 / PCM音频 │         │ Media3 / Surface        │
+├─────────────────────────────┤         └────────────▲────────────┘
+│ ymlink-core（Rust + tokio）  │                      │
+│ 发现 / 身份 / 配对 / 文件    │◄── 加密局域网 TCP ───►│
+└─────────────────────────────┘
 ```
 
-候选表 `discovered / connecting / paired / failed` 由 `discovery` 模块事件驱动，UI 只读展示。
+- **`core/`**：跨平台协议核心。`beacon` / `discovery` 管理 UDP 发现；`identity` / `session` 管理静态身份、持久信任、Noise 与 SPAKE2；`files` 提供 capability 约束的目录授权、分页、metadata 与 range。不依赖 UI 或 HTTP 框架。
+- **`desktop/`**：Rust 桌面业务与平台层。`runtime` 管理单一活动连接、取消、重连、配对、传输及镜像任务；`capture` 调用 macOS ScreenCaptureKit / VideoToolbox；`wire` 定义加密业务消息；C ABI 暴露 `ymlink_create`、`ymlink_command`、`ymlink_snapshot` 与释放函数。
+- **`macos/`**：SwiftUI / AppKit 窗口、控件、目录选择器、中英文展示和系统设置入口。经 C ABI 向 Rust 发命令并读取快照，不实现网络、配对或文件授权规则。Swift Package 链接 Rust 静态库，无 WebView。
+- **`headset_stub`**：独立 Rust 测试进程，验证加密控制 / 文件 / 传输 / 媒体帧接收；临时身份不代表真实头显实现。
+- **游目头显端**：继续在游目 app 内以 Kotlin 实现同一协议，不改用 Rust JNI；原 [ADR-0001](decisions/0001-platform.md) 的双端实现与互操作约束保留。Windows 原生 UI 和采集适配尚待实现。
 
-## 与游目的边界
+## 连接与数据面
 
-- 游目仓库负责：YM_Link 面板 UI、播放集成、权限与语言、真机验收；本仓库负责：协议、桌面端、测试桩。
-- 协议版本协商：Hello 携带 protocol_version；不兼容版本显式拒绝并提示升级，不静默降级。
+- **发现**：各接口定向广播及全局广播，向全部 UDP 候选端口 47610–47612 发送 CBOR beacon / Query；报文上限 512B、60s 心跳、Query 单播回复带冷却。nonce 用于自回环与重启识别；报文只含分组指纹、nonce、端口与能力，不包含设备身份。当前未实现 mDNS。
+- **TCP**：系统分配业务监听端口并在 beacon 公告，与 UDP 绑定端口分离。双向拨号按 device_id 排序消除重复连接，运行时只保留一个活动设备；无中心服务、无公网中继。
+- **会话**：控制前缀 `YL-CTRL2\0` 后做 Noise XX 完整握手；加密 Hello 校验版本 `v:2`、tag、静态公钥及由公钥派生的 device_id。首次桌面显示六位码、头显输入，以 SPAKE2 + HMAC 绑定握手；双方均已持久信任才可免配对重连。
+- **权限**：macOS 私钥存 Keychain；信任元数据与显式授权的共享目录保存在私有应用数据目录。信任撤销取消对应连接；路径只以共享 id + 相对路径跨端传输，文件打开受 capability 根约束。
+- **文件与传输**：复用已授权的加密控制连接，提供 Shares / List / Stat / Read。16KiB range 支持 seek 与断点；传输为分块 + Ack、暂停 / 取消 / 续传。断线后由接收方核对版本并重新打开原任务，桌面保留等待状态。
+- **镜像**：Rust 调用 ScreenCaptureKit 采集所选显示器及可选系统音频，VideoToolbox 硬件编码 H.264，视频 AVCC 配置与帧、系统 PCM 音频按带时间戳的媒体消息分片进入同一加密连接。使用有界队列、丢帧后请求关键帧；画质档位是采集配置，实际 FPS / 码率由发送数据统计，不将配置值当作实测性能。
 
-## 安全模型摘要
+当前业务连接复用替代早期三个独立 magic lane 的设计；准确帧界限、字段、错误码与版本见协议 §3–§5。HEVC、Windows Graphics Capture、头显解码与弱网体验仍需后续实现或实测。
 
-发现零身份；信任 = 静态密钥指纹（keyring 持久化）；首连短码确认（SPAKE2，绑定会话指纹，限速 + 过期）；公钥变化即拒绝并要求重新配对；授权目录白名单是文件 lane 的硬边界；镜像画面不出配对会话。完整规范见 PROTOCOL。
+## 状态与生命周期
+
+首次发现后依次经过连接、Noise 握手、短码配对和已连接；网络断开后已信任设备可以重试，手动断开会抑制自动拨号，显式连接恢复。配对码有 300s 总期限，首次尝试按 IP 跨连接限速。
+
+活动连接与镜像任务使用代际检查和取消信号，旧任务不得覆盖新状态。加密 reader 由专用任务持有；取消半帧读取后关闭方向，不在同一 TCP 流重新猜帧边界。慢文件操作与平台采集启动 / 停止交给阻塞线程，前端命令队列有界。
+
+## 双端边界与验收
+
+本仓库负责桌面、协议与测试桩；游目仓库负责头显 UI、Kotlin 协议、Media3 播放及佩戴验收。协议变更先更新规范版本，再实现两端并做互操作对拍。
+
+目前 core 自动测试与桌面真实 TCP 单机集成已有通过证据；macOS `.app` 构建 / 启动结果以 [STATUS](../STATUS.md) 与任务证据为准。双机 LAN、Quest 文件播放 / 镜像、系统音频与延迟基准未验收；代码存在、loopback 成功或硬件编码单测均不能代替这些结论。

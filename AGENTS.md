@@ -25,13 +25,14 @@
 
 ## 技术边界
 
-- 技术方向：Rust（`ymlink-core` 协议核心 + tokio）+ Tauri 桌面壳；决策与备选见 [ADR-0001](docs/engineering/decisions/0001-platform.md)。Quest 端在游目内以 Kotlin 实现同一协议，协议以 [PROTOCOL](docs/engineering/PROTOCOL.md) 为唯一规范，双端互操作测试必须覆盖。
+- 技术方向：后端统一使用 Rust（`ymlink-core` 协议核心、`ymlink-desktop` 桌面状态与平台适配）；macOS 界面使用 SwiftUI / AppKit，经 C ABI 读取快照与发送命令，不引入 WebView。Windows 原生界面另行实现；现行决策见 [ADR-0002](docs/engineering/decisions/0002-native-desktop.md)，[ADR-0001](docs/engineering/decisions/0001-platform.md) 保留历史。Quest 端在游目内以 Kotlin 实现同一协议，协议以 [PROTOCOL](docs/engineering/PROTOCOL.md) 为唯一规范，双端互操作测试必须覆盖。
 - 互联模型参考内部项目 klip 的已验证设计（UDP 广播 beacon、CBOR 报文、Noise 加密、SPAKE2 短码配对）；借鉴设计思想，**不复制 klip 源码**，实现独立编写。
 - 发现报文不携带设备身份；身份与信任只在加密层交换。新协议字段先改 PROTOCOL 文档并升版本，再写两端实现。
 - 不引入 HTTP 服务框架、不做常驻云依赖；公网穿透 / 中继如需引入必须先立 ADR。
 - 屏幕采集走平台 API（macOS ScreenCaptureKit / Windows Graphics Capture），解码能力与延迟按真实硬件验证，不从平台名称推断。
 - 不记录用户文件路径、不把原始日志入库；UTF-8、LF；不提交 SDK、缓存、构建产物、签名密钥。
-- 桌面 UI 文案中英资源化，来源与语言目录随 Tauri 壳建立时确定；在此之前 demo 原型文案可用中文硬编码。
+- 桌面 UI 文案中英资源化；macOS 资源位于 `macos/Sources/YM_Link/Resources/{en,zh-Hans}.lproj/Localizable.strings`，Swift 负责本地展示，业务状态来自 Rust。demo 原型文案可用中文硬编码。
+- macOS 本地构建运行 `python3 scripts/build_macos.py`，产物为忽略入库的 `dist/YM_Link.app`；目标 macOS 14+，临时签名不等于分发就绪。改动原生界面时补跑 Swift 测试和 `.app` 构建 / 启动核验；部署目标与实测系统分别记录，不推断未测试的 macOS / Intel 兼容性。
 
 ## Code Review Rules
 

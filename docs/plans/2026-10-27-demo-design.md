@@ -1,6 +1,6 @@
 # YM_Link demo 设计（M1 原型）
 
-日期：2026-10-27。任务：[YML-001](../tasks/YML-001-bootstrap.md)。原型：[design/prototypes/desktop/2026-10-27-ym-link-demo](../../design/prototypes/desktop/2026-10-27-ym-link-demo/README.md)。
+日期：2026-10-27。任务：[YML-001](../tasks/archive/YML-001-bootstrap.md)。原型：[design/prototypes/desktop/2026-10-27-ym-link-demo](../../design/prototypes/desktop/2026-10-27-ym-link-demo/README.md)。
 
 ## 目的与边界
 

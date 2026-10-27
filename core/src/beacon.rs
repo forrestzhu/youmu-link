@@ -182,18 +182,24 @@ pub fn decode_packet(bytes: &[u8]) -> Result<Packet, BeaconError> {
     if bytes.len() > MAX_PACKET {
         return Err(BeaconError::Oversized(bytes.len()));
     }
-    if let Ok(query) = ciborium::from_reader::<Query, _>(bytes) {
+    if let Some(query) = decode_value::<Query>(bytes) {
         if !query.query {
             return Err(BeaconError::InvalidQueryFlag);
         }
         query.validate()?;
         return Ok(Packet::Query(query));
     }
-    if let Ok(beacon) = ciborium::from_reader::<Beacon, _>(bytes) {
+    if let Some(beacon) = decode_value::<Beacon>(bytes) {
         beacon.validate()?;
         return Ok(Packet::Beacon(beacon));
     }
     Err(BeaconError::Decode)
+}
+
+fn decode_value<T: serde::de::DeserializeOwned>(bytes: &[u8]) -> Option<T> {
+    let mut cursor = std::io::Cursor::new(bytes);
+    let value = ciborium::from_reader(&mut cursor).ok()?;
+    (cursor.position() == bytes.len() as u64).then_some(value)
 }
 
 #[cfg(test)]
@@ -218,6 +224,15 @@ mod tests {
         let query = Query::new("youmu-link", nonce(9));
         let bytes = query.encode().unwrap();
         assert_eq!(decode_packet(&bytes).unwrap(), Packet::Query(query));
+    }
+
+    #[test]
+    fn trailing_cbor_data_is_rejected() {
+        let mut bytes = Beacon::new("youmu-link", nonce(7), 32001, &["control"], true)
+            .encode()
+            .unwrap();
+        bytes.push(0);
+        assert_eq!(decode_packet(&bytes), Err(BeaconError::Decode));
     }
 
     #[test]

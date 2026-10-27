@@ -1,6 +1,6 @@
 # ADR-0001：技术栈与双端实现策略
 
-日期：2026-10-27。状态：接受。
+日期：2026-10-27。状态：**部分 superseded**（同日）。桌面 Tauri、未使用的签名密钥与 SQLite 基线条款由 [ADR-0002](0002-native-desktop.md) 和当前 [PROTOCOL](../PROTOCOL.md) 取代；头显 Kotlin 双实现与互操作门禁仍接受。下文保留原决策历史。
 
 ## 背景
 
@@ -8,10 +8,10 @@ YM_Link 需要一个 Windows / macOS 桌面应用（发现 / 配对 / 文件 / �
 
 ## 决策
 
-1. **桌面端：Tauri 2 壳 + Rust 核心（`ymlink-core`）**。全部网络与采集逻辑在 Rust crate，UI 只经 command / event API 交互。
+1. **历史决策，已 superseded：桌面端 Tauri 2 壳 + Rust 核心（`ymlink-core`）**。原定全部网络与采集逻辑在 Rust crate，UI 只经 command / event API 交互。现改为 macOS SwiftUI / AppKit + Rust C ABI，见 ADR-0002。
 2. **头显端：在游目内用 Kotlin 实现同一协议**（`ymlink-kotlin`），不做 Rust FFI / 交叉编译。
 3. **协议规范（PROTOCOL.md）为唯一真源**，双端各自实现，互操作测试（L4 golden 夹具对拍 + 真机联调）为必过门禁。
-4. 依赖基线向 klip 已验证组合对齐：tokio（net / time / sync / rt / macros）、ciborium（CBOR）、sha2、if-addrs、snow（Noise）、spake2、keyring、ed25519-dalek / x25519-dalek（M2 起）、rusqlite（信任态，M2 起）。不引入 HTTP 框架 / WebSocket。
+4. 原依赖基线向 klip 已验证组合对齐：tokio（net / time / sync / rt / macros）、ciborium（CBOR）、sha2、if-addrs、snow（Noise）、spake2、keyring、ed25519-dalek / x25519-dalek（M2 起）、rusqlite（信任态，M2 起）。其中 Ed25519 签名与 SQLite 为 superseded 候选，当前使用 X25519 Noise 身份、私有 JSON 信任元数据和 cap-std 授权目录；实际依赖以 Cargo manifest 为准。不引入 HTTP 框架 / WebSocket 的约束保留。
 
 ## 备选与理由
 
@@ -23,5 +23,5 @@ YM_Link 需要一个 Windows / macOS 桌面应用（发现 / 配对 / 文件 / �
 ## 后果
 
 - 双端实现偏差风险由 L4 互操作门禁承接：golden 报文夹具入库、协议版本协商显式拒绝不兼容。
-- 桌面 UI 技术栈（Tauri 前端框架选择）在 M2 落壳时若另立决定，补 ADR-0002。
+- 桌面 UI 技术栈已由 ADR-0002 改为平台原生界面；不再选择 Tauri 前端框架。
 - 屏幕采集平台 API（ScreenCaptureKit / Windows Graphics Capture）在 M4 前先做 spike，若任一平台受阻则该平台镜像降级方案另立 ADR。

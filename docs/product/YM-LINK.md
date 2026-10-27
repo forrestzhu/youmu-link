@@ -1,6 +1,6 @@
 # YM_Link 产品定义
 
-状态：v0.1 草案（2026-10-27，随 [YML-001](../tasks/YML-001-bootstrap.md) 建立）。本文是 YM_Link 的产品事实来源；与游目主产品的关系见游目仓库 PRODUCT。
+状态：v0.1 草案（2026-10-27，随 [YML-001](../tasks/archive/YML-001-bootstrap.md) 建立）。本文是 YM_Link 的产品事实来源；与游目主产品的关系见游目仓库 PRODUCT。
 
 ## 定位
 

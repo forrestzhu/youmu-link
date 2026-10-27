@@ -5,3 +5,6 @@
 
 pub mod beacon;
 pub mod discovery;
+pub mod files;
+pub mod identity;
+pub mod session;

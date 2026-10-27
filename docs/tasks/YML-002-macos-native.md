@@ -1,0 +1,56 @@
+# YML-002：macOS 原生客户端与 Rust 安全互连、文件和镜像实现
+
+Status: verifying
+Workflow: feature
+Requires-Device: yes
+Tests: core::tests::discovery、core::tests::session、core::tests::files、desktop 状态与 C ABI 测试、Swift 构建；LAN / Quest 另记设备报告
+
+## Scope
+
+用户要求基于当前 demo 实现，参考 klip 局域网互连，后端 Rust、前端原生，优先 macOS。本任务承接 M2–M4 桌面侧；见 [计划](../plans/2026-10-27-macos-native.md) 与 [ADR-0002](../engineering/decisions/0002-native-desktop.md)。不复制 klip 源码。Quest 端由游目仓库承接，保留互操作与真机验收要求。
+
+## Spec
+
+给定同 LAN 对端，用户在原生设备列表连接，经 Noise XX 与 SPAKE2 六位码授权后交换业务数据；受信设备匹配静态密钥才可重连。授权目录支持分页浏览、range 和断点传输，越界请求拒绝。显示器经系统授权后可开启 / 停止屏幕与音频采集，未经配对不发送。断线停止镜像，文件操作等待恢复。权限拒绝、配对失败与超时有明确 UI。以 [PROTOCOL](../engineering/PROTOCOL.md) v0.3 为准。
+
+## Acceptance
+
+- [x] 原生 `.app` 可构建并通过本地开发签名校验，设备 / 镜像 / 共享 / 传输界面读取 Rust 状态。
+- [x] 原生窗口实际启动通过（用户手动打开后确认，随后 CUA 取得真实窗口）；完整配对 / 文件 / 镜像 UI 联调继续。
+- [x] 安全会话、配对、信任 / 遗忘 / 重连和发现回退有测试证据。
+- [x] 受限目录、range / 暂停与断点恢复有测试证据。
+- [ ] Rust 真实采集 / 编码 / 加密发送屏幕与系统音频，权限失败可恢复。
+- [ ] `harness verify`、原生构建与独立审查通过；main commit / push 与交付门禁通过。
+- [ ] LAN 与 Quest 文件播放 / 镜像 / 音画同步报告完成。
+
+## Verification
+
+1. Rust → `cargo test --workspace --all-targets` → 错码、过期、换钥、越界、range 和 loopback 通过。
+2. 原生 → `python3 scripts/build_macos.py` → 可启动 `.app`，不含 WebView。
+3. 本地门禁 → `harness verify` → PASS；交付 → `check --require-pushed` → HEAD 等于远端 main。
+4. UI / 采集 → 实际观察与授权后真实帧 / 字节统计；未授权不声明通过。
+5. L3 / L4 / L5 → 第二设备及 Quest → not-run，等待设备与游目端实现。
+
+## Evidence
+
+- 原生生产包联调：通过真实系统目录选择器授权隔离的 4 MiB 样本目录；重启后仍可见。使用当前实际企业网段地址与 Rust 测试对端完成原生弹窗六位码配对、Noise/SPAKE2 授权与文件下载，4,194,304 字节 SHA-256 与源一致；`.part` 与 checkpoint 均已清理，原生传输页显示 sample.bin 已完成与 100%。这是同机使用实际网卡地址的自连验证，不是第二设备 LAN / Quest 验收。
+- 用户 Workspace 三行反馈：原生 segmented Picker 增加 labelsHidden()，重启后截图确认冗余标题不再占位；主包 InfoPlist 中英用途资源补齐，系统语言下原生 UI 可正常显示中文。显示器硬件名称精确化按用户指示暂留小项。
+- 实际企业网段修复：旧 RFC1918 判定拒绝当前实际配置的企业网段；先增纯测试得到明确 RED，再改为有效接口 + 连续非零掩码的同子网单播判定。文档先升 v0.3（报文仍发现1/业务2），TCP 入站、手动拨号与测试对端复用同一 is_lan_source；新增3项过滤回归 GREEN。
+- 回归环境记录：原生 app 运行时会占用 UDP 47610，使固定端口回退用例报 AddrInUse；在正常退出 app 后全量测试通过。一次中途完整门禁仅因 root 两处新接入调用未 rustfmt 失败；格式化后重新运行 harness verify 全绿。
+
+- 2026-10-27：main 工作区干净；fetch + ff-only 同步；本机 macOS 27.0.1 / Xcode 27.0 / Swift 6.4 / Rust 1.85。
+- `cargo test --offline --workspace --all-targets`：45 passed、0 failed、1 ignored（硬件编码默认不在通用 CI 跑）；core 37 项覆盖发现 / 身份 / PAKE / 文件边界，桌面 8 项覆盖 C ABI、真实 TCP 整体流程、媒体格式与测试桩安全落盘。
+- `cargo test --offline -p ymlink-desktop --lib hardware_encoder_emits_avcc_keyframe_without_screen_capture -- --ignored`：1 passed，实际 VideoToolbox require-hardware 生成 avcC + AVCC 关键帧；无录屏或屏幕权限申请，不能代替屏幕采集验收。
+- `swift test --package-path macos`：1 passed，检查 Rust snapshot 字段、中英文资源与错误回显边界。`swift build --package-path macos -c release` 与 `build_macos.py` 完成；包资源、执行权限、系统动态依赖与 `codesign --verify --strict` 检查通过。使用现有 Apple Development 身份做本地开发签名，未公证、未对外分发。
+- `python3 scripts/harness.py verify`：PASS（harness 回归、仓库合同、rustfmt、workspace 测试）；最终提交后交付门禁另记。
+- 首次构建失败记录：release 过程宏报 E0463；与 debug 直接 dlopen 对照确认 release Mach-O 的 LINKEDIT string pool 未对齐，符合 [Rust #157750](https://github.com/rust-lang/rust/issues/157750)。只对 release build-override 设置 strip=false 后，在保留 macOS14 部署目标的相同脚本中构建通过；未更换工具链或改系统安全设置。
+- 依赖拉取首次 120s 截止超时；关闭 Cargo HTTP multiplexing 并限定后续请求低速 / 总时限后完成，避免重复等待同一无输出进程。
+- 独立审查（受审基线 `7dce375` + 本任务工作树）：会话审查验证 Noise remote static / Hello pin、双向 Known、PAKE 绑定、总期限、取消半帧、信任落盘；运行时审查发现全局 trust 锁跨配对等待、旧连接 / 镜像代际回写、迟到 Ack / 本机控制导致断连、媒体反压、慢磁盘阻塞、断线恢复状态和手动断开门控。均在共享入口修复，并以桌面真实 TCP 用例复核配对 / range / pause-resume-cancel / 迟到 Ack / 重连 / 断开拒入 / 忘记后重配 / 取消配对。测试桩旧流半包另留重组回归。完整受审提交与最终复核待提交后补记。
+- 启动观察：早期 CUA 自动入口两次 spawn 后约 11s 以 LSExitStatus=9 结束，终止者未知；不据此认定应用崩溃。用户手动启动后明确确认能看到窗口，CUA 随后成功取得原生 AX 窗口：设备真实空态、3 个实际显示器、镜像 / 共享 / 传输标签与系统权限入口可见。Keychain 初始化与 Rust 监听已进入搜索态。原先自动入口异常保留为观察事实，未改系统安全设置。
+- 用户反馈：显示器通用名称不准确，先记小项；要求优先推进整个业务逻辑。另指出 Workspace 标签被挤为三行，按原生 Picker 隐藏冗余标签修复。
+- 自动安全检查拒绝通过 Terminal UI 做启动诊断，原因仅为“安全原因”；未绕过该限制。只记录上述净化结论，不提交原始系统日志。
+- 真实双设备 LAN / Quest、屏幕与音频采集、权限恢复、旧系统 / Intel 兼容性、体验指标均 not-run。
+
+## Next
+
+等待用户手动启动结果，核对原生窗口 / Keychain / 系统权限；完成真实采集和 LAN / Quest 联调。当前保持 verifying 与总目标 active，缺少这些证据不标 done。

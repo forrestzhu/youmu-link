@@ -1,0 +1,2 @@
+"NSScreenCaptureUsageDescription" = "YM_Link shares your selected screen and optional system audio with your paired Youmu headset over an encrypted local connection.";
+"NSLocalNetworkUsageDescription" = "YM_Link discovers Youmu headsets on your local network and shares screens and authorized folders with paired devices.";

@@ -1,6 +1,6 @@
 # YML-001：YM_Link 框架启动（仓库 / harness / 设计 / demo / 发现骨架）
 
-Status: doing
+Status: done
 Workflow: feature
 Requires-Device: no
 Tests: core::beacon (单元：编解码 / 512B / 定长 / 未知字段 / tag_hash)、core::tests::discovery (loopback 集成：Query 单播回复 / tag 隔离 / 冷却 / 自回环 / 端口回退)
@@ -11,7 +11,7 @@ Tests: core::beacon (单元：编解码 / 512B / 定长 / 未知字段 / tag_has
 
 ## Spec
 
-规范来源：[产品定义](../product/YM-LINK.md)、[协议 v0](../engineering/PROTOCOL.md)、[demo 设计](../plans/2026-10-27-demo-design.md)。本轮可观察行为合同：给定同网段两实例（测试允许 loopback），任一方显式 Query，则收到对端单播 Beacon（≤512B CBOR、零身份字段）并进入候选表，1s 内重复 Query 不重复回复；给定不同 tag 或自身回环报文，则静默忽略；给定端口占用，则按 47610→47612 回退绑定。错误恢复：候选 3× 心跳无更新过期；解码失败报文丢弃不崩溃。
+规范来源：[产品定义](../../product/YM-LINK.md)、[协议 v0](../../engineering/PROTOCOL.md)、[demo 设计](../../plans/2026-10-27-demo-design.md)。本轮可观察行为合同：给定同网段两实例（测试允许 loopback），任一方显式 Query，则收到对端单播 Beacon（≤512B CBOR、零身份字段）并进入候选表，1s 内重复 Query 不重复回复；给定不同 tag 或自身回环报文，则静默忽略；给定端口占用，则按 47610→47612 回退绑定。错误恢复：候选 3× 心跳无更新过期；解码失败报文丢弃不崩溃。
 
 ## Acceptance
 
@@ -20,7 +20,7 @@ Tests: core::beacon (单元：编解码 / 512B / 定长 / 未知字段 / tag_has
 - [x] 可点击 demo 原型覆盖桌面与头显两视角（发现 / 配对码 / 屏幕镜像 / 文件浏览与传输），浏览器直接打开可用。
 - [x] `ymlink-core` 发现 beacon 骨架：CBOR 编解码（≤512B / deny-unknown / 定长校验）、UDP 广播与监听、同网段过滤、tag 过滤、自回环抑制、Query 单播回复 + 冷却、候选表事件；单元 + loopback 集成测试通过。
 - [x] CI workflow 就位：ubuntu / windows 矩阵（macOS 由本地 `harness verify` 覆盖）；2026-10-27 首跑因 GitHub 账户付款 / 额度未启动，已如实记录为 not-run，恢复后重跑补证。
-- [ ] M1 评审：用户审阅 demo 与文档后给出结论，修订后本任务归档。
+- [x] M1 评审：用户授权基于当前 demo 实现，并指定 macOS 原生界面与 Rust 后端；后续由 YML-002 承接。
 
 ## Verification
 
@@ -32,6 +32,8 @@ Tests: core::beacon (单元：编解码 / 512B / 定长 / 未知字段 / tag_has
 
 ## Evidence
 
+- 2026-10-27：用户明确要求“基于当前的 demo 进行实现”，M1 原型作为实施基线；原生界面技术栈按新指令调整。
+
 - 2026-10-27：`gh repo view forrestzhu/youmu-link --json visibility` 回读 PRIVATE。本地门禁实测：`cargo test --workspace --all-targets` 15 通过（beacon 单元 8 + loopback 集成 7）、`cargo fmt --all --check` 干净、`python3 scripts/test_harness.py` 16 通过、`python3 scripts/harness.py check` PASS（23 个文本文件）。demo 原型 `node --check` 语法通过，浏览器人工核对两视角状态流。首次修复过程：ciborium 0.2 无 `into_vec`（改 `into_writer` 辅助）、if-addrs `Ifv4Addr` 含 `prefixlen` 且 `broadcast` 已是 `Option<Ipv4Addr>`、临时目录符号链接导致未 resolve 的 ROOT 比较失败——均已修复并保留在对应实现 / 测试中。
 - **demo 两轮独立 CR（用户要求；两轮均为只读 subagent，修复由主代理执行并逐项浏览器核实）**：
   - 第 1 轮（受审树 f326af3）：3 P1 + 5 P2 + 若干 P3。P1 全部先用真实浏览器复现属实——配对弹窗全屏遮罩命中测试挡住视图切换（elementFromPoint 返回 .modal-mask）、重扫后 500ms ticker 永久停止（倒计时冻结在 05:00、timer=null）、播放中断线残留字面量 "null" 且无断线提示；P2-4（已发现态主区仍显示搜索动画）亦快照可见。修复提交 `43721b6`：弹窗改桌面窗口内遮罩、ticker 幂等重启 + scanToken 防旧发现、断线保留标题并显示重连提示、传输 / 文件 / 播放页断线横幅与按钮禁用、断线传输自动恢复、ctl-drop 仅 connected 生效、配对错误 / 过期头显侧持久提示且草稿保留、tick 从全量重渲染改为定向更新（根除重渲染吞输入 / 反馈一类问题）、状态命名映射写入设计文档。修复后浏览器逐项回归通过（含手动 tick 确定性验证倒计时递减与传输 100% 完成；IAB 面板后台节流导致定时器偏慢属环境现象，逻辑以同一处理函数调用核实）。
@@ -40,4 +42,4 @@ Tests: core::beacon (单元：编解码 / 512B / 定长 / 未知字段 / tag_has
 
 ## Next
 
-推送后跑 `harness check --require-pushed` 与 CI；等待用户 M1 demo 评审结论；M2（Noise 会话 + SPAKE2 配对 + Tauri 壳 + 双机真实验收）就绪后开工。
+用户已授权基于 demo 实现，转入 [YML-002](../YML-002-macos-native.md)。原 Tauri 决策由 ADR-0002 取代；真实 LAN 与 Quest 验收在新任务中保留。

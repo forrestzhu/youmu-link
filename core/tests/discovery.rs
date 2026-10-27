@@ -177,7 +177,55 @@ async fn beacon_ports_fall_back_in_order() {
         .await
         .expect("fallback bind");
     assert_eq!(discovery.listen_port(), beacon::BEACON_PORTS[2]);
+    discovery.rescan().await.unwrap();
+    for socket in [&blocker1, &blocker2] {
+        socket
+            .set_read_timeout(Some(Duration::from_secs(1)))
+            .unwrap();
+        let mut bytes = [0u8; beacon::MAX_PACKET + 1];
+        let (size, _) = socket
+            .recv_from(&mut bytes)
+            .expect("fallback port receives probe or announcement");
+        assert!(beacon::decode_packet(&bytes[..size]).is_ok());
+    }
     discovery.stop();
     drop(blocker1);
     drop(blocker2);
+}
+
+#[tokio::test]
+async fn tcp_port_is_advertised_independently_of_udp_binding() {
+    let config = Config {
+        advertised_port: Some(32001),
+        ..test_config("youmu-link", 57620, 12)
+    };
+    let (events, _receiver) = mpsc::channel(64);
+    let a = Discovery::start(config, events).await.unwrap();
+    let (b, mut receiver) = spawn("youmu-link", 57621, 13).await;
+    a.send_beacon_to(loopback(b.listen_port())).await.unwrap();
+    let event = tokio::time::timeout(Duration::from_secs(2), receiver.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(matches!(event,Event::PeerDiscovered(peer) if peer.listen_port==32001));
+    assert_eq!(a.listen_port(), 57620);
+    a.stop();
+    b.stop();
+}
+
+#[tokio::test]
+async fn oversized_datagram_with_valid_prefix_is_ignored() {
+    let (a, mut receiver) = spawn("youmu-link", 57622, 14).await;
+    let sender = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+    let mut packet = Beacon::new("youmu-link", [15; 16], 32001, &["control"], true)
+        .encode()
+        .unwrap();
+    packet.resize(beacon::MAX_PACKET + 100, 0);
+    sender.send_to(&packet, loopback(a.listen_port())).unwrap();
+    assert!(
+        tokio::time::timeout(Duration::from_millis(200), receiver.recv())
+            .await
+            .is_err()
+    );
+    a.stop();
 }

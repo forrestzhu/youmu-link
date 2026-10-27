@@ -1,0 +1,5 @@
+module CYMLink {
+    header "ymlink.h"
+    link "ymlink_desktop"
+    export *
+}
