@@ -2,6 +2,7 @@
 name = "ymlink-core"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 description = "YM_Link LAN protocol core: discovery layer (PROTOCOL §2)"
 
 [dependencies]

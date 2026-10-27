@@ -20,6 +20,7 @@ REQUIRED = (
     "docs/STATUS.md", "docs/engineering/decisions/0001-platform.md",
     "docs/harness/templates/task.md", ".github/workflows/repository-checks.yml",
     "Cargo.toml", "core/Cargo.toml",
+    "LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md",
 )
 STATES = {"ready", "doing", "verifying", "blocked", "done", "superseded"}
 WORKFLOWS = ("maintenance", "behavior", "feature")
@@ -309,8 +310,9 @@ def doctor(require_device: bool) -> int:
 def verify() -> int:
     """Run the full local gate: harness tests, repo check, rustfmt and cargo tests."""
     failures = []
-    harness_tests = run([sys.executable, str(ROOT / "scripts/test_harness.py")], timeout=300)
+    harness_tests = run([sys.executable, "-m", "unittest", "discover", "-s", str(ROOT / "scripts"), "-p", "test_*.py"], timeout=300)
     print(harness_tests.stdout, end="")
+    print(harness_tests.stderr, end="")
     if harness_tests.returncode:
         failures.append("scripts/test_harness.py")
     repo_check = check()

@@ -18,8 +18,7 @@ let package = Package(
             dependencies: ["CYMLink"],
             resources: [.process("Resources")],
             linkerSettings: [
-                .unsafeFlags(["-L", rustLibraryDirectory]),
-                .linkedLibrary("ymlink_desktop"),
+                .unsafeFlags(["-Xlinker", rustLibraryDirectory + "/libymlink_desktop.a"]),
                 .linkedFramework("Security"),
                 .linkedFramework("SystemConfiguration"),
                 .linkedFramework("ScreenCaptureKit"),

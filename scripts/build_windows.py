@@ -33,7 +33,11 @@ def main():
     native = ROOT / "target" / configuration.lower() / "ymlink_desktop.dll"
     run(["dotnet", "run", "--project", "windows/Tests/YM_Link.Tests.csproj", "-c", configuration, "--", "--native", str(native)])
     output = ROOT / "dist/YM_Link"
-    output.mkdir(parents=True, exist_ok=True)
+    if output.resolve().parent != ROOT / "dist":
+        raise SystemExit("The app output must stay inside the workspace dist directory.")
+    if output.exists():
+        shutil.rmtree(output)
+    output.mkdir(parents=True)
     run([
         "dotnet", "publish", "windows/YM_Link/YM_Link.csproj", "-c", configuration,
         "-r", "win-x64", "--self-contained", "false" if args.framework_dependent else "true",

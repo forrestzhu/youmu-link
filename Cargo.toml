@@ -5,6 +5,7 @@ members = ["core", "desktop"]
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
+license = "Apache-2.0"
 
 # rustc's Mach-O debug stripping can misalign host proc-macro dylibs on macOS 27
 # (rust-lang/rust#157750). This affects build tools only, not release optimization.

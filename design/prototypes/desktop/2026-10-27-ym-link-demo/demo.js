@@ -17,7 +17,7 @@ const MONITORS = [
 ];
 
 const SHARE_DIRS = [
-  { path: "/Users/forrest/Movies", note: "影片" },
+  { path: "/Users/demo/Movies", note: "影片" },
   { path: "D:\\Media\\Movies", note: "Windows 目录示例" },
 ];
 

@@ -3,6 +3,7 @@
 from pathlib import Path
 import argparse
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -18,6 +19,12 @@ def run(args, *, capture=False):
     )
 
 
+def verify_runtime_dependencies(libraries):
+    if any(not library.startswith(("/System/Library/", "/usr/lib/"))
+           and not re.fullmatch(r"@rpath/libswift[\w]+\.dylib", library) for library in libraries):
+        raise ValueError("The app links a non-system library; Rust must be linked statically.")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sign-identity", default="-", help="local Apple Development identity; default is ad-hoc")
@@ -28,6 +35,8 @@ def main():
     run(["swift", "build", "--package-path", "macos", "-c", "release"])
     binaries = Path(run(["swift", "build", "--package-path", "macos", "-c", "release", "--show-bin-path"], capture=True).stdout.strip())
     app = ROOT / "dist/YM_Link.app"
+    if app.resolve().parent != ROOT / "dist":
+        raise SystemExit("The app output must stay inside the workspace dist directory.")
     if app.exists():
         shutil.rmtree(app)
     executable = app / "Contents/MacOS"
@@ -40,6 +49,8 @@ def main():
         shutil.copytree(bundle, resources / bundle.name)
     for locale in (ROOT / "macos/Resources").glob("*.lproj"):
         shutil.copytree(locale, resources / locale.name)
+    dependencies = run(["otool", "-L", str(executable / "YM_Link")], capture=True).stdout.splitlines()[1:]
+    verify_runtime_dependencies([line.strip().split(" (", 1)[0] for line in dependencies])
     run(["codesign", "--force", "--sign", args.sign_identity, str(app)])
     run(["codesign", "--verify", "--strict", str(app)])
     print(f"Built {app.relative_to(ROOT)} (local development signing; not notarized).")

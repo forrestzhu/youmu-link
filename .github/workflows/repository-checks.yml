@@ -4,44 +4,107 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  harness:
-    runs-on: ubuntu-latest
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.11"
-      - name: Harness regression
-        run: python3 scripts/test_harness.py
-      - name: Repository baseline
-        run: python3 scripts/harness.py check
-
-  rust:
-    # macOS 侧由本地 `harness verify` 覆盖（私有仓库 Actions 分钟数按平台加倍计费）。
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@v1
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable, 2026-10-27
         with:
+          toolchain: "1.85.0"
           components: rustfmt
-      - uses: Swatinem/rust-cache@v2
+      - name: Python regression tests
+        run: python -m unittest discover -s scripts -p 'test_*.py'
+      - name: Repository baseline
+        run: python scripts/harness.py check
       - name: Rustfmt
         run: cargo fmt --all --check
-      - name: Tests
-        run: cargo test --workspace --all-targets
-      - uses: actions/setup-dotnet@v4
-        if: runner.os == 'Windows'
+      - name: Rust tests (hardware capture tests stay ignored)
+        run: cargo test --workspace --all-targets --locked
+
+  windows:
+    needs: checks
+    runs-on: windows-2025
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          dotnet-version: '8.0.x'
-      - name: Windows native models and localization
-        if: runner.os == 'Windows'
-        run: dotnet run --project windows/Tests/YM_Link.Tests.csproj
-      - name: Windows native build
-        if: runner.os == 'Windows'
-        run: dotnet build windows/YM_Link/YM_Link.csproj --configuration Release
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.11"
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable, 2026-10-27
+        with:
+          toolchain: "1.85.0"
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: "8.0.x"
+      - name: Windows Rust tests
+        run: cargo test --workspace --all-targets --locked
+      - name: Native models, localization, ABI, release build and bounded smoke test
+        run: python scripts/build_windows.py --smoke-test
+      - name: Collect exact dependency notices
+        run: python scripts/collect_licenses.py --output dist/legal --windows-assets windows/YM_Link/obj/project.assets.json
+      - name: Package Windows x64 developer build
+        run: python scripts/package_build.py --platform windows-x64 --revision $env:GITHUB_SHA
+      - name: Upload developer archive and SHA-256 checksum
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: YM_Link-windows-x64-${{ github.sha }}
+          path: dist/packages/*
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+  macos:
+    needs: checks
+    # This standard image is Apple Silicon; Intel and macOS 14 compatibility need separate acceptance.
+    runs-on: macos-15
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.11"
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable, 2026-10-27
+        with:
+          toolchain: "1.85.0"
+      - name: Confirm Apple Silicon runner
+        run: test "$(uname -m)" = arm64
+      - name: macOS Rust tests
+        run: cargo test --workspace --all-targets --locked
+      - name: Build and verify static Rust linkage and ad-hoc signature
+        run: python scripts/build_macos.py
+      - name: Swift tests
+        run: swift test --package-path macos -c release
+      - name: Collect exact dependency notices
+        run: python scripts/collect_licenses.py --output dist/legal
+      - name: Package macOS arm64 developer build
+        run: python scripts/package_build.py --platform macos-arm64 --revision "$GITHUB_SHA"
+      - name: Upload developer archive and SHA-256 checksum
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: YM_Link-macos-arm64-${{ github.sha }}
+          path: dist/packages/*
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
