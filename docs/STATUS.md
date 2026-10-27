@@ -24,4 +24,4 @@
 
 ## 下一步
 
-本轮代码稳定，提交 / 推送后执行最终远端一致性门禁。等待用户确认后验证真实屏幕 / 系统音频采集，再推进游目端 v3 协议对接与双机 LAN / Quest 文件播放、镜像验收，见 [ROADMAP](product/ROADMAP.md)。
+本轮代码 `3b6329b` 已推送 main，`check --require-pushed` 实跑通过，工作区干净。等待用户确认后验证真实屏幕 / 系统音频采集，再推进游目端 v3 协议对接与双机 LAN / Quest 文件播放、镜像验收，见 [ROADMAP](product/ROADMAP.md)。

@@ -37,6 +37,7 @@ Tests: core::tests::discovery、core::tests::session、core::tests::files、core
 - 本轮独立只读复核（基线 `7614ae3` + 工作树）：镜像控制未发现新 P1 / P2；检查首次开始 / 权限请求限制、过期请求、连接代际、stop / error 解除授权与 capture gate 保留到真实 teardown。文件 actor 复核发现同连接同 id 重开会受旧 Ack 干扰，规范先明确同连接 id 不复用、最多 1024 个，重连后仍可原 id 续传，再补回归修复。
 - 本轮最终 `harness verify` PASS：57 Rust passed、0 failed、1 ignored；`swift test --package-path macos` 1/1；显式合成像素硬件编码 1/1。新增回归实际验证慢 catalog / 真实 TCP 写反压下 Stop 转发、文件工作上限与取消后真实 I/O 仍持额度、退休 id 迟到 Ack / 重开拒绝、失效本地控制不影响新任务。独立复核的 ID 复用 P2 已先 RED 后 GREEN，随后根代理回读实现与回归。
 - 当前 v3 生产 `.app` 重建与现有 Apple Development 签名校验通过，CUA 打开成功。截图确认功能栏不再有 Workspace 三行占位；同机实际网卡地址经两次原生弹窗配对，MirrorQuery 返回 v3 / stopped 与实际显示器，首次远端 Resume 返回 ok=false 且状态仍 stopped，无录屏或授权弹窗。两条临时信任已由原生“移除配对”清理，设备数回到 0。本次仍为同机控制链路验证，不代替真实采集或双机 LAN。
+- 本轮代码提交 `3b6329b` 已推送 `origin/main`；`python3 scripts/harness.py check --require-pushed` 实跑 PASS，确认 HEAD 等于实际远端 main，工作区干净。真实采集 / 设备验收未完成，任务保持 verifying。
 
 - 可审查主提交 `712cabd` 与镜像 P2 修复 `ba65b72` 均已推送 main，`check --require-pushed` 实跑 PASS。独立复核确认旧流 running 发布竞态关闭。新增固定向量由手工 CBOR 与标准库 SHA-256 独立生成，`cargo test --offline -p ymlink-core --test protocol_vectors` 1 passed；未要求跨语言 map 键顺序相同，未宣称 Kotlin 互操作已通过。
 - 最新已回读 CI run `40452957099`（受审代码 `ba65b72`）：三个任务均未启动，annotations 明确为 GitHub 账户付款 / spending limit 阻塞；属于 not-run，不标测试失败或通过，未修改账户设置。
