@@ -7,6 +7,6 @@
 - [x] stdlib 收集器从锁定 Cargo metadata、实际 Rust sysroot 与 project.assets.json 收集许可到 dist/legal；单测覆盖漏许可、精确版本、notices 与安全路径。原生包包含 legal bundle 和 SHA-256。
 - [x] 复用 workflow，固定 action SHA、只读 token、三平台 Rust 与原生测试。受信任 main 构建上传 Windows x64 / macOS arm64 ZIP，保留 7 天；不自动做签名 / 公证、安装器或公开 Release。
 - [x] macOS 显式静态链接 Rust .a，移除 modulemap 动态 autolink，检查 otool 不指向 Rust 构建目录的 dylib；只配置不能代替 macOS 实测。
-- [x] 本机全门禁、Windows 实际构建 / 收集 / 打包 / hash 和独立审查；提交推送后回读新 workflow run。账户阻塞时记录 runner not-run，不更改付款或额度。
+- [x] 本机全门禁、Windows 实际构建 / 收集 / 打包 / hash 和独立审查；提交推送后回读新 workflow run。账户阻塞时记录 runner not-run，不更改账户设置。
 
 范围边界：Apache-2.0 允许商用与闭源衍生，保留许可及相关声明，提供贡献者范围的专利授权。仓库可见性、Git 历史作者 / 路径的重写与公开时点未获明确执行指令。开源项目本身与真实 Quest 功能验收、签名分发分别记录，不混为一个完成判据。

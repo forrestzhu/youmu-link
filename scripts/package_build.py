@@ -9,6 +9,8 @@ import subprocess
 import tempfile
 import zipfile
 
+from build_privacy import build_path_mappings, verify_binary_privacy
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -57,6 +59,10 @@ def package_build(platform, revision):
 
     if not any(path.is_relative_to(legal / "licenses") for path, _ in files):
         raise ValueError("dist/legal/licenses must contain collected dependency license texts")
+
+    own_binaries = ("YM_Link.exe", "YM_Link.dll", "ymlink_desktop.dll") if platform == "windows-x64" else ("Contents/MacOS/YM_Link",)
+    verify_binary_privacy([source / name for name in own_binaries if (source / name).is_file()],
+                          [prefix for prefix, _ in build_path_mappings(ROOT)])
 
     name = f"YM_Link-{version}-{platform}-{revision[:12].lower()}"
     output = ROOT / "dist/packages"

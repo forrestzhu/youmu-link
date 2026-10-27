@@ -1,11 +1,12 @@
 """Build the native Windows x64 YM_Link app (local development, unsigned)."""
 
 import argparse
-import os
 from pathlib import Path
 import shutil
 import subprocess
 import sys
+
+from build_privacy import rust_build_environment
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -13,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def run(arguments, timeout=900):
     subprocess.run(
         arguments, cwd=ROOT, check=True, timeout=timeout,
-        env={**os.environ, "CARGO_HTTP_MULTIPLEXING": "false"},
+        env={**rust_build_environment(ROOT), "CARGO_HTTP_MULTIPLEXING": "false"},
     )
 
 

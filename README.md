@@ -8,7 +8,7 @@ YM_Link 是 [Youmu VR Player](https://github.com/forrestzhu/youmu)（游目）�
 2. **文件浏览与播放 / 传输** —— 在头显内浏览电脑的文件目录，选择视频直接流式播放，或传输到头显本地。
 3. **设备发现与配对** —— 双端在同一局域网内互相发现，经显式配对码确认后建立加密连接；头显侧入口为游目内的 YM_Link 面板。
 
-互联模型参考内部项目 klip 的局域网同步设计（UDP 广播 beacon、动态 TCP 端口、Noise 加密与持久信任），源码与协议独立实现。首次连接须经六位码 SPAKE2 配对；规范见 [PROTOCOL](docs/engineering/PROTOCOL.md)。
+互联模型参考已验证的局域网同步设计（UDP 广播 beacon、动态 TCP 端口、Noise 加密与持久信任），源码与协议独立实现。首次连接须经六位码 SPAKE2 配对；规范见 [PROTOCOL](docs/engineering/PROTOCOL.md)。
 
 ## 仓库状态
 
@@ -44,7 +44,7 @@ python3 scripts/package_build.py --platform windows-x64
 # macOS 构建后省略 --windows-assets，并改为 --platform macos-arm64
 ```
 
-源码开源与 CI runner 实际执行状态见 [开源与 CI 报告](docs/evidence/2026-10-27-opensource-ci.md)。当前账户付款 / spending limit 曾阻止任务启动；workflow 已配置不代表云端任务已成功。
+开源前隐私审查见[敏感信息审计](docs/evidence/2026-10-27-sensitive-information-audit.md)。源码开源与 CI runner 实际执行状态见 [开源与 CI 报告](docs/evidence/2026-10-27-opensource-ci.md)。当前账户级托管运行条件限制曾阻止任务启动；workflow 已配置不代表云端任务已成功。
 
 ## 快速开始
 

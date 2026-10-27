@@ -510,14 +510,14 @@ mod tests {
 
     #[test]
     fn enterprise_and_link_local_unicast_follow_interface_subnets() {
-        let enterprise = [subnet("30.234.34.1", "255.255.255.0")];
+        let enterprise = [subnet("198.51.100.1", "255.255.255.0")];
         assert!(allowed_source(
-            "30.234.34.23".parse().unwrap(),
+            "198.51.100.23".parse().unwrap(),
             &enterprise,
             false
         ));
         assert!(!allowed_source(
-            "8.8.8.8".parse().unwrap(),
+            "203.0.113.8".parse().unwrap(),
             &enterprise,
             false
         ));
@@ -531,10 +531,10 @@ mod tests {
 
     #[test]
     fn network_broadcast_and_special_sources_are_never_production_peers() {
-        let interfaces = [subnet("30.234.34.1", "255.255.255.0")];
+        let interfaces = [subnet("198.51.100.1", "255.255.255.0")];
         for source in [
-            "30.234.34.0",
-            "30.234.34.255",
+            "198.51.100.0",
+            "198.51.100.255",
             "255.255.255.255",
             "224.0.0.1",
             "240.0.0.1",
@@ -570,7 +570,7 @@ mod tests {
             subnet("224.0.0.1", "255.255.255.0"),
             subnet("240.0.0.1", "255.255.255.0"),
             Subnet {
-                broadcast: Some("8.8.8.8".parse().unwrap()),
+                broadcast: Some("203.0.113.8".parse().unwrap()),
                 ..subnet("10.0.0.1", "255.255.255.0")
             },
         ] {

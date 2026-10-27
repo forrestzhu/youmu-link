@@ -9,7 +9,7 @@
 "use strict";
 
 const HEADSET = { name: "Quest 3S · 游目", platform: "Meta Horizon OS", tag: "headset" };
-const COMPUTER = { name: "Forrest 的 MacBook Pro", platform: "macOS", tag: "computer" };
+const COMPUTER = { name: "演示电脑", platform: "macOS", tag: "computer" };
 
 const MONITORS = [
   { id: "main", label: "主显示器", res: "3456 × 2234" },

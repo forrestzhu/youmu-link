@@ -16,12 +16,13 @@ class PackageBuildTests(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
-        self.root = Path(temporary.name)
+        self.root = Path(temporary.name).resolve()
         (self.root / "scripts").mkdir()
         self.script = self.root / "scripts/package_build.py"
-        source = Path(__file__).with_name("package_build.py")
-        if source.exists():
-            shutil.copy2(source, self.script)
+        for filename in ("package_build.py", "build_privacy.py"):
+            source = Path(__file__).with_name(filename)
+            if source.exists():
+                shutil.copy2(source, self.script.with_name(filename))
         (self.root / "Cargo.toml").write_text('[workspace.package]\nversion = "0.1.0"\n', encoding="utf-8")
         for name in ("LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md", "licenses/example/LICENSE"):
             self.write("dist/legal/" + name, "legal text\n")
@@ -68,6 +69,36 @@ class PackageBuildTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("ymlink_desktop.dll", result.stderr)
         self.assertFalse(list((self.root / "dist").glob("packages/*.zip")))
+
+    def test_own_binaries_with_local_build_paths_cannot_be_packaged_or_log_the_path(self):
+        for filename, encoding in (("YM_Link.exe", "utf-8"), ("YM_Link.dll", "utf-16le"), ("ymlink_desktop.dll", "utf-8")):
+            with self.subTest(filename=filename, encoding=encoding):
+                binary = self.root / "dist/YM_Link" / filename
+                private = str(self.root).replace("\\", "/").upper() + "/src/private.rs"
+                binary.write_bytes(b"binary\x00" + private.encode(encoding))
+                result = self.package()
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("build-machine path", result.stderr)
+                self.assertIn(filename, result.stderr)
+                self.assertNotIn(str(self.root), result.stderr)
+                self.assertNotIn(private, result.stderr)
+                self.assertFalse(list((self.root / "dist").glob("packages/*.zip")))
+                binary.write_bytes(b"binary")
+
+    def test_vendor_public_build_paths_are_not_reported_as_local_secrets(self):
+        self.write("dist/YM_Link/coreclr.dll", "D:/public-ci/runtime/src/example.cpp")
+        self.write("dist/legal/licenses/example/LICENSE", "C:/example/public/license/path")
+        result = self.package()
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_mac_main_binary_with_local_build_path_cannot_be_packaged(self):
+        self.write("dist/YM_Link.app/Contents/MacOS/YM_Link", str(self.root) + "/macos/main.swift")
+        self.write("dist/YM_Link.app/Contents/Info.plist", "plist")
+        self.write("dist/YM_Link.app/Contents/_CodeSignature/CodeResources", "signature")
+        result = self.package("macos-arm64")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("build-machine path", result.stderr)
+        self.assertNotIn(str(self.root), result.stderr)
 
     def test_directory_links_cannot_include_files_outside_either_archive_input(self):
         private = self.write("private/identity.json", "private fixture").parent

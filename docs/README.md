@@ -20,7 +20,7 @@
 | 任务记录 | [tasks/](tasks/)（归档在 `tasks/archive/`） |
 | 当前 macOS 实现任务 | [YML-002](tasks/YML-002-macos-native.md) |
 | 当前 Windows 实现任务 | [YML-003](tasks/YML-003-windows-native.md)、[实施计划](plans/2026-10-27-windows-native.md) |
-| 开源与自动测试打包 | [YML-004](tasks/YML-004-opensource-ci.md)、[实施计划](plans/2026-10-27-opensource-ci.md)、[历史 / 许可 / CI 报告](evidence/2026-10-27-opensource-ci.md) |
+| 开源与自动测试打包 | [YML-004](tasks/YML-004-opensource-ci.md)、[实施计划](plans/2026-10-27-opensource-ci.md)、[历史 / 许可 / CI 报告](evidence/2026-10-27-opensource-ci.md)、[敏感信息审计](evidence/2026-10-27-sensitive-information-audit.md) |
 | 框架与 demo 启动记录 | [YML-001（归档）](tasks/archive/YML-001-bootstrap.md) |
 | demo 原型 | [../design/prototypes/](../design/prototypes/) |
 

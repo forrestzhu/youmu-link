@@ -2,7 +2,7 @@
 
 **目标：** Windows 原生入口复用 macOS 已验证的 Rust 发现、加密配对、目录文件、传输与镜像控制逻辑，英文 / 简体中文可切换。
 
-**架构：** WPF / .NET 8 原生窗口以 UTF-8 C ABI 调用 `ymlink-desktop` DLL，网络与权限逻辑继续留在 Rust。Windows Credential Manager 持久化身份，当前用户应用目录用受保护 ACL 保存信任与目录授权。Windows Graphics Capture + Media Foundation H.264 + WASAPI loopback 适配现有媒体输出；协议保持 v3，不复制 klip 源码。
+**架构：** WPF / .NET 8 原生窗口以 UTF-8 C ABI 调用 `ymlink-desktop` DLL，网络与权限逻辑继续留在 Rust。Windows Credential Manager 持久化身份，当前用户应用目录用受保护 ACL 保存信任与目录授权。Windows Graphics Capture + Media Foundation H.264 + WASAPI loopback 适配现有媒体输出；协议保持 v3，不复制参考项目源码。
 
 **规格：** [YML-003](../tasks/YML-003-windows-native.md)、[产品定义](../product/YM-LINK.md)、[PROTOCOL](../engineering/PROTOCOL.md)。用户本次已授权实施、测试、两轮 CR 和 main 提交推送。
 

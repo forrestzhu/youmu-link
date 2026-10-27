@@ -2,11 +2,12 @@
 
 from pathlib import Path
 import argparse
-import os
 import re
 import shutil
 import subprocess
 import sys
+
+from build_privacy import rust_build_environment
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -14,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def run(args, *, capture=False):
     return subprocess.run(
         args, cwd=ROOT, check=True, timeout=900,
-        env={**os.environ, "MACOSX_DEPLOYMENT_TARGET": "14.0", "CARGO_HTTP_MULTIPLEXING": "false"},
+        env={**rust_build_environment(ROOT), "MACOSX_DEPLOYMENT_TARGET": "14.0", "CARGO_HTTP_MULTIPLEXING": "false"},
         capture_output=capture, text=True,
     )
 

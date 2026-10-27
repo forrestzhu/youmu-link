@@ -2,7 +2,7 @@
 
 **Goal:** 根据 demo 实现 macOS 原生桌面伴侣，Rust 统一承载后端，与游目头显经局域网互连。
 
-**Architecture:** SwiftUI / AppKit 展示设备、镜像、共享目录和传输界面。C ABI 连接 Rust 状态管理器，复用发现模块，Noise + SPAKE2 保护业务流量；无 HTTP。klip 仅作架构参考。
+**Architecture:** SwiftUI / AppKit 展示设备、镜像、共享目录和传输界面。C ABI 连接 Rust 状态管理器，复用发现模块，Noise + SPAKE2 保护业务流量；无 HTTP。内部参考项目仅作架构参考。
 
 **Tech Stack:** SwiftUI、AppKit、Rust、tokio、CBOR、snow、spake2、Keychain、ScreenCaptureKit、VideoToolbox。
 

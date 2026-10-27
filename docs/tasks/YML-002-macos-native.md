@@ -7,7 +7,7 @@ Tests: core::tests::discovery、core::tests::session、core::tests::files、core
 
 ## Scope
 
-用户要求基于当前 demo 实现，参考 klip 局域网互连，后端 Rust、前端原生，优先 macOS。本任务承接 M2–M4 桌面侧；见 [计划](../plans/2026-10-27-macos-native.md) 与 [ADR-0002](../engineering/decisions/0002-native-desktop.md)。不复制 klip 源码。Quest 端由游目仓库承接，保留互操作与真机验收要求。
+用户要求基于当前 demo 实现，参考已验证的局域网互连设计，后端 Rust、前端原生，优先 macOS。本任务承接 M2–M4 桌面侧；见 [计划](../plans/2026-10-27-macos-native.md) 与 [ADR-0002](../engineering/decisions/0002-native-desktop.md)。不复制参考项目源码。Quest 端由游目仓库承接，保留互操作与真机验收要求。
 
 ## Spec
 
@@ -49,7 +49,7 @@ Tests: core::tests::discovery、core::tests::session、core::tests::files、core
 - 本轮代码提交 `3b6329b` 已推送 `origin/main`；`python3 scripts/harness.py check --require-pushed` 实跑 PASS，确认 HEAD 等于实际远端 main，工作区干净。真实采集 / 设备验收未完成，任务保持 verifying。
 
 - 可审查主提交 `712cabd` 与镜像 P2 修复 `ba65b72` 均已推送 main，`check --require-pushed` 实跑 PASS。独立复核确认旧流 running 发布竞态关闭。新增固定向量由手工 CBOR 与标准库 SHA-256 独立生成，`cargo test --offline -p ymlink-core --test protocol_vectors` 1 passed；未要求跨语言 map 键顺序相同，未宣称 Kotlin 互操作已通过。
-- 最新已回读 CI run `40452957099`（受审代码 `ba65b72`）：三个任务均未启动，annotations 明确为 GitHub 账户付款 / spending limit 阻塞；属于 not-run，不标测试失败或通过，未修改账户设置。
+- 最新已回读 CI run `40452957099`（受审代码 `ba65b72`）：三个任务均未启动，annotations 明确为 GitHub 账户级托管运行条件限制；属于 not-run，不标测试失败或通过，未修改账户设置。
 
 - 原生移除配对菜单与共享目录“移除”按钮已实测：测试信任和共享目录配置均回到空集合，测试设备 / 样本授权已清理。
 

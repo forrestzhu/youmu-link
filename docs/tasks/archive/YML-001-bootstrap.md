@@ -19,7 +19,7 @@ Tests: core::beacon (单元：编解码 / 512B / 定长 / 未知字段 / tag_has
 - [x] harness 可用：YML 编号合同、Tests 字段、evidence 报告绑定、`check --require-pushed` 与 `verify`；`test_harness.py` 回归通过。
 - [x] 可点击 demo 原型覆盖桌面与头显两视角（发现 / 配对码 / 屏幕镜像 / 文件浏览与传输），浏览器直接打开可用。
 - [x] `ymlink-core` 发现 beacon 骨架：CBOR 编解码（≤512B / deny-unknown / 定长校验）、UDP 广播与监听、同网段过滤、tag 过滤、自回环抑制、Query 单播回复 + 冷却、候选表事件；单元 + loopback 集成测试通过。
-- [x] CI workflow 就位：ubuntu / windows 矩阵（macOS 由本地 `harness verify` 覆盖）；2026-10-27 首跑因 GitHub 账户付款 / 额度未启动，已如实记录为 not-run，恢复后重跑补证。
+- [x] CI workflow 就位：ubuntu / windows 矩阵（macOS 由本地 `harness verify` 覆盖）；2026-10-27 首跑因 GitHub 账户级托管运行条件限制未启动，已如实记录为 not-run，恢复后重跑补证。
 - [x] M1 评审：用户授权基于当前 demo 实现，并指定 macOS 原生界面与 Rust 后端；后续由 YML-002 承接。
 
 ## Verification
@@ -28,7 +28,7 @@ Tests: core::beacon (单元：编解码 / 512B / 定长 / 未知字段 / tag_has
 2. 框架 → `python3 scripts/test_harness.py`、`python3 scripts/harness.py check --require-pushed` → 0 退出。
 3. 核心 → `cargo test --workspace`、`cargo fmt --all --check` → 通过；双机 LAN not-run（M2 起，见 TESTING L3）。
 4. demo → 浏览器人工核对两视角状态流；不构成视觉合同。
-5. CI → push 后 workflow 正常触发（run 40431997238），但三任务均因「账户付款失败 / spending limit」未启动（not-run）；解除后重跑，预期 harness + rustfmt + cargo test 全绿。
+5. CI → push 后 workflow 正常触发（run 40431997238），但三任务均因「账户级托管运行条件限制」未启动（not-run）；解除后重跑，预期 harness + rustfmt + cargo test 全绿。
 
 ## Evidence
 

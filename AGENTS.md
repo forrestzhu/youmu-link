@@ -11,7 +11,7 @@
 - YM_Link：Windows / macOS 桌面应用，连接 Meta Quest 3 / 3S 上的游目；产品全称 Youmu VR Player 桌面伴侣 YM_Link。
 - 先读 [当前进度](docs/STATUS.md)、[产品定义](docs/product/YM-LINK.md) 和当前任务；用 [文档索引](docs/README.md) 定位材料。
 - 阶段目标见 [ROADMAP](docs/product/ROADMAP.md)；未立项的想法先进 ROADMAP 候选，不直接动代码。
-- 按用户本轮要求准备 Apache-2.0 开源与 GitHub Actions 自动测试 / 开发包；LICENSE 与第三方许可文件随仓库及制品保留。当前 GitHub 仓库仍为 private，转公开与改写已推送历史必须由用户明确决定；本次不自动发布 GitHub Release，不更改账户付款 / spending limit。
+- 按用户本轮要求准备 Apache-2.0 开源与 GitHub Actions 自动测试 / 开发包；LICENSE 与第三方许可文件随仓库及制品保留。当前 GitHub 仓库仍为 private，转公开与改写已推送历史必须由用户明确决定；本次不自动发布 GitHub Release，不更改账户设置。
 
 ## 工作闭环
 
@@ -26,7 +26,7 @@
 ## 技术边界
 
 - 技术方向：后端统一使用 Rust（`ymlink-core` 协议核心、`ymlink-desktop` 桌面状态与平台适配）；macOS 界面使用 SwiftUI / AppKit，Windows 使用 WPF / .NET 8，两者经 C ABI 读取快照与发送命令，不引入 WebView。现行决策见 [ADR-0002](docs/engineering/decisions/0002-native-desktop.md) 与 [ADR-0003](docs/engineering/decisions/0003-windows-native.md)，[ADR-0001](docs/engineering/decisions/0001-platform.md) 保留历史。Quest 端在游目内以 Kotlin 实现同一协议，协议以 [PROTOCOL](docs/engineering/PROTOCOL.md) 为唯一规范，双端互操作测试必须覆盖。
-- 互联模型参考内部项目 klip 的已验证设计（UDP 广播 beacon、CBOR 报文、Noise 加密、SPAKE2 短码配对）；借鉴设计思想，**不复制 klip 源码**，实现独立编写。
+- 互联模型参考已验证的局域网设计（UDP 广播 beacon、CBOR 报文、Noise 加密、SPAKE2 短码配对）；借鉴设计思想，**不复制参考项目源码**，实现独立编写。
 - 发现报文不携带设备身份；身份与信任只在加密层交换。新协议字段先改 PROTOCOL 文档并升版本，再写两端实现。
 - 不引入 HTTP 服务框架、不做常驻云依赖；公网穿透 / 中继如需引入必须先立 ADR。
 - 屏幕采集走平台 API（macOS ScreenCaptureKit / Windows Graphics Capture），解码能力与延迟按真实硬件验证，不从平台名称推断。
