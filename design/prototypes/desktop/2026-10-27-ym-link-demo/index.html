@@ -24,7 +24,7 @@
   .demo-controls button { background: transparent; border: 1px solid var(--line); color: var(--muted); border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 12px; }
   .demo-controls button:hover { color: var(--text); border-color: var(--muted); }
 
-  .window { border: 1px solid var(--line); border-radius: 14px; background: var(--panel); overflow: hidden; }
+  .window { border: 1px solid var(--line); border-radius: 14px; background: var(--panel); overflow: hidden; position: relative; }
   .window .titlebar { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: var(--panel-2); border-bottom: 1px solid var(--line); font-size: 13px; color: var(--muted); }
   .titlebar .dots { display: flex; gap: 5px; }
   .titlebar .dots i { width: 10px; height: 10px; border-radius: 50%; background: #3a4152; display: block; }
@@ -69,7 +69,7 @@
   table.files tr.dir td:hover { color: var(--accent); }
   .breadcrumb { color: var(--muted); font-size: 13px; margin-bottom: 10px; }
   .breadcrumb a { color: var(--accent); cursor: pointer; text-decoration: none; }
-  .modal-mask { position: fixed; inset: 0; background: rgba(5,7,10,.62); display: flex; align-items: center; justify-content: center; }
+  .modal-mask { position: absolute; inset: 0; background: rgba(5,7,10,.72); display: flex; align-items: center; justify-content: center; z-index: 10; }
   .modal { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 22px; width: 340px; }
   .modal h3 { font-size: 15px; margin-bottom: 6px; }
   .modal p { color: var(--muted); font-size: 13px; line-height: 1.6; margin-bottom: 12px; }
@@ -136,6 +136,7 @@
         </div>
       </div>
       <div class="statusbar" id="desktop-status"></div>
+      <div id="modal-root"></div>
     </div>
   </section>
 
@@ -159,7 +160,6 @@
   </div>
 </main>
 
-<div id="modal-root"></div>
 <script src="demo.js"></script>
 </body>
 </html>

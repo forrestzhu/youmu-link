@@ -40,7 +40,7 @@ browsing ──选片播放──► streaming(进度/暂停) ──选传输─
 
 ## 状态命名（与实现一致）
 
-`discovered / pairing / entering-code / connected / disconnected / mirroring / streaming / transferring` —— 实现期 UI 文案可本地化，状态机名称沿用 [ARCHITECTURE](../engineering/ARCHITECTURE.md) 与 PROTOCOL 术语。
+原型实现为单一连接状态机加场景态：`link: searching / discovered / pairing / connected / disconnected`，场景态 `mirroring`（布尔）、`streaming` / `transferring`（由头显页 `streaming` / `transfers` 呈现）。与本文最初草案及 [ARCHITECTURE](../engineering/ARCHITECTURE.md) 术语的映射：桌面显示码与头显输入码（草案 `entering-code`）是同一 `pairing` 状态的两个视角呈现；`mirroring / streaming / transferring` 是 `connected` 下的场景态而非独立连接态；架构文档的 `connecting / paired` 对应实现中的 `pairing / connected`。产品实现期 UI 文案可本地化，状态机名称以本节映射为准。断线转移在原型中简化为 2.4 秒自动回到 `connected`（beacon 重发现路径属产品实现，原型不模拟）。
 
 ## 错误与边界展示（原型必须可见）
 

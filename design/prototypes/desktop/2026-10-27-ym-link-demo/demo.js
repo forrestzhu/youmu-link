@@ -1,5 +1,10 @@
 // YM_Link demo 状态机：纯前端模拟，两视角共享同一连接状态。
-// 状态命名与 docs/plans/2026-10-27-demo-design.md 保持一致。
+// 状态模型与 docs/plans/2026-10-27-demo-design.md 的映射：
+//   link: searching | discovered | pairing | connected | disconnected
+//   （设计稿的 entering-code 由 pairing + 头显视角呈现；mirroring / streaming /
+//    transferring 是 connected 下的场景态，由 hqScreen / mirroring / transfers 表示）
+// 渲染策略：状态转移时整体重渲染；500ms tick 只做定向更新（配对倒计时、
+// 镜像统计、传输进度），不重建含输入框的区域。
 
 "use strict";
 
@@ -18,7 +23,6 @@ const SHARE_DIRS = [
 
 const FILES = {
   root: [
-    { name: "..", dir: true },
     { name: "电影", dir: true },
     { name: "纪录片", dir: true },
     { name: "遗忘星球 (2025).mkv", size: "18.4 GB", video: true },
@@ -35,6 +39,11 @@ const FILES = {
     { name: "..", dir: true },
     { name: "蓝色星球 II S01E01.mkv", size: "7.8 GB", video: true },
   ],
+  字幕包: [
+    { name: "..", dir: true },
+    { name: "遗忘星球.chs.srt", size: "48 KB", video: false },
+    { name: "沙丘 3.chs.srt", size: "52 KB", video: false },
+  ],
 };
 
 const state = {
@@ -42,11 +51,14 @@ const state = {
   pairingCode: "",
   pairingDeadline: 0,
   pairingExpired: false,
+  scanToken: 0,
   monitor: "main",
   mirroring: false,
-  mirrorStats: { bitrate: 0, fps: 0, latency: 0 },
-  hqScreen: "home", // home | files | streaming | transfers
+  mirrorStats: { bitrate: 28, fps: 72, latency: 34 },
+  hqScreen: "home", // home | files | mirror | streaming | transfers
   hqDir: "root",
+  hqCodeDraft: "",
+  hqError: "",
   streamingFile: null,
   transfers: [], // {name, percent, status}
   timer: null,
@@ -64,12 +76,16 @@ function randomCode() {
 function toSearching() {
   state.link = "searching";
   state.pairingExpired = false;
+  state.hqError = "";
+  state.scanToken += 1;
+  const token = state.scanToken;
   setTimeout(() => {
-    if (state.link === "searching") {
+    if (state.link === "searching" && token === state.scanToken) {
       state.link = "discovered";
       renderAll();
     }
   }, 1600);
+  startTicker();
   renderAll();
 }
 
@@ -78,6 +94,8 @@ function startPairing() {
   state.pairingCode = randomCode();
   state.pairingExpired = false;
   state.pairingDeadline = Date.now() + 300_000; // 规范：5 分钟
+  state.hqCodeDraft = "";
+  state.hqError = "";
   renderAll();
 }
 
@@ -85,6 +103,7 @@ function completePairing() {
   state.link = "connected";
   state.hqScreen = "home";
   state.hqDir = "root";
+  state.hqError = "";
   renderAll();
 }
 
@@ -92,13 +111,16 @@ function dropConnection() {
   const wasConnected = state.link === "connected";
   state.link = "disconnected";
   state.mirroring = false;
-  state.streamingFile = null;
   state.transfers = state.transfers.map((t) => ({ ...t, status: "暂停" }));
   renderAll();
   if (wasConnected) {
     setTimeout(() => {
       if (state.link === "disconnected") {
         state.link = "connected";
+        // 设计稿：恢复后传输继续。
+        state.transfers.forEach((t) => {
+          if (t.status === "暂停" && t.percent < 100) t.status = "传输中";
+        });
         renderAll();
       }
     }, 2400);
@@ -107,10 +129,20 @@ function dropConnection() {
 
 /* ---------------- 桌面端渲染 ---------------- */
 
+function monitorLabel() {
+  const monitor = MONITORS.find((m) => m.id === state.monitor);
+  return monitor ? monitor.label : "";
+}
+
 function desktopStatusHtml() {
   const dot = (cls, text) => `<span><span class="dot ${cls}"></span>${text}</span>`;
   if (state.link === "connected" && state.mirroring) {
-    return dot("ok", `镜像中 · ${state.monitorStatsLabel()}`) + dot("ok", `码率 ${state.mirrorStats.bitrate} Mbps`) + dot("ok", `延迟 ${state.mirrorStats.latency} ms`);
+    return (
+      dot("ok", `镜像中 · ${monitorLabel()}`) +
+      dot("ok", `${state.mirrorStats.fps} fps`) +
+      dot("ok", `码率 ${state.mirrorStats.bitrate} Mbps`) +
+      dot("ok", `延迟 ${state.mirrorStats.latency} ms`)
+    );
   }
   if (state.link === "connected") return dot("ok", "已连接 " + HEADSET.name) + dot("off", "空闲");
   if (state.link === "pairing") return dot("warn", "等待头显确认配对码…");
@@ -118,15 +150,23 @@ function desktopStatusHtml() {
   if (state.link === "discovered") return dot("warn", "发现设备，等待连接");
   return dot("off", "搜索中…");
 }
-state.monitorStatsLabel = function () {
-  const monitor = MONITORS.find((m) => m.id === state.monitor);
-  return monitor ? monitor.label : "";
-};
+
+function desktopEmptyHtml() {
+  if (state.link === "searching") {
+    return `<div class="spinner"></div>
+      <div>正在搜索同一网络中的游目头显…</div>
+      <div class="hint">确认头显已戴上并在游目内打开 YM_Link 面板</div>`;
+  }
+  if (state.link === "disconnected") {
+    return `<div>连接已断开，正在重连…</div>
+      <div class="hint">重连后镜像与传输自动继续；也可以在左侧重新连接</div>`;
+  }
+  return `<div>已发现设备</div>
+    <div class="hint">在左侧设备卡片点「连接」开始配对</div>`;
+}
 
 function renderDesktop() {
   const devices = $("desktop-devices");
-  const disconnected = $("desktop-disconnected");
-  const connected = $("desktop-connected");
   const inSession = state.link === "connected" || state.link === "pairing";
 
   if (state.link === "searching") {
@@ -141,12 +181,15 @@ function renderDesktop() {
       <button class="btn" style="width:100%" onclick="startPairing()">连接</button>`;
   }
 
-  show(disconnected, !inSession);
-  show(connected, inSession);
+  $("desktop-disconnected").innerHTML = desktopEmptyHtml();
+  show($("desktop-disconnected"), !inSession);
+  show($("desktop-connected"), inSession);
   $("desktop-status").innerHTML = desktopStatusHtml();
 
-  renderMonitors();
-  renderSharedDirs();
+  if (inSession) {
+    renderMonitors();
+    renderSharedDirs();
+  }
   show($("mirror-start"), state.link === "connected" && !state.mirroring);
   show($("mirror-stop"), state.mirroring);
 }
@@ -199,28 +242,36 @@ function renderPairingModal() {
     root.innerHTML = "";
     return;
   }
-  const secondsLeft = Math.max(0, Math.round((state.pairingDeadline - Date.now()) / 1000));
-  const mm = String(Math.floor(secondsLeft / 60)).padStart(2, "0");
-  const ss = String(secondsLeft % 60).padStart(2, "0");
   root.innerHTML = `
     <div class="modal-mask">
       <div class="modal">
         <h3>配对确认</h3>
         <p>${state.pairingExpired
-          ? "配对码已过期。请在头显端重新发起连接，获取新的配对码。"
-          : `在头显的 YM_Link 面板输入以下六位码完成配对。`}</p>
+          ? "配对码已过期。请取消后在任一侧重新发起连接，获取新的配对码。"
+          : "在头显的 YM_Link 面板输入以下六位码完成配对。"}</p>
         <div class="code">${state.pairingExpired ? "––––––" : state.pairingCode}</div>
-        <p>${state.pairingExpired ? "" : `有效期剩余 ${mm}:${ss}`}</p>
+        <p id="pair-countdown">${state.pairingExpired ? "" : "有效期剩余 05:00"}</p>
         <div class="row between">
           <button class="btn secondary" onclick="cancelPairing()">取消</button>
-          <button class="btn" ${state.pairingExpired ? "" : "disabled"}>${state.pairingExpired ? "等待重试…" : "等待头显确认…"}</button>
+          <button class="btn" disabled>${state.pairingExpired ? "配对码已过期" : "等待头显确认…"}</button>
         </div>
       </div>
     </div>`;
 }
 
+function updatePairingCountdown() {
+  if (state.link !== "pairing" || state.pairingExpired) return;
+  const element = $("pair-countdown");
+  if (!element) return;
+  const secondsLeft = Math.max(0, Math.round((state.pairingDeadline - Date.now()) / 1000));
+  const mm = String(Math.floor(secondsLeft / 60)).padStart(2, "0");
+  const ss = String(secondsLeft % 60).padStart(2, "0");
+  element.textContent = `有效期剩余 ${mm}:${ss}`;
+}
+
 function cancelPairing() {
   state.link = "discovered";
+  state.hqError = "";
   renderAll();
 }
 
@@ -236,10 +287,16 @@ function hqDeviceRow() {
     </div>`;
   }
   if (state.link === "pairing") {
+    const errorLine = state.hqError
+      ? `<div class="meta" style="color:var(--err)">${state.hqError}</div>`
+      : state.pairingExpired
+        ? `<div class="meta" style="color:var(--err)">配对码已过期，请取消后重新连接</div>`
+        : "";
     return `<div class="device">
       <div class="name">${COMPUTER.name} <span class="chip busy">配对中</span></div>
       <div class="meta">请输入电脑端 YM_Link 显示的六位码</div>
-      <div class="code"><input id="hq-code-input" maxlength="6" inputmode="numeric" placeholder="——————"></div>
+      ${errorLine}
+      <div class="code"><input id="hq-code-input" maxlength="6" inputmode="numeric" placeholder="——————" value="${state.hqCodeDraft}" oninput="hqTyping(this)"></div>
       <div class="row"><button class="btn" onclick="submitHqCode()">确认</button>
       <button class="btn secondary" onclick="cancelPairing()">取消</button></div>
     </div>`;
@@ -254,7 +311,7 @@ function hqDeviceRow() {
   if (state.link === "disconnected") {
     return `<div class="device">
       <div class="name">${COMPUTER.name} <span class="chip err">连接断开</span></div>
-      <div class="meta">正在重连… 播放与传输已暂停</div>
+      <div class="meta">正在重连… 播放与传输已暂停，恢复后自动继续</div>
     </div>`;
   }
   return `<div class="empty"><div class="spinner"></div><div>正在搜索同一网络中的电脑…</div>
@@ -266,23 +323,25 @@ function renderHeadset() {
   const controls = $("hq-controls");
 
   if (state.hqScreen === "streaming") {
+    const offline = state.link !== "connected";
     area.innerHTML = `
       <div style="width:82%;aspect-ratio:16/9;border-radius:12px;background:linear-gradient(145deg,#1c2434,#10141d);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px">
-        <div style="font-size:16px">${state.streamingFile}</div>
-        <div class="hint">正在从 ${COMPUTER.name} 流式播放 · 已缓冲 18%</div>
+        <div style="font-size:16px">${state.streamingFile ?? "未在播放"}</div>
+        <div class="hint">${offline ? "连接已断开，正在重连… 播放已暂停" : `正在从 ${COMPUTER.name} 流式播放 · 已缓冲 18%`}</div>
       </div>`;
     controls.innerHTML = `
       <button class="btn" onclick="stopStreaming()">停止播放</button>
-      <button class="btn secondary" onclick="openHqScreen('files')">返回文件</button>
-      <span class="hint" style="margin-left:auto">断开连接后播放自动停止</span>`;
+      <button class="btn secondary" onclick="openHqScreen('files')">返回文件</button>`;
     return;
   }
 
   if (state.hqScreen === "transfers") {
+    const offline = state.link !== "connected";
     area.innerHTML = `<div style="width:88%">
       <h2 style="color:var(--muted);font-size:13px;margin-bottom:10px">传输任务</h2>
+      ${offline ? `<div class="transfer-item" style="color:var(--err)">连接已断开，正在重连… 传输已暂停，恢复后自动继续</div>` : ""}
       ${state.transfers.length === 0 ? '<p class="hint">暂无传输任务。去电脑文件里选择“传输到本机”。</p>' : ""}
-      ${state.transfers.map((t, i) => `
+      ${state.transfers.map((t) => `
         <div class="transfer-item">
           <div class="row between"><span>${t.name} <span class="chip ${t.status === "完成" ? "ok" : "busy"}">${t.status}</span></span>
           <span class="hint">${t.percent}%</span></div>
@@ -296,16 +355,18 @@ function renderHeadset() {
   }
 
   if (state.hqScreen === "files") {
+    const offline = state.link !== "connected";
     const list = FILES[state.hqDir] || [];
     area.innerHTML = `<div style="width:88%">
       <div class="breadcrumb"><a onclick="hqEnter('root')">共享目录</a> / ${state.hqDir === "root" ? "" : state.hqDir}</div>
+      ${offline ? `<div class="transfer-item" style="color:var(--err);margin-bottom:10px">连接已断开，正在重连… 恢复后可继续浏览与播放</div>` : ""}
       <table class="files">
         <tr><th>名称</th><th>大小</th><th style="width:190px">操作</th></tr>
         ${list.map((f) => f.dir
           ? `<tr class="dir" onclick="hqEnter('${f.name === ".." ? "root" : f.name}')"><td>📁 ${f.name === ".." ? "返回上级" : f.name}</td><td>—</td><td></td></tr>`
-          : `<tr><td>🎬 ${f.name}</td><td class="hint">${f.size}</td><td>
-             <button class="btn" onclick="streamFile('${f.name}')">直接播放</button>
-             <button class="btn secondary" onclick="transferFile('${f.name}')">传输到本机</button></td></tr>`).join("")}
+          : `<tr><td>${f.video ? "🎬" : "📄"} ${f.name}</td><td class="hint">${f.size}</td><td>
+             <button class="btn" ${offline ? "disabled" : ""} onclick="streamFile('${f.name}')">直接播放</button>
+             <button class="btn secondary" ${offline ? "disabled" : ""} onclick="transferFile('${f.name}')">传输到本机</button></td></tr>`).join("")}
       </table>
     </div>`;
     controls.innerHTML = `
@@ -326,19 +387,16 @@ function renderHeadset() {
   }
 
   // home
-  const typing = document.activeElement === $("hq-code-input") ? $("hq-code-input").value : null;
+  const focused = document.activeElement === $("hq-code-input");
+  const caret = focused ? $("hq-code-input").selectionStart : null;
   area.innerHTML = `<div style="width:70%">${hqDeviceRow()}</div>`;
-  if (typing !== null) {
+  if (focused) {
     const input = $("hq-code-input");
     if (input) {
-      input.value = typing;
       input.focus();
+      if (caret !== null) input.setSelectionRange(caret, caret);
     }
   }
-  controls.innerHTML = state.link === "connected"
-    ? `<button class="btn secondary" onclick="openHqScreen('transfers')">传输任务</button>
-       <button class="btn danger" onclick="dropConnection()">断开</button>`
-    : `<span class="hint">配对一次后，之后会自动重连</span>`;
 }
 
 function openHqScreen(screen) {
@@ -349,13 +407,26 @@ function hqEnter(dir) {
   state.hqDir = dir;
   renderAll();
 }
+function hqTyping(input) {
+  state.hqCodeDraft = input.value;
+}
 function submitHqCode() {
-  const input = $("hq-code-input");
-  if (input && input.value === state.pairingCode && !state.pairingExpired) {
+  const draft = state.hqCodeDraft;
+  if (state.pairingExpired) {
+    state.hqError = "配对码已过期，请取消后重新连接";
+    renderAll();
+    return;
+  }
+  if (draft === state.pairingCode) {
     completePairing();
-  } else {
-    input.style.borderColor = "var(--err)";
-    input.value = "";
+    return;
+  }
+  state.hqError = draft.length === 6 ? "配对码不正确，请对照电脑端重输" : "请输入完整的六位配对码";
+  renderAll();
+  const input = $("hq-code-input");
+  if (input) {
+    input.focus();
+    input.select();
   }
 }
 function streamFile(name) {
@@ -380,10 +451,12 @@ $("ctl-scan").onclick = () => { resetStreamingState(); toSearching(); };
 $("ctl-expire").onclick = () => {
   if (state.link !== "pairing") return;
   state.pairingExpired = true;
-  state.pairingDeadline = Date.now();
   renderAll();
 };
-$("ctl-drop").onclick = () => dropConnection();
+$("ctl-drop").onclick = () => {
+  if (state.link !== "connected") return;
+  dropConnection();
+};
 $("ctl-reset").onclick = () => { resetStreamingState(); toSearching(); };
 
 function resetStreamingState() {
@@ -392,38 +465,38 @@ function resetStreamingState() {
   state.transfers = [];
   state.hqScreen = "home";
   state.hqDir = "root";
-  stopTicker();
+  state.hqError = "";
 }
 
 function tick() {
-  // 镜像统计抖动 + 传输进度推进 + 配对倒计时刷新
-  if (state.mirroring) {
-    state.mirrorStats.bitrate = 24 + Math.round(Math.random() * 12);
-    state.mirrorStats.latency = 28 + Math.round(Math.random() * 14);
-  }
-  let transfersDone = false;
-  state.transfers.forEach((t) => {
-    if (t.status === "传输中" && state.link === "connected") {
-      t.percent = Math.min(100, t.percent + 2 + Math.round(Math.random() * 4));
-      if (t.percent >= 100) { t.status = "完成"; transfersDone = true; }
-    }
-  });
+  // 定向更新：不整体重渲染，避免打断输入与点击。
   if (state.link === "pairing") {
-    renderPairingModal();
     if (state.pairingDeadline <= Date.now() && !state.pairingExpired) {
       state.pairingExpired = true;
+      renderAll();
+    } else {
+      updatePairingCountdown();
     }
   }
-  renderDesktop();
-  renderHeadset();
+  if (state.mirroring && state.link === "connected") {
+    state.mirrorStats.bitrate = 24 + Math.round(Math.random() * 12);
+    state.mirrorStats.latency = 28 + Math.round(Math.random() * 14);
+    $("desktop-status").innerHTML = desktopStatusHtml();
+  }
+  if (state.link === "connected" && state.transfers.some((t) => t.status === "传输中" && t.percent < 100)) {
+    state.transfers.forEach((t) => {
+      if (t.status === "传输中") {
+        t.percent = Math.min(100, t.percent + 2 + Math.round(Math.random() * 4));
+        if (t.percent >= 100) t.status = "完成";
+      }
+    });
+    if (state.hqScreen === "transfers") renderHeadset();
+  }
 }
 
 function startTicker() {
+  if (state.timer) return;
   state.timer = setInterval(tick, 500);
-}
-function stopTicker() {
-  if (state.timer) clearInterval(state.timer);
-  state.timer = null;
 }
 
 /* ---------------- 视图切换与启动 ---------------- */
@@ -457,4 +530,3 @@ function renderAll() {
 }
 
 toSearching();
-startTicker();
