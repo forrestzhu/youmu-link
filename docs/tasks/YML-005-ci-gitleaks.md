@@ -28,7 +28,9 @@ maintenance 任务，无行为规格。
 
 - `brew install gitleaks` 安装 gitleaks 8.x（2026-10-28）。
 - `gitleaks git --no-banner --redact -v .` → exit 0；26 commits scanned, ~1.06 MB, no leaks found。限制：本地引擎版本与 action 内置版本可能略有差异，以 CI 首跑为准。
+- 首版 gitleaks.yml（浮动 tag / ubuntu-latest）随 276d27b 推送，Actions run 40620620580 success (12s)。
+- 复查发现与既有 repository-checks.yml 风格不一致，改为 SHA 锁定 action（checkout v7.0.1 同哈希、gitleaks-action v2.3.9=ff98106）、persist-credentials: false、fetch-depth: 0、timeout 10m、concurrency 复用既有模式。
 
 ## Next
 
-commit + push 后确认 GitHub Actions 首跑 gitleaks 通过，然后归档 done。
+commit + push 后确认锁定版工作流 Actions 运行通过，然后归档 done。
