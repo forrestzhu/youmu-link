@@ -1506,3 +1506,110 @@ async fn preferred_connection_handoff_preserves_interrupted_transfer_controls() 
     assert_eq!(interrupted, "waiting");
     assert_eq!(cancelled, "cancelled");
 }
+
+fn anonymous_peer(ip: &str, port: u16) -> Peer {
+    let address = format!("{ip}:{port}");
+    Peer {
+        id: address.clone(),
+        address,
+        name: String::new(),
+        platform: String::new(),
+        status: "discovered".into(),
+        trusted: false,
+    }
+}
+
+#[test]
+fn discovery_port_rotation_replaces_one_anonymous_candidate_instead_of_filling_the_list() {
+    let mut state = Snapshot::new("test".into());
+    for port in 30000..30140 {
+        record_discovered_peer(
+            &mut state,
+            format!("192.0.2.8:{port}").parse().expect("address"),
+            None,
+        );
+        assert_eq!(state.peers.len(), 1);
+        assert_eq!(state.peers[0].address, format!("192.0.2.8:{port}"));
+        assert!(!state.peers[0].trusted);
+    }
+    record_discovered_peer(
+        &mut state,
+        "192.0.2.9:31000".parse().expect("address"),
+        None,
+    );
+    assert_eq!(state.peers.len(), 2);
+}
+
+#[test]
+fn discovery_keeps_authenticated_identity_and_latest_reconnect_route_without_stale_anonymous_rows()
+{
+    let mut state = Snapshot::new("test".into());
+    let mut connected = anonymous_peer("192.0.2.8", 30000);
+    connected.id = "authenticated-key-id".into();
+    connected.trusted = true;
+    connected.status = "connected".into();
+    state.peers = vec![
+        connected,
+        anonymous_peer("192.0.2.8", 30001),
+        anonymous_peer("192.0.2.9", 30002),
+    ];
+    record_discovered_peer(
+        &mut state,
+        "192.0.2.8:30003".parse().expect("address"),
+        Some("authenticated-key-id"),
+    );
+    assert_eq!(state.peers.len(), 2);
+    assert_eq!(state.peers[0].address, "192.0.2.8:30003");
+    assert_eq!(state.peers[0].status, "connected");
+    assert!(state.peers[0].trusted);
+    assert_eq!(state.peers[0].id, "authenticated-key-id");
+    // After the connection closes there may be no new discovery event: the
+    // next dial must still use the latest advertised route.
+    state.peers[0].status = "disconnected".into();
+    assert_eq!(state.peers[0].address, "192.0.2.8:30003");
+}
+
+#[test]
+fn authentication_promotes_identity_and_cleans_all_old_ports_without_removing_other_trust() {
+    let mut state = Snapshot::new("test".into());
+    let mut old = anonymous_peer("192.0.2.8", 29999);
+    old.id = "other-key-id".into();
+    old.trusted = true;
+    state.peers = vec![
+        anonymous_peer("192.0.2.8", 30001),
+        anonymous_peer("192.0.2.8", 30002),
+        old,
+    ];
+    let mut peer = anonymous_peer("192.0.2.8", 30003);
+    peer.id = "new-key-id".into();
+    peer.trusted = true;
+    peer.status = "connected".into();
+    publish_authenticated_peer(&mut state, peer);
+    assert_eq!(state.peers.len(), 2);
+    assert!(state.peers.iter().all(|p| p.trusted));
+    assert!(state.peers.iter().any(|p| p.id == "other-key-id"));
+}
+
+#[test]
+fn discovery_refreshes_a_disconnected_trusted_route_without_giving_anonymous_peers_trust() {
+    let mut state = Snapshot::new("test".into());
+    let mut known = anonymous_peer("192.0.2.8", 30000);
+    known.id = "known-key".into();
+    known.trusted = true;
+    known.status = "disconnected".into();
+    state.peers.push(known);
+    record_discovered_peer(
+        &mut state,
+        "192.0.2.8:30001".parse().expect("address"),
+        Some("known-key"),
+    );
+    assert_eq!(state.peers[0].address, "192.0.2.8:30001");
+    assert_eq!(state.peers[0].status, "discovered");
+    assert_eq!(state.peers.len(), 1);
+    record_discovered_peer(
+        &mut state,
+        "192.0.2.9:30002".parse().expect("address"),
+        None,
+    );
+    assert!(!state.peers[1].trusted);
+}

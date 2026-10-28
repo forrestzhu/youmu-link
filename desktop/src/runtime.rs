@@ -377,13 +377,7 @@ async fn run(
                     let address = SocketAddr::new(peer.addr, peer.listen_port);
                     let trusted = shared.trust.lock().await.peers().into_iter().find(|p| p.endpoint.as_ref().and_then(|e| e.parse::<SocketAddr>().ok()).is_some_and(|e| e.ip() == peer.addr));
                     shared.edit(|s| {
-                        if let Some(known) = &trusted {
-                            if let Some(item) = s.peers.iter_mut().find(|p| p.id == known.device_id) { item.address = address.to_string(); if item.status != "connected" { item.status = "discovered".into(); } }
-                        } else if let Some(item) = s.peers.iter_mut().find(|p| p.address == address.to_string()) {
-                            if item.status != "connected" { item.status = "discovered".into(); }
-                        } else if s.peers.len() < 128 {
-                            s.peers.push(Peer { id: address.to_string(), address: address.to_string(), name: String::new(), platform: String::new(), status: "discovered".into(), trusted: false });
-                        }
+                        record_discovered_peer(s, address, trusted.as_ref().map(|p| p.device_id.as_str()));
                         if s.status == "searching" { s.status = "ready".into(); }
                     });
                 } else if let Some(discovery::Event::PeerExpired(ip)) = event {
@@ -415,6 +409,47 @@ async fn run(
 
 fn lan_address(ip: IpAddr) -> bool {
     discovery::is_lan_source(ip, false)
+}
+
+// Anonymous discovery is routing information; authentication remains in the encrypted session.
+fn same_discovery_host(peer: &Peer, address: SocketAddr) -> bool {
+    peer.address
+        .parse::<SocketAddr>()
+        .is_ok_and(|old| old.ip() == address.ip())
+}
+
+fn record_discovered_peer(s: &mut Snapshot, address: SocketAddr, trusted: Option<&str>) {
+    // The core discovery table also has one anonymous candidate per IP. A new
+    // ephemeral listen port replaces the old route, without assigning identity.
+    s.peers
+        .retain(|p| p.trusted || !same_discovery_host(p, address));
+    if let Some(known) = trusted {
+        if let Some(item) = s.peers.iter_mut().find(|p| p.id == known) {
+            // This is a future dial route, not the live session or a persisted
+            // identity pin. Keep it fresh even while the old connection lives.
+            item.address = address.to_string();
+            if item.status != "connected" {
+                item.status = "discovered".into();
+            }
+        }
+    } else if s.peers.len() < 128 {
+        s.peers.push(Peer {
+            id: format!("discovery:{}", address.ip()),
+            address: address.to_string(),
+            name: String::new(),
+            platform: String::new(),
+            status: "discovered".into(),
+            trusted: false,
+        });
+    }
+}
+
+fn publish_authenticated_peer(s: &mut Snapshot, peer: Peer) {
+    let endpoint = peer.address.parse::<SocketAddr>().ok();
+    s.peers.retain(|p| {
+        p.id != peer.id && (p.trusted || !endpoint.is_some_and(|a| same_discovery_host(p, a)))
+    });
+    s.peers.push(peer);
 }
 
 fn dial(shared: Arc<Shared>, address: SocketAddr, expected: Option<String>, manual: bool) {
@@ -645,16 +680,17 @@ async fn authorize_and_serve(
         trust.remember_endpoint(remote, &session.remote_key(), Some(endpoint.to_string()))?;
     }
     if !shared.publish(generation, true, |s| {
-        s.peers
-            .retain(|p| p.id != remote.device_id && p.address != endpoint);
-        s.peers.push(Peer {
-            id: remote.device_id.clone(),
-            address: endpoint.into(),
-            name: remote.name.clone(),
-            platform: remote.platform.clone(),
-            status: "connected".into(),
-            trusted: true,
-        });
+        publish_authenticated_peer(
+            s,
+            Peer {
+                id: remote.device_id.clone(),
+                address: endpoint.into(),
+                name: remote.name.clone(),
+                platform: remote.platform.clone(),
+                status: "connected".into(),
+                trusted: true,
+            },
+        );
         s.pairing = None;
         s.status = "connected".into();
         s.error = None;
