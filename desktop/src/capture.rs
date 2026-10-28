@@ -32,7 +32,7 @@ impl Failure {
     pub fn message(&self) -> Option<String> {
         self.0
             .lock()
-            .unwrap_or_else(|error| error.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .clone()
     }
 }
@@ -174,6 +174,11 @@ mod platform {
         }
     }
 
+    /// Lists the connected displays without requesting screen recording access.
+    ///
+    /// # Errors
+    ///
+    /// Returns a human-readable message when CoreGraphics enumeration fails.
     pub fn displays() -> Result<Vec<Display>, String> {
         let mut ids = [0u32; 64];
         let mut count = 0;
@@ -303,7 +308,7 @@ mod platform {
                     .failure
                     .0
                     .lock()
-                    .unwrap_or_else(|error| error.into_inner());
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
                 if failure.is_some() {
                     return;
                 }
@@ -364,14 +369,14 @@ mod platform {
                     .ok_or("Hardware encoder returned no video format")?;
                 let config = avcc_config(format.as_ptr().cast())?;
                 if let Ok(mut permits) = self.sender.try_reserve_many(2) {
-                    permits.next().unwrap().send(self.packet(
-                        "video_config",
-                        "h264-avcc",
-                        pts_us,
-                        true,
-                        config,
-                    ));
-                    permits.next().unwrap().send(frame);
+                    permits
+                        .next()
+                        .expect("two slots were just reserved")
+                        .send(self.packet("video_config", "h264-avcc", pts_us, true, config));
+                    permits
+                        .next()
+                        .expect("two slots were just reserved")
+                        .send(frame);
                     self.need_keyframe.store(false, Ordering::SeqCst);
                 } else {
                     self.video_drops.fetch_add(1, Ordering::Relaxed);
@@ -413,21 +418,24 @@ mod platform {
             let list = sample
                 .audio_buffer_list()
                 .map_err(|_| "Unable to read system audio")?;
-            let buffers: Vec<&[u8]> = list.iter().map(|buffer| buffer.data()).collect();
+            let buffers: Vec<&[u8]> = list
+                .iter()
+                .map(screencapturekit::AudioBuffer::data)
+                .collect();
             let planar = format.audio_format_flags().unwrap_or(0) & (1 << 5) != 0;
             let data = interleave_audio(&buffers, frames, planar)?;
             let packet = self.packet("audio", "pcm-f32le", pts_us, false, data);
             if !self.audio_config_sent.load(Ordering::SeqCst) {
                 if let Ok(mut permits) = self.sender.try_reserve_many(2) {
                     let config = br#"{"sample_rate":48000,"channels":2,"sample_format":"f32le","interleaved":true}"#.to_vec();
-                    permits.next().unwrap().send(self.packet(
-                        "audio_config",
-                        "pcm-f32le",
-                        pts_us,
-                        false,
-                        config,
-                    ));
-                    permits.next().unwrap().send(packet);
+                    permits
+                        .next()
+                        .expect("two slots were just reserved")
+                        .send(self.packet("audio_config", "pcm-f32le", pts_us, false, config));
+                    permits
+                        .next()
+                        .expect("two slots were just reserved")
+                        .send(packet);
                     self.audio_config_sent.store(true, Ordering::SeqCst);
                 }
             } else {
@@ -516,7 +524,7 @@ mod platform {
         if let Some(sample) = CMSampleBuffer::from_raw_borrowed(sample) {
             if let Err(error) = output.send_video(&sample) {
                 output.video_drops.fetch_add(1, Ordering::Relaxed);
-                output.fail(&error)
+                output.fail(&error);
             }
         } else {
             output.video_drops.fetch_add(1, Ordering::Relaxed);
@@ -644,7 +652,7 @@ mod platform {
             if flags & 2 != 0 {
                 // Count completion drops in `encoded`, including synchronous
                 // completion, rather than counting both VT reports for one frame.
-                output.need_keyframe.store(true, Ordering::SeqCst)
+                output.need_keyframe.store(true, Ordering::SeqCst);
             }
         }
 
@@ -667,7 +675,7 @@ mod platform {
 
     impl Drop for Encoder {
         fn drop(&mut self) {
-            self.stop()
+            self.stop();
         }
     }
 
@@ -687,6 +695,17 @@ mod platform {
     }
 
     impl Capture {
+        /// Starts a `ScreenCaptureKit` capture for one display.
+        ///
+        /// # Errors
+        ///
+        /// Returns a human-readable message when the profile is invalid, the
+        /// stream or its handlers cannot be created, or capture cannot start.
+        ///
+        /// # Panics
+        ///
+        /// Panics only on internal invariant violations (reserved queue slots
+        /// or the just-constructed stream) and on lock poisoning.
         pub fn start(
             display_id: u32,
             audio: bool,
@@ -767,7 +786,7 @@ mod platform {
             let handler = capture
                 .stream
                 .as_mut()
-                .unwrap()
+                .expect("stream was constructed above")
                 .add_output_handler(
                     move |sample: CMSampleBuffer, _: SCStreamOutputType| {
                         if !video_output.running.load(Ordering::SeqCst)
@@ -782,7 +801,7 @@ mod platform {
                             return;
                         }
                         if let Ok(mut encoder) = encoder.lock() {
-                            encoder.encode(image, pts)
+                            encoder.encode(image, pts);
                         }
                     },
                     SCStreamOutputType::Screen,
@@ -794,7 +813,7 @@ mod platform {
                 let handler = capture
                     .stream
                     .as_mut()
-                    .unwrap()
+                    .expect("stream was constructed above")
                     .add_output_handler(
                         move |sample: CMSampleBuffer, _: SCStreamOutputType| {
                             if !audio_output.running.load(Ordering::SeqCst)
@@ -803,7 +822,7 @@ mod platform {
                                 return;
                             }
                             if let Err(error) = audio_output.send_audio(&sample) {
-                                audio_output.fail(&error)
+                                audio_output.fail(&error);
                             }
                         },
                         SCStreamOutputType::Audio,
@@ -814,7 +833,7 @@ mod platform {
             capture
                 .stream
                 .as_ref()
-                .unwrap()
+                .expect("stream was constructed above")
                 .start_capture()
                 .map_err(|_| "Unable to start screen capture; check Screen Recording permission")?;
             Ok(capture)
@@ -838,7 +857,7 @@ mod platform {
                     .failure
                     .0
                     .lock()
-                    .unwrap_or_else(|error| error.into_inner());
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
                 self.output.running.store(false, Ordering::SeqCst);
             }
             if let Some(mut stream) = self.stream.take() {
@@ -853,14 +872,14 @@ mod platform {
                 drop(stream);
             }
             if let Ok(mut encoder) = self.encoder.lock() {
-                encoder.stop()
+                encoder.stop();
             }
         }
     }
 
     impl Drop for Capture {
         fn drop(&mut self) {
-            self.stop()
+            self.stop();
         }
     }
 

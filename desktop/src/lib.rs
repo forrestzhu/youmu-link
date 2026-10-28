@@ -12,13 +12,19 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::PathBuf;
 
 fn owned_string(value: String) -> *mut c_char {
+    const FALLBACK: &str = "{\"ok\":false,\"error\":\"invalid output\"}";
     CString::new(value)
-        .unwrap_or_else(|_| CString::new("{\"ok\":false,\"error\":\"invalid output\"}").unwrap())
+        .unwrap_or_else(|_| CString::new(FALLBACK).expect("fallback text has no NUL byte"))
         .into_raw()
 }
 
 /// Caller owns the returned backend and must destroy it exactly once, after all
 /// concurrent calls have completed. Input strings must be valid NUL-terminated C strings.
+///
+/// # Safety
+///
+/// `state_dir` and `device_name` must be null or valid NUL-terminated C string
+/// pointers; the returned pointer must only be released via [`ymlink_destroy`].
 #[no_mangle]
 pub unsafe extern "C" fn ymlink_create(
     state_dir: *const c_char,
@@ -45,6 +51,10 @@ pub unsafe extern "C" fn ymlink_create(
     .unwrap_or(std::ptr::null_mut())
 }
 
+/// # Safety
+///
+/// `handle` must be null or a backend pointer from [`ymlink_create`]; the
+/// caller owns the returned string and must free it with [`ymlink_string_free`].
 #[no_mangle]
 pub unsafe extern "C" fn ymlink_snapshot(handle: *mut c_void) -> *mut c_char {
     owned_string(
@@ -52,12 +62,17 @@ pub unsafe extern "C" fn ymlink_snapshot(handle: *mut c_void) -> *mut c_char {
             if handle.is_null() {
                 return json!({"status":"error","error":"backend unavailable"}).to_string();
             }
-            (&*handle.cast::<Backend>()).snapshot()
+            (*handle.cast::<Backend>()).snapshot()
         }))
         .unwrap_or_else(|_| json!({"status":"error","error":"backend failure"}).to_string()),
     )
 }
 
+/// # Safety
+///
+/// `handle` must be null or a backend pointer from [`ymlink_create`]; `input`
+/// must be null or a valid NUL-terminated C string; the caller owns the
+/// returned string and must free it with [`ymlink_string_free`].
 #[no_mangle]
 pub unsafe extern "C" fn ymlink_command(handle: *mut c_void, input: *const c_char) -> *mut c_char {
     owned_string(
@@ -68,7 +83,7 @@ pub unsafe extern "C" fn ymlink_command(handle: *mut c_void, input: *const c_cha
                 CStr::from_ptr(input)
                     .to_str()
                     .map_err(|_| "command must be UTF-8".to_string())
-                    .and_then(|input| (&*handle.cast::<Backend>()).command(input))
+                    .and_then(|input| (*handle.cast::<Backend>()).command(input))
             };
             match result {
                 Ok(()) => json!({"ok":true,"error":null}).to_string(),
@@ -79,6 +94,10 @@ pub unsafe extern "C" fn ymlink_command(handle: *mut c_void, input: *const c_cha
     )
 }
 
+/// # Safety
+///
+/// `value` must be null or a pointer returned by this library that has not
+/// been freed yet; free each pointer exactly once.
 #[no_mangle]
 pub unsafe extern "C" fn ymlink_string_free(value: *mut c_char) {
     if !value.is_null() {
@@ -86,11 +105,15 @@ pub unsafe extern "C" fn ymlink_string_free(value: *mut c_char) {
     }
 }
 
+/// # Safety
+///
+/// `handle` must be null or a backend pointer from [`ymlink_create`] with no
+/// concurrent calls in flight; destroy each backend exactly once.
 #[no_mangle]
 pub unsafe extern "C" fn ymlink_destroy(handle: *mut c_void) {
     if !handle.is_null() {
         let _ = catch_unwind(AssertUnwindSafe(|| {
-            drop(Box::from_raw(handle.cast::<Backend>()))
+            drop(Box::from_raw(handle.cast::<Backend>()));
         }));
     }
 }

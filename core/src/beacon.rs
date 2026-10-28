@@ -30,6 +30,7 @@ fn cbor_bytes<T: Serialize>(value: &T) -> Result<Vec<u8>, BeaconError> {
 }
 
 /// `tag_hash = SHA256(tag_utf8)[0..16]`；tag 是分组指纹，不承载鉴权。
+#[must_use]
 pub fn tag_hash(tag: &str) -> Vec<u8> {
     Sha256::digest(tag.as_bytes())[..HASH_LEN].to_vec()
 }
@@ -98,7 +99,7 @@ impl Beacon {
             tag_hash: tag_hash(tag),
             session_nonce: session_nonce.to_vec(),
             listen_port,
-            caps: caps.iter().map(|cap| cap.to_string()).collect(),
+            caps: caps.iter().copied().map(str::to_string).collect(),
             discoverable,
         }
     }
@@ -128,6 +129,13 @@ impl Beacon {
         Ok(())
     }
 
+    /// Encodes this beacon as a CBOR frame.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BeaconError::InvalidVersion`], [`BeaconError::InvalidLength`]
+    /// or [`BeaconError::InvalidQueryFlag`] when a field fails validation, and
+    /// [`BeaconError::Oversized`] when the encoded frame exceeds `MAX_PACKET`.
     pub fn encode(&self) -> Result<Vec<u8>, BeaconError> {
         self.validate()?;
         let bytes = cbor_bytes(self)?;
@@ -139,6 +147,7 @@ impl Beacon {
 }
 
 impl Query {
+    #[must_use]
     pub fn new(tag: &str, session_nonce: [u8; HASH_LEN]) -> Self {
         Self {
             v: PROTOCOL_VERSION,
@@ -167,6 +176,13 @@ impl Query {
         Ok(())
     }
 
+    /// Encodes this query as a CBOR frame.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BeaconError::InvalidVersion`] or [`BeaconError::InvalidLength`]
+    /// when a field fails validation, and [`BeaconError::Oversized`] when the
+    /// encoded frame exceeds `MAX_PACKET`.
     pub fn encode(&self) -> Result<Vec<u8>, BeaconError> {
         self.validate()?;
         let bytes = cbor_bytes(self)?;
@@ -178,6 +194,13 @@ impl Query {
 }
 
 /// 解码发现报文；`query` 字段存在与否区分两类帧，两者都拒绝未知字段。
+///
+/// # Errors
+///
+/// Returns [`BeaconError::Oversized`] when the input exceeds `MAX_PACKET`,
+/// [`BeaconError::Decode`] when it is not a complete discovery frame,
+/// [`BeaconError::InvalidQueryFlag`] when a query frame clears its flag, and
+/// the field-validation variants of [`BeaconError`] otherwise.
 pub fn decode_packet(bytes: &[u8]) -> Result<Packet, BeaconError> {
     if bytes.len() > MAX_PACKET {
         return Err(BeaconError::Oversized(bytes.len()));

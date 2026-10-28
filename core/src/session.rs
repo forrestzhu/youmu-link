@@ -90,7 +90,7 @@ impl Hello {
     ) -> Self {
         Self {
             v: VERSION,
-            tag_hash: beacon::tag_hash("youmu-link").to_vec(),
+            tag_hash: beacon::tag_hash("youmu-link"),
             device_id: identity.device_id(),
             public_key: identity.public_key().to_vec(),
             name: name.into(),
@@ -130,6 +130,7 @@ pub enum Pairing {
     ReconnectOnly,
 }
 
+#[must_use]
 pub fn new_pairing_code() -> String {
     format!("{:06}", rand::rngs::OsRng.gen_range(0..1_000_000u32))
 }
@@ -156,6 +157,13 @@ pub struct SecureSession {
 }
 
 impl SecureSession {
+    /// Performs the Noise XX handshake and exchanges authenticated hellos.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Timeout`] when the handshake stalls, [`Error::Io`] on
+    /// transport failure, [`Error::Crypto`] on Noise failure, and
+    /// [`Error::Protocol`] when the peer's hello fails validation.
     pub async fn handshake(
         mut stream: TcpStream,
         initiator: bool,
@@ -205,7 +213,7 @@ impl SecureSession {
             let (read, write) = stream.into_split();
             let mut reader = SecureReader {
                 stream: read,
-                transport: transport.clone(),
+                transport: Arc::clone(&transport),
                 nonce: 0,
                 failed: false,
             };
@@ -237,16 +245,24 @@ impl SecureSession {
         .map_err(|_| Error::Timeout)?
     }
 
+    #[must_use]
     pub fn remote(&self) -> &Hello {
         &self.remote
     }
 
+    #[must_use]
     pub fn remote_key(&self) -> [u8; 32] {
         self.remote_key
     }
 
     /// Both sides must call this before waiting for UI input. A unilateral trust
     /// assertion can never authorize a connection.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::IdentityChanged`] on inconsistent trust pins,
+    /// [`Error::Protocol`] on an unexpected frame, [`Error::Timeout`] when the
+    /// exchange stalls and [`Error::Io`] on transport failure.
     pub async fn needs_pairing(&mut self, trust: &TrustStore) -> Result<bool> {
         if let Some(value) = self.needs_pairing {
             return Ok(value);
@@ -273,6 +289,14 @@ impl SecureSession {
         Ok(result)
     }
 
+    /// Authorizes the session, pairing over SPAKE2 when the peer is not trusted.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::PairingRejected`], [`Error::PairingExpired`] or
+    /// [`Error::PairingRequired`] for pairing failures, [`Error::Crypto`] /
+    /// [`Error::Protocol`] on protocol violations, [`Error::Timeout`] when the
+    /// exchange stalls and [`Error::Storage`] when trust cannot be persisted.
     pub async fn authorize(&mut self, trust: &mut TrustStore, pairing: Pairing) -> Result<()> {
         if self.attempted {
             return Err(Error::PairingRejected);
@@ -385,6 +409,11 @@ impl SecureSession {
         }
     }
 
+    /// Splits the authorized session into its reader and writer halves.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::PairingRequired`] when the session was never authorized.
     pub fn into_split(self) -> Result<(SecureReader, SecureWriter)> {
         if !self.authorized {
             return Err(Error::PairingRequired);
@@ -404,6 +433,13 @@ pub struct SecureReader {
 }
 
 impl SecureReader {
+    /// Receives and decrypts one CBOR frame.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Protocol`] when the direction is closed or the frame is
+    /// invalid, [`Error::Timeout`] when the receive stalls, [`Error::Crypto`] on
+    /// decryption failure and [`Error::Io`] on transport failure.
     pub async fn recv<T: DeserializeOwned>(&mut self) -> Result<T> {
         if self.failed {
             return Err(Error::Protocol("receive direction is closed"));
@@ -449,6 +485,14 @@ pub struct SecureWriter {
 }
 
 impl SecureWriter {
+    /// Encrypts and sends one CBOR frame.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Protocol`] when the direction is closed or the payload
+    /// cannot be encoded, [`Error::Timeout`] when the send stalls,
+    /// [`Error::Crypto`] on encryption failure and [`Error::Io`] on transport
+    /// failure.
     pub async fn send<T: Serialize>(&mut self, value: &T) -> Result<()> {
         if self.failed {
             return Err(Error::Protocol("send direction is closed"));

@@ -17,6 +17,12 @@ pub struct Identity {
 }
 
 impl Identity {
+    /// Generates a fresh random identity.
+    ///
+    /// # Errors
+    ///
+    /// This cannot currently fail; the `Result` keeps the identity API uniform
+    /// with [`Identity::load_or_create`].
     pub fn generate() -> Result<Self> {
         let mut secret = [0u8; 32];
         rand::rngs::OsRng.fill_bytes(&mut secret);
@@ -31,6 +37,11 @@ impl Identity {
     }
 
     /// A Keychain failure is fatal: never silently downgrade identity storage.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Storage`] when the Keychain entry cannot be opened,
+    /// read, validated or written.
     #[cfg(target_os = "macos")]
     pub fn load_or_create(_state_dir: &Path) -> Result<Self> {
         let entry = keyring::Entry::new("app.youmu.link", "device-identity-v2")
@@ -55,6 +66,12 @@ impl Identity {
         }
     }
 
+    /// A Credential Manager failure is fatal: never silently downgrade storage.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Storage`] when the credential entry cannot be opened,
+    /// read, validated or written.
     #[cfg(windows)]
     pub fn load_or_create(_state_dir: &Path) -> Result<Self> {
         let entry = keyring::Entry::new("app.youmu.link", "device-identity-v2")
@@ -62,6 +79,10 @@ impl Identity {
         load_windows_identity(&entry)
     }
 
+    /// # Errors
+    ///
+    /// Always returns [`Error::Storage`]: persistent identity requires macOS or
+    /// Windows.
     #[cfg(not(any(target_os = "macos", windows)))]
     pub fn load_or_create(_state_dir: &Path) -> Result<Self> {
         Err(Error::Storage(
@@ -69,10 +90,12 @@ impl Identity {
         ))
     }
 
+    #[must_use]
     pub fn device_id(&self) -> String {
         device_id(&self.public)
     }
 
+    #[must_use]
     pub fn public_key(&self) -> [u8; 32] {
         self.public
     }
@@ -106,12 +129,15 @@ fn load_windows_identity(entry: &keyring::Entry) -> Result<Identity> {
     }
 }
 
+#[must_use]
 pub fn device_id(key: &[u8]) -> String {
+    use std::fmt::Write as _;
     let hash = Sha256::digest(key);
-    hash[..16]
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect()
+    let mut id = String::with_capacity(32);
+    for byte in &hash[..16] {
+        let _ = write!(id, "{byte:02x}");
+    }
+    id
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -130,6 +156,7 @@ pub struct TrustStore {
 }
 
 impl TrustStore {
+    #[must_use]
     pub fn memory() -> Self {
         Self {
             path: None,
@@ -140,6 +167,7 @@ impl TrustStore {
     /// A non-persisting snapshot for network authorization. The runtime commits
     /// confirmed trust to the live store only after checking cancellation and
     /// its active-connection generation, without locking the UI for network IO.
+    #[must_use]
     pub fn detached(&self) -> Self {
         Self {
             path: None,
@@ -147,6 +175,12 @@ impl TrustStore {
         }
     }
 
+    /// Loads the trust store, treating a missing file as empty.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Storage`] when the file cannot be read or contains a
+    /// structurally or cryptographically invalid trust entry.
     pub fn load(path: &Path) -> Result<Self> {
         let peers: BTreeMap<String, TrustedPeer> = match fs::read(path) {
             Ok(bytes) => serde_json::from_slice(&bytes)
@@ -168,11 +202,17 @@ impl TrustStore {
         })
     }
 
+    #[must_use]
     pub fn peers(&self) -> Vec<TrustedPeer> {
         self.peers.values().cloned().collect()
     }
 
     /// Validates the cryptographic pin even when the peer is not yet trusted.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::IdentityChanged`] when the hello key or device id is
+    /// inconsistent, or a stored peer holds a different key.
     pub fn check(&self, hello: &Hello, key: &[u8; 32]) -> Result<bool> {
         if hello.public_key != key || hello.device_id != device_id(key) {
             return Err(Error::IdentityChanged);
@@ -186,6 +226,11 @@ impl TrustStore {
 
     /// Before offering a fresh pairing, reject a different identity at a pinned
     /// endpoint. A previously trusted key may legitimately move to a new IP.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::IdentityChanged`] on an inconsistent identity or when a
+    /// different device is already pinned to this endpoint.
     pub fn check_endpoint(&self, hello: &Hello, key: &[u8; 32], endpoint: &str) -> Result<bool> {
         let known = self.check(hello, key)?;
         if !known
@@ -198,10 +243,22 @@ impl TrustStore {
         Ok(known)
     }
 
+    /// Remembers a peer without changing its endpoint.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::IdentityChanged`] or [`Error::Storage`] propagation from
+    /// [`Self::remember_endpoint`].
     pub fn remember(&mut self, hello: &Hello, key: &[u8; 32]) -> Result<()> {
         self.remember_endpoint(hello, key, None)
     }
 
+    /// Remembers a peer and records the endpoint it was authorized on.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::IdentityChanged`] when the identity is inconsistent and
+    /// [`Error::Storage`] when the persisted store cannot be updated.
     pub fn remember_endpoint(
         &mut self,
         hello: &Hello,
@@ -229,6 +286,11 @@ impl TrustStore {
         Ok(())
     }
 
+    /// Forgets a peer; forgetting an unknown id is not an error.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Storage`] when the persisted store cannot be updated.
     pub fn forget(&mut self, id: &str) -> Result<()> {
         let mut next = self.peers.clone();
         next.remove(id);

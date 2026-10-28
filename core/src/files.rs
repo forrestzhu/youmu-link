@@ -116,11 +116,18 @@ pub struct FileCatalog {
 }
 
 impl FileCatalog {
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
     /// Only call for a directory explicitly selected by the local user.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`FileError::InvalidRequest`] when the id or name is invalid or
+    /// the share limit is reached, and [`FileError::Unavailable`] when the
+    /// directory cannot be opened.
     pub fn add(
         &mut self,
         id: String,
@@ -160,10 +167,12 @@ impl FileCatalog {
         self.roots.remove(id).is_some()
     }
 
+    #[must_use]
     pub fn shares(&self) -> Vec<ShareInfo> {
         self.roots.values().map(|root| root.info.clone()).collect()
     }
 
+    #[must_use]
     pub fn handle(&self, request: FileRequest) -> FileResponse {
         self.execute(request)
             .unwrap_or_else(|code| FileResponse::Error { code })

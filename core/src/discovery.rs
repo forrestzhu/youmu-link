@@ -112,6 +112,11 @@ pub struct Discovery {
 
 impl Discovery {
     /// 绑定 socket 并启动广播 / 监听 / 过期清扫任务；任务随 `stop()` 或 runtime 关闭结束。
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Bind`] when no beacon port can be bound, and
+    /// [`Error::Socket`] when the socket cannot be configured.
     pub async fn start(config: Config, events: mpsc::Sender<Event>) -> Result<Self> {
         let (socket, listen_port) = match config.listen_port {
             Some(port) => {
@@ -143,11 +148,16 @@ impl Discovery {
         Ok(Self { shared, shutdown })
     }
 
+    #[must_use]
     pub fn listen_port(&self) -> u16 {
         self.shared.listen_port
     }
 
     /// Query every interface and fallback port; fail only when every probe fails.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Socket`] when the query could not be sent to any target.
     pub async fn rescan(&self) -> Result<()> {
         refresh_subnets(&self.shared.subnets);
         let mut targets = broadcast_targets(&self.shared);
@@ -181,6 +191,10 @@ impl Discovery {
     }
 
     /// 向指定地址发送显式 Query；对端过滤通过后单播回复 Beacon。
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Socket`] when the query frame is invalid or cannot be sent.
     pub async fn send_query(&self, to: SocketAddr) -> Result<()> {
         let query = Query::new(&self.shared.config.tag, self.shared.nonce);
         let bytes = query.encode().map_err(|e| Error::Socket(e.to_string()))?;
@@ -193,6 +207,10 @@ impl Discovery {
     }
 
     /// 单播发送一份本机 Beacon（心跳广播之外的定向发送）。
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Socket`] when the beacon frame is invalid or cannot be sent.
     pub async fn send_beacon_to(&self, to: SocketAddr) -> Result<()> {
         let beacon = self_beacon(&self.shared);
         let bytes = beacon.encode().map_err(|e| Error::Socket(e.to_string()))?;
@@ -271,6 +289,7 @@ fn interface_subnets() -> Vec<Subnet> {
 
 /// Use current interface masks rather than RFC1918 classification: enterprise
 /// LANs can use public address ranges, and direct links can use 169.254/16.
+#[must_use]
 pub fn is_lan_source(source: IpAddr, allow_loopback: bool) -> bool {
     allowed_source(source, &interface_subnets(), allow_loopback)
 }
@@ -377,9 +396,8 @@ async fn listen_loop(
         if !allowed {
             continue;
         }
-        let packet = match beacon::decode_packet(&buffer[..size]) {
-            Ok(packet) => packet,
-            Err(_) => continue,
+        let Ok(packet) = beacon::decode_packet(&buffer[..size]) else {
+            continue;
         };
         match packet {
             Packet::Query(query) => {

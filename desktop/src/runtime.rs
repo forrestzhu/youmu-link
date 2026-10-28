@@ -21,6 +21,13 @@ pub struct Backend {
 }
 
 impl Backend {
+    /// Starts the backend runtime for the given state directory and device name.
+    ///
+    /// # Errors
+    ///
+    /// Returns a human-readable message when the device name is invalid or the
+    /// async runtime cannot start; startup failures inside the worker surface
+    /// through the snapshot instead.
     pub fn start(path: PathBuf, name: String) -> Result<Self, String> {
         Self::start_inner(path, name, None, false)
     }
@@ -41,12 +48,12 @@ impl Backend {
             .enable_all()
             .build()
             .map_err(|_| "cannot start backend runtime")?;
-        let state_task = state.clone();
+        let state_task = Arc::clone(&state);
         let worker_commands = commands.clone();
         runtime.spawn(async move {
             if let Err(error) = run(
                 path,
-                state_task.clone(),
+                Arc::clone(&state_task),
                 receiver,
                 identity,
                 allow_loopback,
@@ -54,7 +61,9 @@ impl Backend {
             )
             .await
             {
-                let mut state = state_task.lock().unwrap_or_else(|e| e.into_inner());
+                let mut state = state_task
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
                 state.status = "error".into();
                 state.set_error(error);
             }
@@ -66,6 +75,12 @@ impl Backend {
         })
     }
 
+    /// Submits a JSON command to the worker without waiting for it to finish.
+    ///
+    /// # Errors
+    ///
+    /// Returns a human-readable message when the input is too large, is not a
+    /// valid command, or the backend queue is full.
     pub fn command(&self, input: &str) -> Result<(), String> {
         if input.len() > 16 * 1024 {
             return Err("command exceeds limit".into());
@@ -81,7 +96,10 @@ impl Backend {
     }
 
     pub fn snapshot(&self) -> String {
-        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some(pairing) = &mut state.pairing {
             pairing.expires_in = pairing
                 .deadline
@@ -156,7 +174,12 @@ struct Shared {
 
 impl Shared {
     fn edit(&self, edit: impl FnOnce(&mut Snapshot)) {
-        edit(&mut self.state.lock().unwrap_or_else(|e| e.into_inner()));
+        edit(
+            &mut self
+                .state
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+        );
     }
     fn error(&self, error: impl Into<String>) {
         self.edit(|s| s.set_error(error));
@@ -165,12 +188,12 @@ impl Shared {
         self.end_mirror(MirrorEnd::Stopped);
     }
     fn end_mirror(&self, reason: MirrorEnd) {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock().expect("lock poisoned");
         self.end_mirror_locked(&mut state, reason);
     }
     fn end_mirror_locked(&self, state: &mut Snapshot, reason: MirrorEnd) {
         self.mirror_generation.fetch_add(1, Ordering::AcqRel);
-        if let Some(cancel) = self.mirror_cancel.lock().unwrap().take() {
+        if let Some(cancel) = self.mirror_cancel.lock().expect("lock poisoned").take() {
             let _ = cancel.send(Some(reason));
         }
         state.mirror.status = reason.status().into();
@@ -181,19 +204,19 @@ impl Shared {
     fn outgoing(&self) -> Option<mpsc::Sender<Message>> {
         self.active
             .lock()
-            .unwrap()
+            .expect("lock poisoned")
             .as_ref()
             .filter(|a| a.authorized && !*a.cancel.borrow())
             .map(|a| a.outbox.clone())
     }
     fn mirror_edit(&self, generation: u64, edit: impl FnOnce(&mut Snapshot)) {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock().expect("lock poisoned");
         if self.mirror_generation.load(Ordering::Acquire) == generation {
             edit(&mut state);
         }
     }
     fn publish(&self, generation: u64, authorized: bool, edit: impl FnOnce(&mut Snapshot)) -> bool {
-        let mut active = self.active.lock().unwrap();
+        let mut active = self.active.lock().expect("lock poisoned");
         let Some(active) = active
             .as_mut()
             .filter(|a| a.generation == generation && !*a.cancel.borrow())
@@ -208,7 +231,7 @@ impl Shared {
     }
     fn pairing_allowed(&self, ip: IpAddr) -> bool {
         let now = Instant::now();
-        let mut attempts = self.pairing_attempts.lock().unwrap();
+        let mut attempts = self.pairing_attempts.lock().expect("lock poisoned");
         attempts.retain(|_, entries| {
             entries
                 .back()
@@ -259,7 +282,7 @@ async fn run(
         return Err("too many shared folders".into());
     }
     {
-        let mut state = state.lock().unwrap();
+        let mut state = state.lock().expect("lock poisoned");
         for share in shares {
             if catalog
                 .add(share.id.clone(), share.name.clone(), Path::new(&share.path))
@@ -311,7 +334,7 @@ async fn run(
     .await
     .map_err(|e| e.to_string())?;
     {
-        let mut state = state.lock().unwrap();
+        let mut state = state.lock().expect("lock poisoned");
         state.listen_port = port;
         state.discovery_port = discovery.listen_port();
         state.status = "searching".into();
@@ -344,9 +367,9 @@ async fn run(
         tokio::select! {
             accepted = listener.accept() => {
                 let Ok((stream, address)) = accepted else { continue };
-                if !lan_address(address.ip()) && !(shared.allow_loopback && address.ip().is_loopback()) { continue; }
-                let Ok(permit) = slots.clone().try_acquire_owned() else { continue };
-                let shared = shared.clone();
+                if !lan_address(address.ip()) && (!shared.allow_loopback || !address.ip().is_loopback()) { continue; }
+                let Ok(permit) = Arc::clone(&slots).try_acquire_owned() else { continue };
+                let shared = Arc::clone(&shared);
                 tokio::spawn(async move { let _permit = permit; connection(shared,stream,address,false,None,false).await; });
             }
             event = events.recv() => {
@@ -368,21 +391,21 @@ async fn run(
                 }
             }
             Some(request) = commands.recv() => {
-                let expired=request.reply.as_ref().is_some_and(|reply|reply.is_closed());
-                let authorized=request.generation.map_or(true,|generation|shared.active.lock().unwrap().as_ref().is_some_and(|a|a.generation==generation && a.authorized && !*a.cancel.borrow()));
-                let result=if expired{Err("request expired".into())}else if !authorized{Err("connection no longer active".into())}else{handle_command(shared.clone(), &discovery, request.command,request.generation).await};
+                let expired=request.reply.as_ref().is_some_and(tokio::sync::oneshot::Sender::is_closed);
+                let authorized=request.generation.is_none_or(|generation|shared.active.lock().expect("lock poisoned").as_ref().is_some_and(|a|a.generation==generation && a.authorized && !*a.cancel.borrow()));
+                let result=if expired{Err("request expired".into())}else if !authorized{Err("connection no longer active".into())}else{handle_command(Arc::clone(&shared), &discovery, request.command,request.generation).await};
                 if let Some(reply)=request.reply {let _=reply.send(result);}else if let Err(error)=result{shared.error(error);}
             }
             _ = reconnect.tick() => {
-                if shared.active.lock().unwrap().is_none() && !shared.dialing.load(Ordering::Acquire) {
-                    let state=shared.state.lock().unwrap();
+                if shared.active.lock().expect("lock poisoned").is_none() && !shared.dialing.load(Ordering::Acquire) {
+                    let state=shared.state.lock().expect("lock poisoned");
                     let has_trust=state.peers.iter().any(|p|p.trusted);
-                    let candidates:Vec<_>=state.peers.iter().filter(|p| !p.address.is_empty() && !shared.disconnected.lock().unwrap().contains(&p.id) && (p.trusted || (has_trust && p.status=="discovered"))).cloned().collect();
+                    let candidates:Vec<_>=state.peers.iter().filter(|p| !p.address.is_empty() && !shared.disconnected.lock().expect("lock poisoned").contains(&p.id) && (p.trusted || (has_trust && p.status=="discovered"))).cloned().collect();
                     drop(state);
                     if !candidates.is_empty() {
                         let peer = &candidates[reconnect_cursor % candidates.len()];
                         reconnect_cursor = reconnect_cursor.wrapping_add(1);
-                        if let Ok(address) = peer.address.parse() { dial(shared.clone(), address,peer.trusted.then(||peer.id.clone()),false); }
+                        if let Ok(address) = peer.address.parse() { dial(Arc::clone(&shared), address,peer.trusted.then(||peer.id.clone()),false); }
                     }
                 }
             }
@@ -404,17 +427,17 @@ fn dial(shared: Arc<Shared>, address: SocketAddr, expected: Option<String>, manu
         match connected {
             Ok(Ok(stream)) => {
                 connection(
-                    shared.clone(),
+                    Arc::clone(&shared),
                     stream,
                     address,
                     true,
                     expected.clone(),
                     manual,
                 )
-                .await
+                .await;
             }
             _ if manual => {
-                shared.error("cannot connect; confirm the other device is on the same Wi-Fi")
+                shared.error("cannot connect; confirm the other device is on the same Wi-Fi");
             }
             _ => {}
         }
@@ -431,7 +454,7 @@ async fn connection(
     manual: bool,
 ) {
     let (name, port) = {
-        let s = shared.state.lock().unwrap();
+        let s = shared.state.lock().expect("lock poisoned");
         (s.device_name.clone(), s.listen_port)
     };
     let local = Hello::new(&shared.identity, name, std::env::consts::OS, port);
@@ -472,17 +495,17 @@ async fn connection(
     let generation = shared.generation.fetch_add(1, Ordering::Relaxed);
     let preferred = initiator == (shared.identity.device_id() < remote.device_id);
     {
-        let mut active = shared.active.lock().unwrap();
+        let mut active = shared.active.lock().expect("lock poisoned");
         if manual {
             shared
                 .disconnected
                 .lock()
-                .unwrap()
+                .expect("lock poisoned")
                 .remove(&remote.device_id);
         } else if shared
             .disconnected
             .lock()
-            .unwrap()
+            .expect("lock poisoned")
             .contains(&remote.device_id)
         {
             return;
@@ -510,9 +533,9 @@ async fn connection(
     shared.stop_mirror();
     let result = tokio::select! {
         _ = cancelled.changed() => Ok(()),
-        result = authorize_and_serve(shared.clone(),generation,session,&remote,&endpoint,initiator,receiver,media_receiver,!initiator||manual) => result,
+        result = authorize_and_serve(Arc::clone(&shared),generation,session,&remote,&endpoint,initiator,receiver,media_receiver,!initiator||manual) => result,
     };
-    let mut active = shared.active.lock().unwrap();
+    let mut active = shared.active.lock().expect("lock poisoned");
     if active.as_ref().is_some_and(|a| a.generation == generation) {
         active.take();
         shared.stop_mirror();
@@ -582,7 +605,7 @@ async fn authorize_and_serve(
             if let Some(active) = shared
                 .active
                 .lock()
-                .unwrap()
+                .expect("lock poisoned")
                 .as_mut()
                 .filter(|a| a.generation == generation)
             {
@@ -611,7 +634,7 @@ async fn authorize_and_serve(
     session.authorize(&mut local_trust, pairing).await?;
     {
         let mut trust = shared.trust.lock().await;
-        let active = shared.active.lock().unwrap();
+        let active = shared.active.lock().expect("lock poisoned");
         if !active
             .as_ref()
             .is_some_and(|a| a.generation == generation && !*a.cancel.borrow())
@@ -676,7 +699,7 @@ async fn serve(
 ) -> session::Result<()> {
     let (mut reader, mut writer) = session.into_split()?;
     let control = {
-        let active = shared.active.lock().unwrap();
+        let active = shared.active.lock().expect("lock poisoned");
         active
             .as_ref()
             .filter(|a| a.generation == generation && a.authorized && !*a.cancel.borrow())
@@ -815,7 +838,7 @@ async fn serve(
                 }
             }
             result = files.join_next(), if !files.is_empty() => {
-                let (target,response)=result.unwrap().map_err(|_|session::Error::Protocol("file service failed"))??;
+                let (target,response)=result.expect("join_next only fires while the JoinSet is non-empty").map_err(|_|session::Error::Protocol("file service failed"))??;
                 match target {
                     FileTarget::Request(id)=>enqueue(&control,Message::FileResponse{v:VERSION,id,response})?,
                     FileTarget::Transfer(id)=>{
@@ -887,7 +910,7 @@ fn transfer_running(shared: &Shared, id: &str) -> bool {
     shared
         .state
         .lock()
-        .unwrap()
+        .expect("lock poisoned")
         .transfers
         .iter()
         .any(|t| t.id == id && t.status == "transferring")
@@ -927,11 +950,9 @@ fn file_request(
     target: FileTarget,
     request: FileRequest,
 ) {
-    let shared = shared.clone();
+    let shared = Arc::clone(shared);
     files.spawn(async move {
-        let permit = shared
-            .file_gate
-            .clone()
+        let permit = Arc::clone(&shared.file_gate)
             .acquire_owned()
             .await
             .map_err(|_| session::Error::Protocol("file service closed"))?;
@@ -939,7 +960,14 @@ fn file_request(
             // Cancellation may drop the async waiter, but the physical IO keeps
             // its global slot until it actually finishes, including across reconnects.
             let _permit = permit;
-            (target, shared.catalog.lock().unwrap().handle(request))
+            (
+                target,
+                shared
+                    .catalog
+                    .lock()
+                    .expect("lock poisoned")
+                    .handle(request),
+            )
         })
         .await
         .map_err(|_| session::Error::Protocol("file service failed"))
@@ -972,7 +1000,7 @@ fn transfer_action(
         "cancel" => "cancelled",
         _ => return Err(session::Error::Protocol("invalid transfer action")),
     };
-    let active = shared.active.lock().unwrap();
+    let active = shared.active.lock().expect("lock poisoned");
     if expected.is_some_and(|generation| {
         !active
             .as_ref()
@@ -980,7 +1008,7 @@ fn transfer_action(
     }) {
         return Err(session::Error::Protocol("connection no longer active"));
     }
-    let mut state = shared.state.lock().unwrap();
+    let mut state = shared.state.lock().expect("lock poisoned");
     let transfer = state
         .transfers
         .iter_mut()
@@ -1007,14 +1035,14 @@ async fn handle_command(
             discovery.rescan().await.map_err(|e| e.to_string())?;
         }
         Command::Connect { address, peer_id } => {
-            if shared.active.lock().unwrap().is_some() {
+            if shared.active.lock().expect("lock poisoned").is_some() {
                 return Err("disconnect the current device first".into());
             }
             let peer = peer_id.and_then(|id| {
                 shared
                     .state
                     .lock()
-                    .unwrap()
+                    .expect("lock poisoned")
                     .peers
                     .iter()
                     .find(|p| p.id == id)
@@ -1027,17 +1055,21 @@ async fn handle_command(
                 .parse()
                 .map_err(|_| "enter an IPv4 address and port")?;
             if (!lan_address(address.ip())
-                && !(shared.allow_loopback && address.ip().is_loopback()))
+                && (!shared.allow_loopback || !address.ip().is_loopback()))
                 || address.port() == 0
             {
                 return Err("only LAN device addresses are allowed".into());
             }
             let expected = peer.filter(|p| p.trusted).map(|p| p.id);
             if let Some(id) = &expected {
-                shared.disconnected.lock().unwrap().remove(id);
+                shared
+                    .disconnected
+                    .lock()
+                    .expect("lock poisoned")
+                    .remove(id);
             }
             shared.edit(|s| s.error = None);
-            dial(shared.clone(), address, expected, true);
+            dial(Arc::clone(&shared), address, expected, true);
         }
         Command::Pair { code } => {
             if code.len() != 6 || !code.bytes().all(|b| b.is_ascii_digit()) {
@@ -1046,24 +1078,24 @@ async fn handle_command(
             let input = shared
                 .active
                 .lock()
-                .unwrap()
+                .expect("lock poisoned")
                 .as_mut()
                 .and_then(|a| a.pair_input.take())
                 .ok_or("no pairing input is pending")?;
             input.send(code).map_err(|_| "pairing expired")?;
         }
         Command::CancelPairing => {
-            if let Some(active) = shared.active.lock().unwrap().as_ref() {
+            if let Some(active) = shared.active.lock().expect("lock poisoned").as_ref() {
                 let _ = active.cancel.send(true);
             }
         }
         Command::Disconnect { peer_id } => {
-            if let Some(active) = shared.active.lock().unwrap().as_ref() {
-                if peer_id.as_ref().map_or(true, |id| *id == active.peer_id) {
+            if let Some(active) = shared.active.lock().expect("lock poisoned").as_ref() {
+                if peer_id.as_ref().is_none_or(|id| *id == active.peer_id) {
                     shared
                         .disconnected
                         .lock()
-                        .unwrap()
+                        .expect("lock poisoned")
                         .insert(active.peer_id.clone());
                     let _ = active.cancel.send(true);
                 }
@@ -1074,7 +1106,7 @@ async fn handle_command(
             if let Some(active) = shared
                 .active
                 .lock()
-                .unwrap()
+                .expect("lock poisoned")
                 .as_ref()
                 .filter(|a| a.peer_id == peer_id)
             {
@@ -1086,14 +1118,18 @@ async fn handle_command(
                 .await
                 .forget(&peer_id)
                 .map_err(|e| e.to_string())?;
-            shared.disconnected.lock().unwrap().remove(&peer_id);
+            shared
+                .disconnected
+                .lock()
+                .expect("lock poisoned")
+                .remove(&peer_id);
             shared.edit(|s| {
                 s.peers.retain(|p| p.id != peer_id);
             });
         }
         command @ (Command::AddShare { .. } | Command::RemoveShare { .. }) => {
             tokio::task::spawn_blocking(move || {
-                let _changes = shared.share_changes.lock().unwrap();
+                let _changes = shared.share_changes.lock().expect("lock poisoned");
                 if let Err(error) = update_shares(&shared, command) {
                     shared.error(error);
                 }
@@ -1126,11 +1162,11 @@ fn mirror_command(
     command: Command,
     expected: Option<u64>,
 ) -> Result<(), String> {
-    let active = shared.active.lock().unwrap();
+    let active = shared.active.lock().expect("lock poisoned");
     let current = active.as_ref().filter(|a| {
         a.authorized
             && !*a.cancel.borrow()
-            && expected.map_or(true, |generation| generation == a.generation)
+            && expected.is_none_or(|generation| generation == a.generation)
     });
     if matches!(command, Command::StopMirror) {
         if expected.is_some() && current.is_none() {
@@ -1140,12 +1176,16 @@ fn mirror_command(
         return Ok(());
     }
     let current = current.ok_or("connect and pair a device before mirroring")?;
-    let mut state = shared.state.lock().unwrap();
+    let mut state = shared.state.lock().expect("lock poisoned");
     let selected = state.mirror.clone();
     if !matches!(command, Command::StartMirror { .. })
         && ["starting", "running", "paused"].contains(&selected.status.as_str())
     {
-        let failure = shared.mirror_failure.lock().unwrap().message();
+        let failure = shared
+            .mirror_failure
+            .lock()
+            .expect("lock poisoned")
+            .message();
         if let Some(error) = failure {
             shared.end_mirror_locked(&mut state, MirrorEnd::Stopped);
             state.mirror.status = "error".into();
@@ -1256,20 +1296,21 @@ fn start_mirror(
     }
     check_display(state, display_id)?;
     if fresh_start {
-        *shared.mirror_failure.lock().unwrap() = Arc::new(crate::capture::Failure::default());
+        *shared.mirror_failure.lock().expect("lock poisoned") =
+            Arc::new(crate::capture::Failure::default());
     }
-    let failure = shared.mirror_failure.lock().unwrap().clone();
+    let failure = shared.mirror_failure.lock().expect("lock poisoned").clone();
     shared.end_mirror_locked(state, MirrorEnd::Stopped);
     let generation = shared.mirror_generation.fetch_add(1, Ordering::AcqRel) + 1;
     let (cancel, receiver) = watch::channel(None);
-    *shared.mirror_cancel.lock().unwrap() = Some(cancel);
+    *shared.mirror_cancel.lock().expect("lock poisoned") = Some(cancel);
     state.mirror.status = "starting".into();
     state.mirror.error = None;
     state.mirror.display_id = Some(display_id);
     state.mirror.audio = audio;
-    state.mirror.quality = quality.clone();
+    state.mirror.quality.clone_from(&quality);
     tokio::spawn(mirror(
-        shared.clone(),
+        Arc::clone(shared),
         current.outbox.clone(),
         current.media.clone(),
         display_id,
@@ -1300,7 +1341,7 @@ async fn remote_command(shared: &Shared, generation: u64, command: Command) -> R
 }
 
 fn mirror_reply(shared: &Shared, id: u64, result: Result<(), String>) -> Message {
-    let snapshot = shared.state.lock().unwrap();
+    let snapshot = shared.state.lock().expect("lock poisoned");
     Message::MirrorReply {
         v: VERSION,
         id,
@@ -1321,7 +1362,7 @@ async fn transfer_command(shared: &Shared, id: String, action: &str) -> Result<(
     let waiting = shared
         .state
         .lock()
-        .unwrap()
+        .expect("lock poisoned")
         .transfers
         .iter()
         .any(|t| t.id == id && t.status == "waiting");
@@ -1368,7 +1409,7 @@ fn record_capture_failure(failure: &crate::capture::Failure, message: String) ->
     failure
         .0
         .lock()
-        .unwrap_or_else(|error| error.into_inner())
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
         .get_or_insert(message)
         .clone()
 }
@@ -1394,7 +1435,7 @@ async fn mirror(
         let permit = tokio::select! {
             biased;
             _ = cancel.changed() => return,
-            permit = shared.capture_gate.clone().acquire_owned() => match permit { Ok(permit) => permit, Err(_) => return },
+            permit = Arc::clone(&shared.capture_gate).acquire_owned() => match permit { Ok(permit) => permit, Err(_) => return },
         };
         if cancel.borrow().is_some() {
             return;
@@ -1406,7 +1447,7 @@ async fn mirror(
         });
         let (packets_tx, mut packets) = mpsc::channel(2);
         let capture_quality = quality.clone();
-        let capture_failure = failure.clone();
+        let capture_failure = Arc::clone(&failure);
         let started = tokio::task::spawn_blocking(move || {
             crate::capture::Capture::start(
                 display,
@@ -1503,10 +1544,7 @@ async fn mirror(
                                     let (attempted, dropped) = capture.take_video_pressure();
                                     if mirror_congested(&mut pressure_windows, attempted, dropped, outbox.capacity() == 0) { reduce = true; break 'stream; }
                                 }
-                                slot = outbox.reserve() => match slot {
-                                    Ok(slot) => break slot,
-                                    Err(_) => { failed = true; break 'stream; }
-                                },
+                                slot = outbox.reserve() => if let Ok(slot) = slot { break slot } else { failed = true; break 'stream; },
                             }
                         };
                         let start = part as usize * 8192;
@@ -1608,7 +1646,7 @@ fn announce_mirror(
 ) -> bool {
     // Hold the same state gate used when a new generation starts. Enqueue without
     // awaiting so an old task cannot publish running after the replacement stream.
-    let mut state = state.lock().unwrap();
+    let mut state = state.lock().expect("lock poisoned");
     if current.load(Ordering::Acquire) != generation {
         return false;
     }
@@ -1650,7 +1688,7 @@ fn save_shares(path: &Path, shares: &[Share]) -> Result<(), String> {
             .map_err(|_| "cannot save shared folders")?;
         serde_json::to_writer(&mut file, shares).map_err(|_| "cannot encode shared folders")?;
         file.write_all(b"\n")
-            .and_then(|_| file.sync_all())
+            .and_then(|()| file.sync_all())
             .map_err(|_| "cannot sync shared folders")?;
         std::fs::rename(&temporary, path)
             .map_err(|_| "cannot replace shared folder configuration")?;

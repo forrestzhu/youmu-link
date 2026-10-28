@@ -805,7 +805,11 @@ fn avcc_frame(data: &[u8]) -> Result<Vec<u8>> {
         if remaining.len() < 4 {
             return Err(failure("truncated AVCC NAL length"));
         }
-        let length = u32::from_be_bytes(remaining[..4].try_into().unwrap()) as usize;
+        let length = u32::from_be_bytes(
+            remaining[..4]
+                .try_into()
+                .expect("slice is exactly four bytes"),
+        ) as usize;
         remaining = &remaining[4..];
         if length == 0 || length > remaining.len() {
             return Err(failure("invalid AVCC NAL length"));
@@ -832,7 +836,11 @@ fn avcc_configuration(data: &[u8]) -> Result<Vec<u8>> {
             if remaining.len() < 2 {
                 return Err(failure("truncated H.264 parameter set"));
             }
-            let length = u16::from_be_bytes(remaining[..2].try_into().unwrap()) as usize;
+            let length = u16::from_be_bytes(
+                remaining[..2]
+                    .try_into()
+                    .expect("slice is exactly two bytes"),
+            ) as usize;
             remaining = &remaining[2..];
             if length == 0 || length > remaining.len() {
                 return Err(failure("invalid H.264 parameter set length"));
