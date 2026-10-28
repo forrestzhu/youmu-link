@@ -9,3 +9,6 @@ __pycache__/
 /dist/
 /windows/**/bin/
 /windows/**/obj/
+
+# Local validation logs, receipts and temporary test assets.
+/artifacts/

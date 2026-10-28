@@ -1,6 +1,6 @@
 # YML-007：修复Quest重复候选与真实配对回归
 
-Status: verifying
+Status: done
 Workflow: behavior
 Requires-Device: yes
 Tests: ymlink_desktop::runtime::tests，新增匿名候选端口轮换 /可信身份边界 /认证清理回归
@@ -20,8 +20,8 @@ Tests: ymlink_desktop::runtime::tests，新增匿名候选端口轮换 /可信�
 
 - [x] 旧逻辑的同IP端口轮换重复问题有实际red；修后最新端口与候选数量正确。
 - [x] 多IP、可信连接保护、成功认证清理旧匿名项有实际cargo回归。
-- [ ] 适用完整verify与macOS app构建 /原生窗口核验通过；实际Quest互联按执行证据记录。
-- [ ] 两仓任务互链，记录 /main推送及strict完成。
+- [x] 适用完整verify与macOS app构建 /原生窗口核验通过；实际Quest互联按执行证据记录。
+- [x] 两仓任务互链，记录 /main推送及strict完成。
 
 ## Verification
 
@@ -33,8 +33,14 @@ Tests: ymlink_desktop::runtime::tests，新增匿名候选端口轮换 /可信�
 
 只读复审提出活动连接期间也必须更新未来拨号路由，否则core不再重发同nonce /端口事件时会丢失新端口；已核验并修改，连接 /身份 /状态 /持久pin保持，Peer.address继续仅作显示与下一次dial路由。复审认可，无剩余桌面发现。
 
-首次桌面lib全套28通过 /1失败 /1 ignored：authorized_folders重启等待超时，单项原样重跑通过。首次完整verify因现有原生Mac占用UDP发现端口，core query_targets测试AddrInUse失败；保留日志。正常退出旧app、设置RUST_TEST_THREADS=1后完整verify通过：37 Python、78 Rust /1 ignored、rustfmt及仓库检查。Swift4/4、app构建 /资源 /签名校验通过，已通过CUA启动新原生窗口，未请求录屏。制品SHA d3d7951b6f5bd9c9a9bca73e82260c5a5f36d0b3e614e132dce5adfba251b91e，macOS26.3.1 arm64。真实Quest组件互联待本轮Android新包。
+首次桌面lib全套28通过 /1失败 /1 ignored：authorized_folders重启等待超时，单项原样重跑通过。首次完整verify因现有原生Mac占用UDP发现端口，core query_targets测试AddrInUse失败；保留日志。正常退出旧app、设置RUST_TEST_THREADS=1后完整verify通过：37 Python、78 Rust /1 ignored、rustfmt及仓库检查。Swift4/4、app构建 /资源 /签名校验通过，已通过CUA启动新原生窗口，未请求录屏。制品SHA d3d7951b6f5bd9c9a9bca73e82260c5a5f36d0b3e614e132dce5adfba251b91e，macOS26.3.1 arm64。真实Quest2339→本机原生Mac组件1/1已通过：paired /reconnected均true、share_count1；临时身份与精确ADB forward清理。
+
+CI run40715540013的Linux checks /Windows已success，gitleaks40715540024也success；云macOS未获得hosted runner、0步骤即cancelled，官方annotation明确arm64容量限制，不是源码构建失败。已单次重跑失败job，随后同一实现的单次重跑已完成，checks /Windows /macOS全部success；本机Mac完整构建 /Swift结果独立有效。原始API保存在ignored artifacts/yml007/ci-macos-cancelled.json。
+
+- [真实双端与本机 /CI报告](../../evidence/2026-10-28-pairing-discovery-regression.md)绑定实现 /制品 /系统 /真实Quest组件。Mac配对后组件主动关闭socket仍触发既有断线提示，按真实现象保留；此现象不改变已通过的配对 /Known重连结论。
 
 ## Next
 
-补重复候选与提升身份的回归并修复，构建本机应用，与Quest新配对输入一起验证；不更改现有共享根或录屏权限。
+本任务候选归并与原生配对交付完成，归档；Android同面板输入 /用户XR反馈由YM-293继续，真实录屏声音仍归YML-002。云端Mac失败job已单次重跑，收尾记录实际状态；不重复变更源代码。
+
+本轮本地验证制品统一位于/artifacts/，已加入项目.gitignore，避免原始日志 /本机路径 /临时素材进入公开仓库；无此类文件被提交。

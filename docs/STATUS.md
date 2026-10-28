@@ -23,15 +23,15 @@
 
 | 工作 | 当前结论 / 下一动作 |
 | --- | --- |
-| [YML-007 配对与重复候选](tasks/YML-007-pairing-discovery-regression.md) | verifying：同IP端口变化改为替换匿名行，认证清理历史行并保留可信身份；4项新回归、完整37 Python /78 Rust /1 ignored、Swift4与本机app构建启动通过。初轮端口占用 /超时保留；Quest新输入包与原生Mac真实配对待本轮补验。 |
+| [YML-007 配对与重复候选](tasks/archive/YML-007-pairing-discovery-regression.md) | done（桌面归并与原生配对）：同IP端口变化改为替换匿名行，认证清理历史行并保留可信身份；4项新回归、完整37 Python /78 Rust /1 ignored、Swift4与本机app构建启动通过。初轮端口占用 /超时保留；同一实现CI三平台单次重跑全success（首轮Mac容量取消保留）；Quest2339→原生Mac1/1真实组件配对 /Known重连通过，临时身份已清理；XR /实际录屏声音另验。[报告](evidence/2026-10-28-pairing-discovery-regression.md)。 |
 | [YML-002 原生 macOS 实现](tasks/YML-002-macos-native.md) | verifying：双端控制、传输边界与弱网策略自动回归通过；真实屏幕 / 系统音频采集等待用户确认，弱网切档与 Quest 验收未完成。 |
 | [YML-003 Windows 原生实现](tasks/YML-003-windows-native.md) | verifying：两轮 CR 的三项发现全部修复并复核；最终门禁 76 Rust passed / 2 ignored，另实际系统编码器 / SPS 检查、WPF 数据行 / 本地化 / ABI、Release 构建与启动通过。实际 Quest / LAN、文件播放与屏幕 / 音频仍待设备，证据见 [Windows 实现与两轮 CR](evidence/2026-10-27-windows-two-round-cr.md)。 |
 | [YML-004 开源与 CI](tasks/archive/YML-004-opensource-ci.md) | done 并归档：Apache-2.0 公开开发预览、匿名可读、私下漏洞入口、中英安全 / 贡献说明、三平台真实 CI 与双平台开发包全部闭环。CI 发现的 SDK / 扫描早退 / 中文资源问题均修复并经两轮审查和实际 GREEN，见[公开与云端证据](evidence/2026-10-27-public-launch.md)。 |
 | [用户追加两轮 CR](evidence/2026-10-27-native-two-round-cr.md) | 完成：首轮 3 P2 / 1 P3、第二轮 2 P3，全部修复并复核关闭；覆盖端点 pin、采集 teardown、传输历史 / 连接交接、重复错误事件和测试桩换源续传。 |
 | [YML-006 BeautifulRust 清理](tasks/archive/YML-006-beautifulrust-conformance.md) | done 并归档：两轮独立 CR 的 2 P2 / 2 P3 已修复并复核关闭（生产 unwrap 漏扫、FFI Safety、错误 / panic 文档）；仅修测试 socket 绑定解决既有 UDP 门禁失败。Python 37/37、Rust 74 passed / 1 ignored、定向 Clippy / rustdoc 通过；既有全量 lint 告警保留，业务 / 协议不变。见[两轮 CR 报告](evidence/2026-10-28-beautifulrust-two-round-cr.md)。 |
 | 本地启动 | 用户手动启动已确认成功，CUA 已取得窗口。早期自动启动入口出现 SIGKILL 的原因不明，未据此修改应用生命周期或系统安全策略。 |
-| 真实 LAN / Quest | not-run：本轮用现有 SDK 的 ADB 实查为 0 个连接设备；相邻游目源码尚无 YM_Link v3 客户端，YM-276 仍是桌面启动 / 头显设计范围。暂无第二设备或 v3 互操作证据，Rust 测试桩不代替真机。 |
+| 真实 LAN / Quest | 相邻游目YM-285已接入v3，并已有生产Rust core与Quest3S互操作；这不是本仓库原生GUI通过。用户本轮实测暴露配对输入失焦与重复端口候选，现由[YML-007](tasks/archive/YML-007-pairing-discovery-regression.md) /游目YM-293修复；原生Mac /Quest组件复验进行中，XR /真实录屏声音尚未通过。 |
 
 ## 下一步
 
-源码与 CI 开发包已完成；继续真实 Quest / LAN、录屏音频与交互验收，需要 v3 客户端和设备。正式签名 / 公证 / 安装器按 M6 后续推进，见 [ROADMAP](product/ROADMAP.md)。
+YML-007桌面重复候选修复已推main，Mac修复版已本机启动；待游目YM-293最终包完成，验证原生Mac配对 /重连 /候选数量，再按实际条件补XR /真实录屏音频。正式签名 / 公证 / 安装器按 M6 后续推进，见 [ROADMAP](product/ROADMAP.md)。
