@@ -23,8 +23,9 @@ fn owned_string(value: String) -> *mut c_char {
 ///
 /// # Safety
 ///
-/// `state_dir` and `device_name` must be null or valid NUL-terminated C string
-/// pointers; the returned pointer must only be released via [`ymlink_destroy`].
+/// `state_dir` and `device_name` must be null or point to readable NUL-terminated
+/// C strings that remain valid and unmodified for the call. A non-null returned
+/// handle must only be released via [`ymlink_destroy`].
 #[no_mangle]
 pub unsafe extern "C" fn ymlink_create(
     state_dir: *const c_char,
@@ -53,8 +54,9 @@ pub unsafe extern "C" fn ymlink_create(
 
 /// # Safety
 ///
-/// `handle` must be null or a backend pointer from [`ymlink_create`]; the
-/// caller owns the returned string and must free it with [`ymlink_string_free`].
+/// `handle` must be null or an unmodified, live backend pointer from
+/// [`ymlink_create`]. It must not be destroyed during this call. The caller owns
+/// the returned string and must free it with [`ymlink_string_free`].
 #[no_mangle]
 pub unsafe extern "C" fn ymlink_snapshot(handle: *mut c_void) -> *mut c_char {
     owned_string(
@@ -70,9 +72,11 @@ pub unsafe extern "C" fn ymlink_snapshot(handle: *mut c_void) -> *mut c_char {
 
 /// # Safety
 ///
-/// `handle` must be null or a backend pointer from [`ymlink_create`]; `input`
-/// must be null or a valid NUL-terminated C string; the caller owns the
-/// returned string and must free it with [`ymlink_string_free`].
+/// `handle` must be null or an unmodified, live backend pointer from
+/// [`ymlink_create`]. It must not be destroyed during this call. `input` must be
+/// null or point to a readable NUL-terminated C string that remains valid and
+/// unmodified for the call. The caller owns the returned string and must free
+/// it with [`ymlink_string_free`].
 #[no_mangle]
 pub unsafe extern "C" fn ymlink_command(handle: *mut c_void, input: *const c_char) -> *mut c_char {
     owned_string(
@@ -96,8 +100,10 @@ pub unsafe extern "C" fn ymlink_command(handle: *mut c_void, input: *const c_cha
 
 /// # Safety
 ///
-/// `value` must be null or a pointer returned by this library that has not
-/// been freed yet; free each pointer exactly once.
+/// `value` must be null or the exact string pointer returned by
+/// [`ymlink_snapshot`] or [`ymlink_command`] that has not been freed yet. Its
+/// allocation and original NUL terminator position must be unchanged. No other
+/// code may access the string during or after this call; free it exactly once.
 #[no_mangle]
 pub unsafe extern "C" fn ymlink_string_free(value: *mut c_char) {
     if !value.is_null() {
@@ -107,8 +113,9 @@ pub unsafe extern "C" fn ymlink_string_free(value: *mut c_char) {
 
 /// # Safety
 ///
-/// `handle` must be null or a backend pointer from [`ymlink_create`] with no
-/// concurrent calls in flight; destroy each backend exactly once.
+/// `handle` must be null or an unmodified, live backend pointer from
+/// [`ymlink_create`], with no concurrent calls in flight. Destroy each backend
+/// exactly once; no code may use the handle during or after destruction.
 #[no_mangle]
 pub unsafe extern "C" fn ymlink_destroy(handle: *mut c_void) {
     if !handle.is_null() {

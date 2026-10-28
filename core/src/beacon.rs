@@ -133,8 +133,8 @@ impl Beacon {
     ///
     /// # Errors
     ///
-    /// Returns [`BeaconError::InvalidVersion`], [`BeaconError::InvalidLength`]
-    /// or [`BeaconError::InvalidQueryFlag`] when a field fails validation, and
+    /// Returns [`BeaconError::InvalidVersion`] or [`BeaconError::InvalidLength`]
+    /// when a field fails validation, and
     /// [`BeaconError::Oversized`] when the encoded frame exceeds `MAX_PACKET`.
     pub fn encode(&self) -> Result<Vec<u8>, BeaconError> {
         self.validate()?;

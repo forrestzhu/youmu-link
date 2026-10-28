@@ -80,7 +80,7 @@ impl Backend {
     /// # Errors
     ///
     /// Returns a human-readable message when the input is too large, is not a
-    /// valid command, or the backend queue is full.
+    /// valid command, or the backend queue is full or closed.
     pub fn command(&self, input: &str) -> Result<(), String> {
         if input.len() > 16 * 1024 {
             return Err("command exceeds limit".into());
@@ -1719,7 +1719,7 @@ fn update_shares(shared: &Shared, command: Command) -> Result<(), String> {
             if shared
                 .state
                 .lock()
-                .unwrap()
+                .expect("lock poisoned")
                 .shares
                 .iter()
                 .any(|s| s.path == path)
@@ -1735,29 +1735,29 @@ fn update_shares(shared: &Shared, command: Command) -> Result<(), String> {
             shared
                 .catalog
                 .lock()
-                .unwrap()
+                .expect("lock poisoned")
                 .add(id.clone(), name.clone(), &canonical)
                 .map_err(|e| e.to_string())?;
-            let mut shares = shared.state.lock().unwrap().shares.clone();
+            let mut shares = shared.state.lock().expect("lock poisoned").shares.clone();
             shares.push(Share {
                 id: id.clone(),
                 name,
                 path,
             });
             if let Err(error) = save_shares(&shared.config_path, &shares) {
-                shared.catalog.lock().unwrap().remove(&id);
+                shared.catalog.lock().expect("lock poisoned").remove(&id);
                 return Err(error);
             }
             shared.edit(|s| s.shares = shares);
         }
         Command::RemoveShare { id } => {
-            let mut shares = shared.state.lock().unwrap().shares.clone();
+            let mut shares = shared.state.lock().expect("lock poisoned").shares.clone();
             if !shares.iter().any(|s| s.id == id) {
                 return Err("shared folder was not found".into());
             }
             shares.retain(|s| s.id != id);
             save_shares(&shared.config_path, &shares)?;
-            shared.catalog.lock().unwrap().remove(&id);
+            shared.catalog.lock().expect("lock poisoned").remove(&id);
             shared.edit(|s| s.shares = shares);
         }
         _ => unreachable!("only shared-folder commands are dispatched here"),

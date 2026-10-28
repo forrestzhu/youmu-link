@@ -115,8 +115,8 @@ impl Discovery {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Bind`] when no beacon port can be bound, and
-    /// [`Error::Socket`] when the socket cannot be configured.
+    /// Returns [`Error::Bind`] when the requested port, or every fallback port,
+    /// cannot be bound or its socket cannot be configured.
     pub async fn start(config: Config, events: mpsc::Sender<Event>) -> Result<Self> {
         let (socket, listen_port) = match config.listen_port {
             Some(port) => {
@@ -535,7 +535,9 @@ mod tests {
     use super::*;
 
     async fn discovery_without_broadcast() -> Discovery {
-        let socket = bind_socket(0).await.unwrap();
+        // A wildcard-bound socket can still broadcast on macOS with SO_BROADCAST
+        // disabled. Bind to loopback so rejected probes never use a LAN route.
+        let socket = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
         socket.set_broadcast(false).unwrap();
         let listen_port = socket.local_addr().unwrap().port();
         let (shutdown, _) = watch::channel(false);

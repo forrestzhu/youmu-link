@@ -126,8 +126,8 @@ impl FileCatalog {
     /// # Errors
     ///
     /// Returns [`FileError::InvalidRequest`] when the id or name is invalid or
-    /// the share limit is reached, and [`FileError::Unavailable`] when the
-    /// directory cannot be opened.
+    /// the share limit is reached, [`FileError::Denied`] when directory access
+    /// is denied, and [`FileError::Unavailable`] for other directory-open failures.
     pub fn add(
         &mut self,
         id: String,

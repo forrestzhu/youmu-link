@@ -162,8 +162,9 @@ impl SecureSession {
     /// # Errors
     ///
     /// Returns [`Error::Timeout`] when the handshake stalls, [`Error::Io`] on
-    /// transport failure, [`Error::Crypto`] on Noise failure, and
-    /// [`Error::Protocol`] when the peer's hello fails validation.
+    /// transport failure, [`Error::Crypto`] on Noise failure,
+    /// [`Error::Protocol`] on invalid frames or local / remote hello fields,
+    /// and [`Error::IdentityChanged`] on inconsistent hello identity fields.
     pub async fn handshake(
         mut stream: TcpStream,
         initiator: bool,
@@ -261,8 +262,9 @@ impl SecureSession {
     /// # Errors
     ///
     /// Returns [`Error::IdentityChanged`] on inconsistent trust pins,
-    /// [`Error::Protocol`] on an unexpected frame, [`Error::Timeout`] when the
-    /// exchange stalls and [`Error::Io`] on transport failure.
+    /// [`Error::Protocol`] on an unexpected frame, [`Error::Crypto`] on encryption
+    /// or decryption failure, [`Error::Timeout`] when the exchange stalls and
+    /// [`Error::Io`] on transport failure.
     pub async fn needs_pairing(&mut self, trust: &TrustStore) -> Result<bool> {
         if let Some(value) = self.needs_pairing {
             return Ok(value);
@@ -296,7 +298,9 @@ impl SecureSession {
     /// Returns [`Error::PairingRejected`], [`Error::PairingExpired`] or
     /// [`Error::PairingRequired`] for pairing failures, [`Error::Crypto`] /
     /// [`Error::Protocol`] on protocol violations, [`Error::Timeout`] when the
-    /// exchange stalls and [`Error::Storage`] when trust cannot be persisted.
+    /// exchange stalls, [`Error::Io`] on transport failure,
+    /// [`Error::IdentityChanged`] on inconsistent trust pins and
+    /// [`Error::Storage`] when trust cannot be persisted.
     pub async fn authorize(&mut self, trust: &mut TrustStore, pairing: Pairing) -> Result<()> {
         if self.attempted {
             return Err(Error::PairingRejected);

@@ -1,13 +1,13 @@
 //! Private per-user state directory. Never applied to user-authorized media roots.
 use std::{fs, io, path::Path};
 
-/// Creates `path` as a private per-user directory and verifies it stays one.
+/// Creates a per-user directory, inspects it and restricts its permissions.
 ///
 /// # Errors
 ///
 /// Returns the underlying [`io::Error`] when the directory cannot be created,
-/// inspected or locked down; a symlink or replaced path yields
-/// [`io::ErrorKind::PermissionDenied`].
+/// inspected or locked down; a non-directory or symlink found during inspection
+/// yields [`io::ErrorKind::PermissionDenied`].
 pub fn private_directory(path: &Path) -> io::Result<()> {
     fs::create_dir_all(path)?;
     let metadata = fs::symlink_metadata(path)?;

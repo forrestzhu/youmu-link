@@ -21,8 +21,12 @@ impl Identity {
     ///
     /// # Errors
     ///
-    /// This cannot currently fail; the `Result` keeps the identity API uniform
-    /// with [`Identity::load_or_create`].
+    /// This currently never returns `Err`; the `Result` keeps the identity API
+    /// uniform with [`Identity::load_or_create`].
+    ///
+    /// # Panics
+    ///
+    /// Panics if the operating system cannot provide random bytes.
     pub fn generate() -> Result<Self> {
         let mut secret = [0u8; 32];
         rand::rngs::OsRng.fill_bytes(&mut secret);
@@ -42,6 +46,10 @@ impl Identity {
     ///
     /// Returns [`Error::Storage`] when the Keychain entry cannot be opened,
     /// read, validated or written.
+    ///
+    /// # Panics
+    ///
+    /// Panics if generating a missing identity cannot obtain random bytes.
     #[cfg(target_os = "macos")]
     pub fn load_or_create(_state_dir: &Path) -> Result<Self> {
         let entry = keyring::Entry::new("app.youmu.link", "device-identity-v2")
@@ -72,6 +80,10 @@ impl Identity {
     ///
     /// Returns [`Error::Storage`] when the credential entry cannot be opened,
     /// read, validated or written.
+    ///
+    /// # Panics
+    ///
+    /// Panics if generating a missing identity cannot obtain random bytes.
     #[cfg(windows)]
     pub fn load_or_create(_state_dir: &Path) -> Result<Self> {
         let entry = keyring::Entry::new("app.youmu.link", "device-identity-v2")
