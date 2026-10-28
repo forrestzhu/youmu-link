@@ -34,3 +34,5 @@ Youmu workspace **20261028.2339 /21**：主SHA `36d936d0c72c182895c69e82cd31f08b
 实现提交已push main并strict通过。CI40715540013的checks /Windows success，gitleaks40715540024 success；首轮macOS0步骤cancelled，官方annotation明确没有获得hosted runner且arm64容量不足。已对失败job单次重跑，**重跑后三平台checks /Windows /macOS全部success**；同一实现提交db2495d，未改源代码或放宽CI。首轮runner容量取消仍保留，不冒充首轮通过。
 
 真实Android数字键盘 /空间面板输入由游目YM-293的完整E2E检查；用户佩戴位置 /手感反馈另验。实际系统录屏 /声音未运行，不从本轮配对通过推断镜像体验完成。
+
+10-29收尾：游目实现3f7afeef已push main，新0007包（主011b5c0d… /testdb153e25…）同样原生Mac组件1/1通过；测试信任移除后CUA确认设备0。相邻YM-293完整20/20 /162语言也已通过，前两轮E2E发现超时最终核验为删旧toggle连带丢失Compose同步点，补入页 /running同步后通过；没有因此改生产发现协议。当前Mac修复版已恢复运行，用户佩戴 /录屏声音仍未代签。
