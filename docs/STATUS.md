@@ -17,7 +17,7 @@
 | 镜像 | Rust ScreenCaptureKit + VideoToolbox 硬件 H.264、系统 PCM 与加密分片、双端控制、持续背压降分辨率实现就位。首次开始必须本机确认；独立故障信号跨暂停 / 恢复保存，采集或初始化失败不能自动重启，对端不请求系统权限。真实硬件合成帧编码单测通过；真实采集 / 弱网切档、权限恢复、Quest 解码 / 音画同步 / 延迟仍 not-run。 |
 | Windows 镜像 | Rust WGC / D3D11、CPU NV12 转换与系统 Media Foundation 软件 H.264、WASAPI loopback，复用 v3 AVCC / PCM 输出与双端控制。合成 HD 编码及实际 SPS 色彩标记检查通过；修复 WinRT 工厂缓存跨 apartment 销毁造成的反复启动崩溃。真实屏幕 / 系统音频采集及性能 not-run，不推断硬件编码性能。 |
 | harness / CI | 最终实现 627b943 的 run40514312079 三平台全部 success；Linux Python / 仓库 / rustfmt / Rust，Windows Rust / WPF / ABI / Release / smoke，Mac Rust / Swift / 移位启动 / 签名均通过。Windows x64 / Mac arm64 ZIP、完整许可及 SHA-256 已上传，两个最终云端包均完整下载独立核验。本机门禁 78 Rust passed / 2 ignored、36 Python passed / 1 skipped；制品保留 7 天，不自动发布正式 Release。 |
-| gitleaks 防泄漏 CI | `.github/workflows/gitleaks.yml` 于 push(main) / PR / 手动触发，SHA 锁定 gitleaks-action v3.0.0；push/PR 增量扫新提交、dispatch 全量历史，本地 26 commits 全量基线无泄漏，run 40622898952 通过，见 [YML-005](tasks/archive/YML-005-ci-gitleaks.md)。 |
+| gitleaks 防泄漏 CI | `.github/workflows/gitleaks.yml` 于 push(main) / PR / 手动触发，SHA 锁定 gitleaks-action v3.0.0；push/PR 增量扫新提交、dispatch 全量历史（run 40624080000 扫 31 commits 通过），本地 26 commits 全量基线无泄漏，见 [YML-005](tasks/archive/YML-005-ci-gitleaks.md)。 |
 
 ## 当前工作与待验收
 

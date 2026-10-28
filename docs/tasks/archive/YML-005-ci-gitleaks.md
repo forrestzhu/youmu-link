@@ -36,6 +36,7 @@ maintenance 任务，无行为规格。
 
 - 第一轮（受审 5677cdc..8b0e85d）：4 项发现。#1 Important——gitleaks-action@v2 上游宣告 EOL（2026-09-16 起 Node 20 从 runner 移除），经 `git ls-remote` 核实 v3.0.0=e0c47f4f、上游 README 确认日期与一行迁移，**属实已修**：pin 升 v3.0.0。#2 Minor——`GITLEAKS_ENABLE_COMMENTS` 默认 true，只读 token 下泄漏时评论 API 调用会失败，经上游 README 核实默认值，**属实已修**：显式设 false 保持最小权限。#3 Minor——tag push 不触发，与基线一致且 tag 打在已扫 commit 上，**接受不修**。#4 Minor——Scope 漏 workflow_dispatch 一词，**已补**。
 - 第二轮（受审 5677cdc..aeb53c7）：复核第一轮修复全部通过（v3.0.0 SHA、env 传法、个人仓库免 license、`GITLEAKS_ENABLE_COMMENTS: false` 字符串匹配语义均核实源码/日志）。新发现 3 项。#1 Important——文档声称"全量历史扫描"与实际不符：action 对 push/PR 事件加 `--log-opts` 增量扫（经 run 40621106829 / 40622898952 日志核实均为 `--log-opts=-1`），仅 dispatch 全量，**属实已修**：Scope/Evidence 改为增量口径并补 dispatch 全量 run。#2 Minor——STATUS.md 仍写 v2.3.9 未随 aeb53c7 更新，**属实已修**。#3 Minor——cancel-in-progress:true 会取消增量扫描造成该批 commit 漏扫，**属实已修**：本工作流改为 false（排队不取消），偏离基线一行并有注释说明理由。
+- 两轮 CR 修复随 612c768 推送；workflow_dispatch run 40624080000 success，日志确认无 `--log-opts`、31 commits scanned（全量历史），CI 侧全量证据补齐。限制：未核 GitHub 分支保护是否将本 check 设为 required（未设时"阻断"仅体现为 run 变红）。
 
 ## Next
 
