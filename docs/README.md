@@ -21,6 +21,7 @@
 | 当前 macOS 实现任务 | [YML-002](tasks/YML-002-macos-native.md) |
 | 当前 Windows 实现任务 | [YML-003](tasks/YML-003-windows-native.md)、[实施计划](plans/2026-10-27-windows-native.md) |
 | 开源与自动测试打包 | [YML-004](tasks/archive/YML-004-opensource-ci.md)、[实施计划](plans/2026-10-27-opensource-ci.md)、[历史 / 许可 / CI 报告](evidence/2026-10-27-opensource-ci.md)、[敏感信息审计](evidence/2026-10-27-sensitive-information-audit.md)、[历史邮箱修正与 SHA 映射](evidence/2026-10-27-history-email-rewrite.md) |
+| gitleaks 防泄漏 CI | [YML-005](tasks/archive/YML-005-ci-gitleaks.md) |
 | 源码公开剩余项 | [公开准备复查](evidence/2026-10-27-public-readiness.md) |
 | 公开状态与实际云端执行 | [公开开发预览与首次 CI](evidence/2026-10-27-public-launch.md)、[SECURITY](../SECURITY.md)、[CONTRIBUTING](../CONTRIBUTING.md) |
 | 框架与 demo 启动记录 | [YML-001（归档）](tasks/archive/YML-001-bootstrap.md) |

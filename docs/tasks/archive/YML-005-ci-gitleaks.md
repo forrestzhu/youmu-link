@@ -1,9 +1,9 @@
 # YML-005：添加 gitleaks CI 防泄漏检查
 
-Status: verifying
+Status: done
 Workflow: maintenance
 Requires-Device: no
-Tests: not-applicable (仅新增 GitHub Actions 工作流，不涉及可自动验证的 Rust 行为；等效检查为本地 gitleaks 全量扫描)
+Tests: not-applicable (仅新增 GitHub Actions 工作流，不涉及可自动验证的 Rust 行为；等效检查为本地 gitleaks 全量扫描 + Actions 实跑)
 
 ## Scope
 
@@ -30,7 +30,8 @@ maintenance 任务，无行为规格。
 - `gitleaks git --no-banner --redact -v .` → exit 0；26 commits scanned, ~1.06 MB, no leaks found。限制：本地引擎版本与 action 内置版本可能略有差异，以 CI 首跑为准。
 - 首版 gitleaks.yml（浮动 tag / ubuntu-latest）随 276d27b 推送，Actions run 40620620580 success (12s)。
 - 复查发现与既有 repository-checks.yml 风格不一致，改为 SHA 锁定 action（checkout v7.0.1 同哈希、gitleaks-action v2.3.9=ff98106）、persist-credentials: false、fetch-depth: 0、timeout 10m、concurrency 复用既有模式。
+- 锁定版 41b3e9b 的 Actions run 40620888348 success (11s)，全量历史扫描通过，验收全部满足。
 
 ## Next
 
-commit + push 后确认锁定版工作流 Actions 运行通过，然后归档 done。
+无（done 归档）。
