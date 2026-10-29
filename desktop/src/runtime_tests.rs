@@ -163,6 +163,118 @@ async fn command_ack(backend: &Backend, command: Command) -> Result<(), String> 
         .unwrap()
 }
 
+#[test]
+fn authenticated_eof_disconnects_without_an_alert_but_auth_and_protocol_failures_still_surface() {
+    for failure in [
+        "authenticated-eof",
+        "unauthenticated-eof",
+        "invalid-version",
+    ] {
+        let temp =
+            std::env::temp_dir().join(format!("ymlink-peer-close-{:016x}", rand::random::<u64>()));
+        let backend = Backend::start_inner(
+            temp.clone(),
+            "Close Mac".into(),
+            Some(Identity::generate().unwrap()),
+            true,
+        )
+        .unwrap();
+        let client = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        client.block_on(async {
+            wait_state(&backend, |s| s.listen_port != 0).await;
+            let port = backend.state.lock().unwrap().listen_port;
+            let identity = Identity::generate().unwrap();
+            let mut session = SecureSession::handshake(
+                TcpStream::connect(("127.0.0.1", port)).await.unwrap(),
+                true,
+                &identity,
+                Hello::new(&identity, "Quest close", "quest", 32009),
+            )
+            .await
+            .unwrap();
+            if failure == "unauthenticated-eof" {
+                drop(session);
+                wait_state(&backend, |s| s.error_id > 0).await;
+                let state = backend.state.lock().unwrap();
+                assert!(state.error.is_some());
+                assert!(!state.peers.iter().any(|p| p.trusted));
+                return;
+            }
+            let mut trust = TrustStore::memory();
+            assert!(session.needs_pairing(&trust).await.unwrap());
+            session.request_pairing(None).await.unwrap();
+            wait_state(&backend, |s| {
+                s.pairing.as_ref().is_some_and(|p| p.code.is_some())
+            })
+            .await;
+            let code = backend
+                .state
+                .lock()
+                .unwrap()
+                .pairing
+                .as_ref()
+                .unwrap()
+                .code
+                .clone()
+                .unwrap();
+            session
+                .authorize(&mut trust, Pairing::Enter { code })
+                .await
+                .unwrap();
+            wait_state(&backend, |s| s.status == "connected").await;
+            let before = {
+                let mut state = backend.state.lock().unwrap();
+                assert!(state.error.is_none());
+                state.transfers.push(Transfer {
+                    id: "in-flight".into(),
+                    name: "synthetic.bin".into(),
+                    transferred: 16,
+                    total: 32,
+                    status: "transferring".into(),
+                });
+                state.error_id
+            };
+            if failure == "invalid-version" {
+                let (_read, mut write) = session.into_split().unwrap();
+                write.send(&Message::Ping { v: VERSION - 1 }).await.unwrap();
+                wait_state(&backend, |s| s.error_id > before).await;
+                assert!(
+                    backend.state.lock().unwrap().error.is_some(),
+                    "an authenticated protocol violation must still surface"
+                );
+            } else {
+                // LinkClient.disconnect/close ends the TCP stream without Bye.
+                // This is an ordinary peer lifecycle, not a failed operation.
+                drop(session);
+                wait_state(&backend, |s| {
+                    s.status == "ready"
+                        && s.peers
+                            .iter()
+                            .any(|p| p.id == identity.device_id() && p.status == "disconnected")
+                })
+                .await;
+                let state = backend.state.lock().unwrap();
+                assert_eq!(
+                    state.error_id, before,
+                    "ordinary authenticated EOF must not publish a modal error"
+                );
+                assert!(state.error.is_none());
+            }
+            assert_eq!(
+                backend.state.lock().unwrap().transfers[0].status,
+                "waiting",
+                "interrupted work must remain recoverable"
+            );
+        });
+        drop(client);
+        drop(backend);
+        std::fs::remove_dir_all(temp).unwrap();
+    }
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn disconnecting_before_noise_prevents_automatic_reconnect_for_both_selectors() {
     use tokio::io::AsyncReadExt;

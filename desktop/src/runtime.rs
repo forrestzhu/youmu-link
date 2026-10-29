@@ -789,7 +789,10 @@ async fn connection_guarded(
                             clear_window = true;
                         }
                     }
-                } else if !matches!(error, session::Error::Cancelled) {
+                } else if !matches!(error, session::Error::Cancelled)
+                    && !(was_authorized
+                        && matches!(error, session::Error::Io(_) | session::Error::Timeout))
+                {
                     s.set_error(error.to_string());
                 }
             } else {

@@ -43,6 +43,8 @@ Rust先补session真实TCP四位 /旧版Hello两方向 /严格码长 /Known迁�
 
 游目`scripts/build_link_peer.py`已固定双轮审核的四位core提交`feaa9552955704acfce259a35f43694408fbac56`并重建；`main.rs`公开合成码、业务v、fixture启动校验、Python回归及Android主机 /设备参数同步。最终harness须证明对应core /peer输入及二进制摘要，拒绝旧core /旧binary，不手写receipt绕过。原生Mac真实LAN另验；最终受控profile装包 /双SHA /语言E2E绑定新Android输入，保留正式包与两包清理边界。候选稳定后做至少两轮独立实施CR，记录候选 /发现 /修复 /复审，再完成最终检查与两仓main推送。
 
+已认证会话普通TCP退出或传输超时以设备已断开和任务待恢复呈现，不再弹出全局“操作未完成”；未认证连接失败、协议 /加密 /存储错误仍提示。
+
 ## Acceptance
 
 - [x] 可点击HTML覆盖发现 /四位输入 /前导零 /删除 /取消 /提交 /成功 /错误重连 /过期 /限速 /断线 /版本不兼容；宽窄与中英可看。
@@ -120,3 +122,7 @@ Android在真实socket与当前候选Rust对端上14项定向通过，包含错�
 当前代码实现`feaa955`已push main /严格门禁通过，[CI40814254018](https://github.com/forrestzhu/youmu-link/actions/runs/40814254018)的Linux /macOS /Windows三jobs均success，Windows原生模型 /资源 /ABI /release构建及实际窗口smoke通过。Quest3S1147 /21已受控成对安装0删除，正式包与既有加密v3身份保持，22/22 E2E /9地区171语言、双SHA /双编译输入指纹与192视觉通过。真实LAN生产core合成对端的错码重连、0427第四位自动配对、固定逻辑窗口、Known重连、文件seek /合成镜像GPU /PCM全部通过；不是实际桌面GUI或录屏通过。
 
 当前外部阻塞：初次Mac锁屏；解锁后当前.app已通过CUA实际打开 /观察窗口，但后台等待已有身份的SecKeychainFindGenericPassword。进程采样核实钥匙串等待，内置控制对SecurityAgent明确安全拒绝，未读取密码、未重建身份或绕过授权。解除条件为用户在本机自行处理钥匙串系统提示后，继续真实Mac↔Quest原生组件配对 /免码重连；佩戴射线 /双眼仍由方便时实际观察。Android实现cb92c118已push，交付记录见游目本轮报告。
+
+10-29用户已处理钥匙串授权，本机当前.app真实进入searching。原样1147与原生Mac的Quest发起组件1/1通过，实际四位码GUI、配对 /共享目录 /Known重连及双SHA回读通过。但正常disconnect /close后弹出全局连接错误；真实TCP新回归已red，error_id由0错误增至1。当前补最小桌面修复：已认证Io/Timeout仅转已断开 /任务待恢复，其他错误保留；新回归同时检查未认证EOF及已认证错误应用版本仍显示错误。修后需增量双轮独立复核、app重建及原生复验，首轮1/1不能替新包签通过。
+
+正常断开增量修复：runtime SHA071cd61dd9c1f9cfca690fbe68e3603ddf04b75fcd470dcd3258730b08f3ffdd，tests SHA4c7813f6dcacdf47e747aa4de048488f0e04277badd3f60cdcef316292980e6f。新增量第1 /2轮分别由原implementation_cr_round1 /round2独立复核，无实质发现；明确只覆盖当前代际已认证Io/Timeout静默，文件 /镜像 /协议 /加密 /存储及未认证失败反馈仍保留。真实TCP red/green与transfer waiting断言已核对，未动态等待130秒超时，transfer waiting使用合成状态记录。完整99 Rust passed /1 hardware ignored、Python37、Swift6、当前app构建通过；首完整固定UDP端口被旧Mac应用占用的失败保留，释放实际进程后复跑通过。新app SHA256为256cedcb1b3769b482a649c2f566a98350a5b20fc9a978fce6f9e78c6f9b27d0。本机现为macOS26.3.1 /25D2128 arm64；初次原生1/1不为这份新app签无弹窗通过。Mac又锁屏，已请求解锁以做新包双方向原生配对 /Known重连 /正常结束无弹窗复验，当前blocked仅此外部条件。Android1147与reviewed core输入均未变。

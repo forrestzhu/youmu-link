@@ -10,7 +10,7 @@
 | --- | --- |
 | 仓库 | GitHub public `forrestzhu/youmu-link`，2026-10-27 用户明确授权 Apache-2.0 开发预览；匿名 API / LICENSE 200、私下漏洞报告 enabled=true。历史邮箱已统一，未追加历史正文 / 旧运行记录清理，不自动发布正式 Release。 |
 | 设计与实现基线 | 用户授权基于现有 demo 实现，M1 通过；[YML-001](tasks/archive/YML-001-bootstrap.md) 归档。按 [ADR-0002](engineering/decisions/0002-native-desktop.md) 改为 macOS SwiftUI / AppKit 原生界面 + Rust 后端，取代桌面 Tauri 方案。 |
-| Rust 核心 | UDP 发现 / 三端口回退、Noise XX、SPAKE2、系统身份与信任、capability 授权文件服务。rescan 单路由失败不阻断其余探测，新增 2 项真实 UDP 回归；核心 Windows 46 / Mac 41 项通过。应用协议仍 v3，未改变线字段，真实 Quest 互操作待验收。 |
+| Rust 核心 | UDP 发现 / 三端口回退、Noise XX、SPAKE2、系统身份与信任、capability 授权文件服务。rescan 单路由失败不阻断其余探测，新增 2 项真实 UDP 回归；核心 Windows 46 / Mac 41 项通过。当前应用协议v4 /四位配对，发现v1与transport-v2保持；1147 Quest真实LAN core链已通过，原生Mac当前补正常断开反馈回归。 |
 | Rust 桌面后端 | C ABI + 单设备状态、取消 / 重连、16KiB 停等 Ack 传输；读写与文件工作分别调度，慢磁盘 / socket 不阻塞停止指令。文件工作每连接 4 项、真实 I/O 跨连接全局 4 项；同连接传输 id 不复用，防迟到确认误作用于新任务。 |
 | macOS 原生应用 | macOS 15.7.9 arm64 / Xcode 26.3 云端：Rust 74 passed / 1 ignored，Swift 4/4、静态链接、ad-hoc 签名、移位应用中英资源无交互启动与 ZIP 通过；最终 Mac 包独立核验 288 成员 / 138×2 文案 / 许可 / 签名完整性 / 路径门禁通过。此前 Mac 27.0.1 手工配对 / 4 MiB 下载为历史证据；新版人工窗口交互、Mac 14 / Intel not-run。 |
 | Windows 原生应用 | WPF / .NET 8 + Rust DLL，自包含 win-x64 开发目录 `dist/YM_Link`；中英切换、设备 / 镜像 / 目录 / 传输入口，Credential Manager 身份与私有 ACL。Windows 11 Pro x64 build 26200 实际构建 / 启动 / 干净关闭通过；原生数据行模板、ABI 生命周期与跨平台配对回归通过。Windows 10 / ARM64、安装器 / 签名分发 not-run。见 [YML-003](tasks/YML-003-windows-native.md)。 |
@@ -23,7 +23,7 @@
 
 | 工作 | 当前结论 / 下一动作 |
 | --- | --- |
-| [YML-008 四位配对](tasks/YML-008-four-digit-pairing.md) | blocked仅待本机钥匙串授权后的原生Mac配对：四位v4自动提交 /原位错码重输已双端实现，两轮独立CR4项P2闭环；feaa955 main /strict及Linux /macOS /Windows CI全绿（含Windows窗口smoke），Rust98 /Python37 /Swift6 /app构建通过。Quest1147受控安装、22E2E /171语言 /192视觉通过。Mac窗口已打开，后端等待已有身份钥匙串，SecurityAgent被内置控制安全拒绝；不绕过。真实录屏 /声音 /XR未验。 |
+| [YML-008 四位配对](tasks/YML-008-four-digit-pairing.md) | 原生Mac首轮1/1已通过四位GUI /配对 /Known重连 /共享目录，但发现正常退出误弹全局错误；最小已认证传输断开修复已真实red→green并新增量双轮独立复核，99 Rust /37 Python /6 Swift及新app构建通过。Android1147 /22E2E /171语言 /192视觉保持。blocked仅待Mac再次解锁后新app双方向无误弹窗复验；原六位 /旧app或合成对端不能替签，真实录屏 /声音 /XR另验。 |
 | [YML-007 配对与重复候选](tasks/archive/YML-007-pairing-discovery-regression.md) | done（桌面归并与原生配对）：同IP端口变化改为替换匿名行，认证清理历史行并保留可信身份；4项新回归、完整37 Python /78 Rust /1 ignored、Swift4与本机app构建启动通过。初轮端口占用 /超时保留；同一实现CI三平台单次重跑全success（首轮Mac容量取消保留）；Quest2339→原生Mac1/1真实组件配对 /Known重连通过，临时身份已清理；XR /实际录屏声音另验。[报告](evidence/2026-10-28-pairing-discovery-regression.md)。 |
 | [YML-002 原生 macOS 实现](tasks/YML-002-macos-native.md) | verifying：双端控制、传输边界与弱网策略自动回归通过；真实屏幕 / 系统音频采集等待用户确认，弱网切档与 Quest 验收未完成。 |
 | [YML-003 Windows 原生实现](tasks/YML-003-windows-native.md) | verifying：两轮 CR 的三项发现全部修复并复核；最终门禁 76 Rust passed / 2 ignored，另实际系统编码器 / SPS 检查、WPF 数据行 / 本地化 / ABI、Release 构建与启动通过。实际 Quest / LAN、文件播放与屏幕 / 音频仍待设备，证据见 [Windows 实现与两轮 CR](evidence/2026-10-27-windows-two-round-cr.md)。 |
