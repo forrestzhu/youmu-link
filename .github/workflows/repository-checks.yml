@@ -99,6 +99,8 @@ jobs:
           swift --version
       - name: macOS Rust tests
         run: cargo test --workspace --all-targets --locked
+      - name: Verify native archive changes force Swift relinking
+        run: python -m unittest discover -s scripts -p 'test_build_macos.py'
       - name: Build and verify static Rust linkage and ad-hoc signature
         run: python scripts/build_macos.py
       - name: Swift tests

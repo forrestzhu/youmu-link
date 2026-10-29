@@ -27,6 +27,14 @@ def verify_runtime_dependencies(libraries):
         raise ValueError("The app links a non-system library; Rust must be linked statically.")
 
 
+def build_swift_package(package):
+    # SwiftPM does not track archives passed through -Xlinker as build inputs.
+    # Clear cached products so a Rust-only edit cannot ship an old backend.
+    run(["swift", "package", "--package-path", str(package), "clean"])
+    run(["swift", "build", "--package-path", str(package), "-c", "release"])
+    return Path(run(["swift", "build", "--package-path", str(package), "-c", "release", "--show-bin-path"], capture=True).stdout.strip())
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sign-identity", default="-", help="local Apple Development identity; default is ad-hoc")
@@ -34,8 +42,7 @@ def main():
     if sys.platform != "darwin":
         raise SystemExit("Native macOS builds require macOS and Xcode.")
     run(["cargo", "build", "--release", "--locked", "-p", "ymlink-desktop", "--lib"])
-    run(["swift", "build", "--package-path", "macos", "-c", "release"])
-    binaries = Path(run(["swift", "build", "--package-path", "macos", "-c", "release", "--show-bin-path"], capture=True).stdout.strip())
+    binaries = build_swift_package(ROOT / "macos")
     app = ROOT / "dist/YM_Link.app"
     if app.resolve().parent != ROOT / "dist":
         raise SystemExit("The app output must stay inside the workspace dist directory.")

@@ -37,6 +37,7 @@ Windows CI 另运行 WPF Release 构建与 .NET 控制台测试；无交互屏�
 python3 scripts/harness.py verify
 
 # 原生构建与本地临时签名；随后验证窗口实际启动
+python3 -m unittest discover -s scripts -p 'test_build_macos.py'
 python3 scripts/build_macos.py
 swift test --package-path macos
 open dist/YM_Link.app
@@ -57,6 +58,8 @@ python3 scripts/harness.py check --require-pushed
 ## macOS 本机核验
 
 本机 Apple Silicon / macOS 27.0.1 / Xcode 27 的结果单独记录；macOS 14 是部署目标，旧系统与 Intel 验证为 not-run。`.app` 需检查界面启动、空态、配对取消、目录选择 / 撤销、显示器枚举、录屏权限拒绝与恢复、开始 / 停止镜像和任务控制。
+
+10-29本机实际系统为macOS26.3.1 /25D2128 arm64；以上27.0.1属于历史结果。打包必须使用`build_macos.py`：先构建Rust archive，再清理明确的`macos` Swift package生成物并重新链接。SwiftPM不会把通过`-Xlinker`传入的外部archive内容变化当作Swift源码依赖，仅运行`swift build`可能复制旧后端。`test_build_macos.py`在临时包中仅替换C archive实现1→2、保持Swift源码不变，实际执行两次产物并核对新值；macOS CI也执行此回归。测试通过与最终app SHA用于绑定制品，不以archive更新时间代替最终可执行文件核验。清理不触及Rust target、源码或其它工作区。
 
 真实屏幕与系统音频采集需系统授权。未取得权限或设备不足时记录限制，不伪造包数、帧率、延迟或同步效果；不能仅凭 Info.plist、部署版本或成功编译推断系统兼容性。
 
