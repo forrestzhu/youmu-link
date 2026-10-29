@@ -1,6 +1,6 @@
 # YML-008：四位配对码与双端配对体验
 
-Status: verifying
+Status: blocked
 Workflow: behavior
 Requires-Device: yes
 Tests: 当前阶段HTML交互 /浏览器验证；原生实施后core session /desktop runtime /Swift /WPF /Quest E2E与真实LAN互操作
@@ -41,7 +41,7 @@ Tests: 当前阶段HTML交互 /浏览器验证；原生实施后core session /de
 
 Rust先补session真实TCP四位 /旧版Hello两方向 /严格码长 /Known迁移 /限速回归，再补desktop运行时取消与错误状态；Swift /WPF核对4格 /输入上限 /前导零 /中英文错误映射与实际窗口。Android覆盖LinkSession /LinkClient /LinkControls /Rust互操作及e2e/CoreVideoFlowE2ETest的真实逐键配对路径；维持文件seek、镜像流代际与GPU /PCM证据，不把fixture成功替代原生Mac。
 
-`scripts/build_link_peer.py`现固定旧core提交`0b29d8f30e1ece0d895549972415d32d06c7e7c6`。实施后须冻结审核过的四位core输入、更新受控pin并重建；`main.rs`公开合成码、业务v、fixture启动校验、Python回归及Android主机 /设备参数同步。最终harness须证明对应core /peer输入及二进制摘要，拒绝旧core /旧binary，不手写receipt绕过。原生Mac真实LAN另验；最终受控profile装包 /双SHA /语言E2E绑定新Android输入，保留正式包与两包清理边界。候选稳定后做至少两轮独立实施CR，记录候选 /发现 /修复 /复审，再完成最终检查与两仓main推送。
+游目`scripts/build_link_peer.py`已固定双轮审核的四位core提交`feaa9552955704acfce259a35f43694408fbac56`并重建；`main.rs`公开合成码、业务v、fixture启动校验、Python回归及Android主机 /设备参数同步。最终harness须证明对应core /peer输入及二进制摘要，拒绝旧core /旧binary，不手写receipt绕过。原生Mac真实LAN另验；最终受控profile装包 /双SHA /语言E2E绑定新Android输入，保留正式包与两包清理边界。候选稳定后做至少两轮独立实施CR，记录候选 /发现 /修复 /复审，再完成最终检查与两仓main推送。
 
 ## Acceptance
 
@@ -50,7 +50,7 @@ Rust先补session真实TCP四位 /旧版Hello两方向 /严格码长 /Known迁�
 - [ ] Rust /macOS /Windows /Kotlin /资源 /工具 /协议与测试统一四位，混合版本明确提示，真实双端互通通过。
 - [ ] 适用完整测试、当前设备链与语言 /视觉验证通过，失败与限制如实记录。
 - [x] 实施后至少两轮独立subagent CR，绑定候选，属实问题复现 /修复 /复审闭环。
-- [ ] 两仓main commit /push及严格门禁完成。
+- [x] 两仓main实现commit /push及严格门禁完成。
 
 ## Verification
 
@@ -116,3 +116,7 @@ Android在真实socket与当前候选Rust对端上14项定向通过，包含错�
 2026-10-29当前原生验证：Rust完整98项通过 /硬件编码1 ignored、Python37、Swift模型5及.app构建通过；Android9项输入＋24捕获及24组fidelity通过。第1轮全新独立实施CR完成3项P2并复核：恢复实际认证期限收紧到旧窗、入站版本错误active门原子发布、WPF busy门不吞4th/cancel。真实TCP更长ready恢复窗与pre-Noise Disconnect在独立源码副本移除对应修复后实际red，当前完整cargo green；Windows模型增加busy第四位保留提交机会与取消串行准入断言，尚须Windows CI执行。第2轮已冻结新候选并由全新审阅者独立进行；当前Mac锁定，CUA明确无法启动 /观察窗口，GUI与真实录屏不冒称通过。Android完整主机 /最终包 /设备链进行中。
 
 最终独立实施CR两轮已闭环：第1轮3项P2修复后复核通过；第2轮全新审阅者绑定cr2候选`f41002a6e8dc3035e3e712295c2e379b90e23f3db0af2a5f2f10824094b481b3`（Android候选`ffc4d839b5d0f47d87e61d1aaa7ec3b498dbc5307a3738f71cd5eb04a48bac47`），发现Swift组合grapheme比较会把4 Character /6 byte误提交并锁死attempt。独立实际red输出nonASCII submitted=true、corrected ASCII=false；改精确Character.asciiValue后组合标记 /VS /全角三例均不误提交，同attempt 0427可提交，独立复现及Swift6/6通过。Models增量SHA `4a750f2e0f56ffa21c43433d5bf43bdfbdf45fe3ee2afc885b1826a70cee4e2f`、Tests `0f15d650dabedfdb1acaa02de796a1cfc80adb0481fea371c778701331bb9c98`；审阅者明确无剩余实质发现。工具子审阅17项通过。最终.app重新构建通过，Mac当前锁定，GUI /真实屏幕采集 /Windows窗口及设备链未由CR冒称通过。Android完整2040项零失败 /错误 /跳过，双lint0错误及APK已构建；为当前双输入重新冻结最终制品和192视觉捕获正在进行。
+
+当前代码实现`feaa955`已push main /严格门禁通过，[CI40814254018](https://github.com/forrestzhu/youmu-link/actions/runs/40814254018)的Linux /macOS /Windows三jobs均success，Windows原生模型 /资源 /ABI /release构建及实际窗口smoke通过。Quest3S1147 /21已受控成对安装0删除，正式包与既有加密v3身份保持，22/22 E2E /9地区171语言、双SHA /双编译输入指纹与192视觉通过。真实LAN生产core合成对端的错码重连、0427第四位自动配对、固定逻辑窗口、Known重连、文件seek /合成镜像GPU /PCM全部通过；不是实际桌面GUI或录屏通过。
+
+当前外部阻塞：初次Mac锁屏；解锁后当前.app已通过CUA实际打开 /观察窗口，但后台等待已有身份的SecKeychainFindGenericPassword。进程采样核实钥匙串等待，内置控制对SecurityAgent明确安全拒绝，未读取密码、未重建身份或绕过授权。解除条件为用户在本机自行处理钥匙串系统提示后，继续真实Mac↔Quest原生组件配对 /免码重连；佩戴射线 /双眼仍由方便时实际观察。Android实现cb92c118已push，交付记录见游目本轮报告。
