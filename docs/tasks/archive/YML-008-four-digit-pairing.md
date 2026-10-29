@@ -1,9 +1,9 @@
 # YML-008：四位配对码与双端配对体验
 
-Status: blocked
+Status: done
 Workflow: behavior
 Requires-Device: yes
-Tests: 当前阶段HTML交互 /浏览器验证；原生实施后core session /desktop runtime /Swift /WPF /Quest E2E与真实LAN互操作
+Tests: Rust99 passed /1硬件ignored、Python38、Swift6、Windows原生CI；Quest1147的22E2E /171语言 /192视觉；新app双方向真实LAN原生组件各1/1，详见Evidence链接。
 
 ## Scope
 
@@ -49,16 +49,18 @@ Rust先补session真实TCP四位 /旧版Hello两方向 /严格码长 /Known迁�
 
 - [x] 可点击HTML覆盖发现 /四位输入 /前导零 /删除 /取消 /提交 /成功 /错误重连 /过期 /限速 /断线 /版本不兼容；宽窄与中英可看。
 - [x] 用户讨论并明确确认demo，确认结论记录后再原生实施。
-- [ ] Rust /macOS /Windows /Kotlin /资源 /工具 /协议与测试统一四位，混合版本明确提示，真实双端互通通过。
-- [ ] 适用完整测试、当前设备链与语言 /视觉验证通过，失败与限制如实记录。
+- [x] Rust /macOS /Windows /Kotlin /资源 /工具 /协议与测试统一四位，混合版本明确提示，真实Mac↔Quest双方向组件互通通过；Windows↔Quest LAN另验。
+- [x] 适用完整测试、当前设备链与语言 /视觉验证通过，失败与限制如实记录；真实录屏 /声音 /XR未代签。
 - [x] 实施后至少两轮独立subagent CR，绑定候选，属实问题复现 /修复 /复审闭环。
 - [x] 两仓main实现commit /push及严格门禁完成。
 
 ## Verification
 
-当前：JS语法、浏览器实际交互 /宽窄 /中英与主流程断言；一次impeccable detect与有界截图审阅。独立设计审阅与未来实施后的两轮CR分开计数。设计确认后：先红后绿，核心协议 /身份 /取消 /重试 /新旧版本回归，Swift /WPF及Android原生UI；稳定后适用完整检查，真实Quest /Mac LAN、E2E /语言矩阵、受控隔离安装与制品绑定。提交前check、diff自查、push后require-pushed。
+采用的验收链：HTML阶段先做JS语法、内置浏览器宽窄 /中英 /主流程与有界截图审阅；用户确认后，原生协议 /身份 /取消 /重试 /版本回归先红后绿，覆盖Swift /WPF与Android输入，再跑完整verify、视觉合同、当前制品E2E /语言矩阵及真实Quest↔Mac双方向组件。各阶段独立CR分开计数，新增断开反馈和打包问题各自复现 /修复 /两轮复核。预期为严格四位、第四位自动提交、错码原位重输、存储身份保持与正常结束无误报；具体实际结果 /失败 /限制见Evidence与报告。提交前check /diff自查，push后require-pushed。
 
 ## Evidence
+
+最终当前执行见[新app双方向原生与构建重链报告](../../evidence/2026-10-29-four-digit-native-relink.md)：6d613d0 /SHA80f02a6…，Quest /Mac发起各1/1通过，正常结束无误报；Rust99 /Python38 /Swift6、原Android22E2E /171语言 /192视觉、各轮独立CR及失败保留详见报告与下列时间线。真实录屏 /声音 /XR不在本次通过范围，继续既有YML-002 /003与游目对应任务。
 
 开工两仓main均干净，fetch无新提交；游目80d1fba1、桌面5f0b7fb。当前生产仍六位，未发现四位讨论稿或已确认结论。现有10-27demo是六位的历史来源，不据其推断新方案已批准。只读盘点已区分旧helper /私密PIN /发现六字段，确认现有v3严格校验无长度协商；当前盘点不是实施后CR。
 
@@ -113,7 +115,7 @@ Android在真实socket与当前候选Rust对端上14项定向通过，包含错�
 
 ## Next
 
-用户已确认；继续四位v4协议 /双端原生 /工具夹具、视觉还原和真实设备互操作，完成至少两轮独立实施CR后最终commit /push main。完整目标仍未完成。
+四位原生实现、既有信任保持、错码重试、视觉 /语言 /设备链和额外两轮增量CR已完成；新app双方向原生组件与正常结束无误报通过。构建修复6d613d0三平台CI（含macOS实际重链回归）已全success；本任务以原生组件范围完成并归档，纯记录提交后执行最终推送严格门禁。真实录屏 /声音 /XR按既有对应任务另验。
 
 2026-10-29当前原生验证：Rust完整98项通过 /硬件编码1 ignored、Python37、Swift模型5及.app构建通过；Android9项输入＋24捕获及24组fidelity通过。第1轮全新独立实施CR完成3项P2并复核：恢复实际认证期限收紧到旧窗、入站版本错误active门原子发布、WPF busy门不吞4th/cancel。真实TCP更长ready恢复窗与pre-Noise Disconnect在独立源码副本移除对应修复后实际red，当前完整cargo green；Windows模型增加busy第四位保留提交机会与取消串行准入断言，尚须Windows CI执行。第2轮已冻结新候选并由全新审阅者独立进行；当前Mac锁定，CUA明确无法启动 /观察窗口，GUI与真实录屏不冒称通过。Android完整主机 /最终包 /设备链进行中。
 
@@ -130,4 +132,7 @@ Android在真实socket与当前候选Rust对端上14项定向通过，包含错�
 修复实现1d10677的[CI40840443478](https://github.com/forrestzhu/youmu-link/actions/runs/40840443478)已实际回读Linux /macOS /Windows全success，Windows原生模型 /ABI /release构建 /窗口smoke通过，gitleaks40840443558 success。当前新app原生双方向无弹窗复验仍因Mac锁屏not-run，不以旧包首轮1/1或CI代替；解锁问题已通过异步问题请求用户处理。无额外源码变化，后续仅补设备证据。
 
 
-用户解锁后续验发现打包链复用旧Swift可执行文件：256ced…并未包含已通过回归的Rust修复。现已修build_macos.py强制指定包clean后重链，新增真实archive替换回归并接入macOS CI；真实red→green、完整Python38 /Swift6 /app实际Linking通过，额外两轮独立只读CR各自重跑2项通过，候选3份SHA及边界集中[本轮原生与重链报告](../evidence/2026-10-29-four-digit-native-relink.md)。新app SHA80f02a6…启动再次等待系统钥匙串身份访问，已请求用户自行处理，当前blocked解除条件随此更新；双方向原生无弹窗仍未验，不能使用旧包成功或旧CI代签。
+用户解锁后续验发现打包链复用旧Swift可执行文件：256ced…并未包含已通过回归的Rust修复。现已修build_macos.py强制指定包clean后重链，新增真实archive替换回归并接入macOS CI；真实red→green、完整Python38 /Swift6 /app实际Linking通过，额外两轮独立只读CR各自重跑2项通过，候选3份SHA及边界集中[本轮原生与重链报告](../../evidence/2026-10-29-four-digit-native-relink.md)。新app SHA80f02a6…启动再次等待系统钥匙串身份访问，已请求用户自行处理，当前blocked解除条件随此更新；双方向原生无弹窗仍未验，不能使用旧包成功或旧CI代签。
+
+
+用户处理新app钥匙串提示后，6d613d0 /SHA80f02a6…于16:56和16:57的Quest发起、Mac原生按钮发起各1/1通过：四位GUI、paired /Known reconnected、共享目录1；两次结束后CUA均显示一条可信设备已断开 /等待连接，无全局错误弹窗。双APK前后SHA不变，逐轮临时配对经原生菜单清理，最终设备0；forward /instrumentation /Android临时身份均0，正式APK /既有加密v3身份保持。原生组件与构建细节集中[本轮报告](../../evidence/2026-10-29-four-digit-native-relink.md)。钥匙串外部阻塞已解除；真实录屏 /声音 /XR另验。

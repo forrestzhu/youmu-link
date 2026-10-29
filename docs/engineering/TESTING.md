@@ -8,8 +8,8 @@
 | --- | --- | --- | --- |
 | L1 单元 | beacon / 业务编解码、大小与字段校验、tag / nonce、文件边界、C ABI 空指针 / 参数、Swift 模型解码 | `cargo test --workspace --all-targets`；`swift test --package-path macos` | 每次改动相关回归；完整门禁见下文 |
 | L2 集成（单机） | 双 socket 发现；真实 TCP Noise / SPAKE2；桌面授权文件 / range / 传输控制 / 重连 / 取消；测试桩断点与媒体组包 | `core/tests/`、`desktop/src/runtime_tests.rs`、`desktop/tests/native_backend.rs`、测试桩单测；loopback 只在显式测试配置允许 | 自动通过只证明单机逻辑，不证明 LAN 或头显可用 |
-| L3 双机 LAN | 真实两台设备的发现、配对、重连、端口 / 防火墙、休眠与网络切换 | 手动清单 + `docs/evidence/` 报告，绑定提交及双端型号 / 系统 | M2 起里程碑必须；当前 not-run |
-| L4 互操作 | Rust ↔ 游目 Kotlin：golden beacon、Noise / SPAKE2、文件与媒体帧对拍、错误版本拒绝 | 双仓一致性夹具 + 联调任务真机 | 协议版本变化必须；当前 Kotlin 侧尚未集成，not-run |
+| L3 双机 LAN | 真实两台设备的发现、配对、重连、端口 / 防火墙、休眠与网络切换 | 手动清单 + `docs/evidence/` 报告，绑定提交及双端型号 / 系统 | M2起必须；当前Mac↔Quest四位组件通过，其余条件 /真实体验见[YML-008报告](../evidence/2026-10-29-four-digit-native-relink.md) |
+| L4 互操作 | Rust ↔ 游目 Kotlin：golden beacon、Noise / SPAKE2、文件与媒体帧对拍、错误版本拒绝 | 双仓一致性夹具 + 联调任务真机 | 协议版本变化必须；Kotlin已集成v4，reviewed core真实LAN与原生Mac组件结果见[YML-008报告](../evidence/2026-10-29-four-digit-native-relink.md) |
 | L5 体验基准 | Quest 文件播放 / seek、镜像延迟 / FPS / 音画同步、吞吐与弱网恢复 | M3 / M4 固化样本、脚本和佩戴记录 | 里程碑验收；当前 not-run |
 
 CI workflow 配置 Ubuntu 24.04 / Windows 2025 / macOS 15 三平台测试；Windows 补 Release / WPF / ABI / smoke，macOS 补 Swift 测试、Rust 静态链接与 `.app` 构建。公开后 run40514312079 已实际跑通三平台测试与 Windows x64 / Mac arm64 开发包。Mac 固定 Xcode 26.3 / SDK 26.2，另验证签名后的 `.app` 复制到临时目录仍能无交互加载中英资源；这不替代真实窗口 / 设备验收。结果与两平台包独立核验见[公开与云端证据](../evidence/2026-10-27-public-launch.md)。

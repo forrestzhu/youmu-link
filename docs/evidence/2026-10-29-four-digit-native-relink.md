@@ -1,9 +1,11 @@
 # 四位配对：Mac原生续验与构建重链
 
-- Commit: `1d10677be30e9c67db763f8c4675fbada4820987`（正常断开修复）；后续构建工具候选摘要见下表。
+- Commit: `6d613d01fdfe830f26e3b4766e80fb7303acddfb`
 - Host-OS: macOS26.3.1 /25D2128 arm64；Quest3S Android14 /API34 /incremental4069240019900610。
-- Result: partial，重新链接后的app等待本机处理钥匙串提示，尚未签双方向原生通过。
-- Task: [YML-008](../tasks/YML-008-four-digit-pairing.md)。
+- Result: pass
+- Task: [YML-008](../tasks/archive/YML-008-four-digit-pairing.md)。
+
+本报告限定四位原生组件、正常断开反馈与构建重链；Commit包含正常断开修复1d10677，两次原生回执均绑定该提交与最终app SHA。真实录屏 /声音 /XR另验。
 
 ## 真实发现与修复
 
@@ -31,6 +33,21 @@
 
 ## 原生复验边界
 
-本次app保留已有系统身份，启动再次等待SecKeychainFindGenericPassword；进程采样已证实，内置控制禁止操作系统SecurityAgent。已请求用户在本机处理提示，不读取密码、不重建身份、不绕过授权。处理后按Quest发起、Mac发起分别验证四位GUI /配对 /共享目录 /Known重连 /正常结束无全局错误，并清理本次临时配对。
+本次app保留已有系统身份，启动再次等待SecKeychainFindGenericPassword；进程采样已证实，内置控制禁止操作系统SecurityAgent。用户明确回复已处理后，新app实际进入searching；不读取密码、不重建身份、不绕过授权。随后双方向均通过：
 
 组件测试使用生产LinkClient、真实LAN与原生Mac app，仅经私有USB通道代输入GUI观察到的四位码；不启动真实录屏或系统音频。结果不代签VR射线、双眼舒适、真实声音、镜像性能或Windows↔Quest LAN。原始日志与产物仅留ignored artifacts，配对短码不入库。
+
+
+| 发起方向 | 北京时间 | 原生组件结果 | 结束后GUI观察 |
+| --- | --- | --- | --- |
+| Quest→Mac | 16:56:11–16:56:24 | 1/1，paired=true、reconnected=true、share_count=1 | 可信设备1条、已断开、等待连接，无全局错误弹窗。 |
+| Mac→Quest | 16:57:17–16:57:39 | 原生列表连接按钮实际点击；1/1，paired=true、reconnected=true、share_count=1 | 可信设备1条、已断开、等待连接，无全局错误弹窗。 |
+
+两份回执的mac_executable_sha256均为80f02a6…、desktop_commit均为完整6d613d0，开始 /结束workspace1147主APK `d6365df28ba623f2efb102e99825067b9a8407d2f4db2a9625db167d4829be2b`与test APK `4a4202ec39fdbd7c7969739c969dc2ce320c619f0a05e03a049785c302c01606`均相同。报告位于游目ignored artifacts/ym293/native-four-digit-relinked-{quest,desktop}/；GUI结论来自各次测试返回后CUA原生AX观察，单独记录，不冒充instrumentation机器断言。
+
+每轮结束后均通过原生菜单仅移除本轮临时Quest配对，最终CUA设备0 /正在搜索；精确USB forward已移除，活动instrumentation为0、Android临时identity目录为0。正式APK与既有workspace v3身份摘要再次匹配测试前值，原Mac系统身份和共享目录保留。最终清理回执为游目ignored artifacts/ym293/native-four-digit-relinked-cleanup.json。旧缓存产物的失败与成功原样留存，不替本次新SHA签名。
+
+
+## CI与交付
+
+构建修复6d613d0的[repository-checks 40845703661](https://github.com/forrestzhu/youmu-link/actions/runs/40845703661)已实际回读Linux /macOS /Windows三job全部success；macOS新增Verify native archive changes force Swift relinking、最终静态链接 /ad-hoc签名与Swift tests均实际success，Windows原生模型 /本地化 /ABI /release /窗口smoke及开发包上传通过。gitleaks40845703505 success。该提交后仅补设备记录 /任务归档，不改变已测代码与app SHA；最终两仓main推送与require-pushed另按实际收尾记录。

@@ -12,8 +12,8 @@ YM_Link 是 [Youmu VR Player](https://github.com/forrestzhu/youmu)（游目）�
 
 ## 仓库状态
 
-- 阶段：macOS 使用 SwiftUI / AppKit（[YML-002](docs/tasks/YML-002-macos-native.md)），Windows 使用 WPF / .NET 8（[YML-003](docs/tasks/YML-003-windows-native.md)）；Rust 共用发现、加密配对、授权文件服务、传输与镜像控制，采集编码按平台适配。决策见 [ADR-0002](docs/engineering/decisions/0002-native-desktop.md) / [ADR-0003](docs/engineering/decisions/0003-windows-native.md)。四位配对与游目v4双端落地由[YML-008](docs/tasks/YML-008-four-digit-pairing.md)跟踪，实际设备 /原生窗口验收以当前STATUS为准。
-- 验证：Windows 78 项 Rust 回归、WPF 数据行 / 中英资源 / ABI 生命周期、Release 构建与启动检查通过；合成 HD 实际 H.264 编码与 SPS 检查另有证据。macOS 15 arm64 / Xcode 26.3 CI 的 Rust 74 passed / 1 ignored、Swift 4/4、静态链接 / 签名 / 移位中英资源启动与打包通过。此前 macOS 27.0.1 的原生配对及 4 MiB 下载为历史证据。双机 LAN、真实 Quest 播放 / 镜像与音画同步为 **not-run**，不以测试桩或资源自检代替设备验收。
+- 阶段：macOS 使用 SwiftUI / AppKit（[YML-002](docs/tasks/YML-002-macos-native.md)），Windows 使用 WPF / .NET 8（[YML-003](docs/tasks/YML-003-windows-native.md)）；Rust 共用发现、加密配对、授权文件服务、传输与镜像控制，采集编码按平台适配。决策见 [ADR-0002](docs/engineering/decisions/0002-native-desktop.md) / [ADR-0003](docs/engineering/decisions/0003-windows-native.md)。四位配对与游目v4双端落地由[YML-008](docs/tasks/archive/YML-008-four-digit-pairing.md)跟踪，实际设备 /原生窗口验收以当前STATUS为准。
+- 验证：当前四位实现与构建修复的完整99项Rust /38项Python /6项Swift及三平台CI通过；macOS26.3.1 arm64与Quest3S1147的双方向四位配对、共享目录查询、免码重连及正常结束无误报各1/1通过，见[本轮报告](docs/evidence/2026-10-29-four-digit-native-relink.md)。Windows原生模型 /ABI /Release /窗口smoke通过；Windows↔Quest LAN、真实录屏 /声音 /XR与音画同步仍未验，不以合成帧或组件查询代签。
 - 许可：仓库已于 2026-10-27 按维护者授权公开为 **Apache-2.0 开发预览**，原创代码采用 [Apache-2.0](LICENSE)，第三方依赖保留各自许可，见 [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES.md)。历史邮箱已修正；源码公开不等于正式发行，不自动发布 Release。
 - 当前进度：[STATUS](docs/STATUS.md)；文档索引：[docs/README](docs/README.md)。
 - 参与项目：[贡献指南 / Contributing](CONTRIBUTING.md)；私下报告漏洞：[安全政策 / Security](SECURITY.md)。

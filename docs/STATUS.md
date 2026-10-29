@@ -23,7 +23,7 @@
 
 | 工作 | 当前结论 / 下一动作 |
 | --- | --- |
-| [YML-008 四位配对](tasks/YML-008-four-digit-pairing.md) | 四位v4 /Android1147的22E2E /171语言 /192视觉通过；原生首轮暴露正常断开误报，最小修复99 Rust /37 Python /6 Swift与1d10677三平台CI通过。续验发现SwiftPM复用旧后端，已修构建链：仅改archive的真实red→green、Python38 /Swift6 /实际重链构建及额外双轮独立CR通过。新app SHA80f02a6…，blocked仅待再次处理钥匙串后双方向原生无误弹窗复验；[制品与证据](evidence/2026-10-29-four-digit-native-relink.md)。真实录屏 /声音 /XR另验。 |
+| [YML-008 四位配对](tasks/archive/YML-008-four-digit-pairing.md) | **原生实现与组件验证通过**：四位v4、原位错码清空、自动提交与信任保持；Android1147的22E2E /171语言 /192视觉通过。正常断开误报及SwiftPM复用旧后端均已修，完整99 Rust /38 Python /6 Swift、真实重链与各增量双轮独立CR通过。6d613d0新app双方向原生配对 /Known重连 /共享目录各1/1，结束无误报，临时配对清理至0；[证据](evidence/2026-10-29-four-digit-native-relink.md)。真实录屏 /声音 /XR与Windows↔Quest LAN另验。 |
 | [YML-007 配对与重复候选](tasks/archive/YML-007-pairing-discovery-regression.md) | done（桌面归并与原生配对）：同IP端口变化改为替换匿名行，认证清理历史行并保留可信身份；4项新回归、完整37 Python /78 Rust /1 ignored、Swift4与本机app构建启动通过。初轮端口占用 /超时保留；同一实现CI三平台单次重跑全success（首轮Mac容量取消保留）；Quest2339→原生Mac1/1真实组件配对 /Known重连通过，临时身份已清理；XR /实际录屏声音另验。[报告](evidence/2026-10-28-pairing-discovery-regression.md)。 |
 | [YML-002 原生 macOS 实现](tasks/YML-002-macos-native.md) | verifying：双端控制、传输边界与弱网策略自动回归通过；真实屏幕 / 系统音频采集等待用户确认，弱网切档与 Quest 验收未完成。 |
 | [YML-003 Windows 原生实现](tasks/YML-003-windows-native.md) | verifying：两轮 CR 的三项发现全部修复并复核；最终门禁 76 Rust passed / 2 ignored，另实际系统编码器 / SPS 检查、WPF 数据行 / 本地化 / ABI、Release 构建与启动通过。实际 Quest / LAN、文件播放与屏幕 / 音频仍待设备，证据见 [Windows 实现与两轮 CR](evidence/2026-10-27-windows-two-round-cr.md)。 |
@@ -31,10 +31,10 @@
 | [用户追加两轮 CR](evidence/2026-10-27-native-two-round-cr.md) | 完成：首轮 3 P2 / 1 P3、第二轮 2 P3，全部修复并复核关闭；覆盖端点 pin、采集 teardown、传输历史 / 连接交接、重复错误事件和测试桩换源续传。 |
 | [YML-006 BeautifulRust 清理](tasks/archive/YML-006-beautifulrust-conformance.md) | done 并归档：两轮独立 CR 的 2 P2 / 2 P3 已修复并复核关闭（生产 unwrap 漏扫、FFI Safety、错误 / panic 文档）；仅修测试 socket 绑定解决既有 UDP 门禁失败。Python 37/37、Rust 74 passed / 1 ignored、定向 Clippy / rustdoc 通过；既有全量 lint 告警保留，业务 / 协议不变。见[两轮 CR 报告](evidence/2026-10-28-beautifulrust-two-round-cr.md)。 |
 | 本地启动 | 用户手动启动已确认成功，CUA 已取得窗口。早期自动启动入口出现 SIGKILL 的原因不明，未据此修改应用生命周期或系统安全策略。 |
-| 真实 LAN / Quest | 相邻游目YM-285已接入v3，并已有生产Rust core与Quest3S互操作；这不是本仓库原生GUI通过。用户本轮实测暴露配对输入失焦与重复端口候选，现由[YML-007](tasks/archive/YML-007-pairing-discovery-regression.md) /游目YM-293修复；原生Mac /Quest组件复验进行中，XR /真实录屏声音尚未通过。 |
+| 真实 LAN / Quest | 应用v4已与游目Kotlin集成；Quest3S1147与生产Rust core互操作 /文件seek /合成GPU和PCM通过，新Mac原生app双方向四位配对 /Known重连 /共享目录各1/1通过。原生结束无错误弹窗，临时配对清理至0；真实录屏 /声音 /XR与Windows↔Quest LAN尚未通过，见[YML-008](tasks/archive/YML-008-four-digit-pairing.md)。 |
 
 ## 下一步
 
-YML-008当前新app已实际重新链接；用户解锁后，系统又要求访问既有钥匙串身份。待在本机处理提示后完成Quest /Mac双方向原生配对、Known重连与正常结束无弹窗；不绕过系统授权。构建修复详情与旧缓存产物更正见上方报告，真实录屏与XR另验。
+YML-008四位实现、新app双方向原生组件与正常结束无误报均已通过，系统钥匙串阻塞已解除；6d613d0三平台CI及新增实际重链回归均已通过，最终记录按main严格门禁交付。真实录屏 /声音 /XR与Windows↔Quest LAN继续按对应任务验收，不能用组件或CI代签。
 
-YML-007桌面重复候选修复已推main，Mac修复版已本机启动；待游目YM-293最终包完成，验证原生Mac配对 /重连 /候选数量，再按实际条件补XR /真实录屏音频。正式签名 / 公证 / 安装器按 M6 后续推进，见 [ROADMAP](product/ROADMAP.md)。
+YML-007候选归并已交付，四位后继YML-008也已完成新app双方向组件复验。正式签名 /公证 /安装器按M6后续推进，见[ROADMAP](product/ROADMAP.md)。
