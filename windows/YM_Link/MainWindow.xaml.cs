@@ -6,6 +6,8 @@ using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Animation;
 
 namespace YM_Link;
 
@@ -14,6 +16,7 @@ public partial class MainWindow : Window
     private readonly NativeBackend backend = new();
     private readonly CancellationTokenSource cancellation = new();
     private readonly ErrorCursor errors = new();
+    private readonly PairingInput pairingInput = new();
     private readonly ObservableCollection<PeerItem> peers = [];
     private readonly ObservableCollection<DisplayItem> displays = [];
     private readonly ObservableCollection<ShareItem> shares = [];
@@ -97,18 +100,33 @@ public partial class MainWindow : Window
             AudioChoice.IsChecked = snapshot.Mirror.Audio;
             QualityChoice.SelectedItem = QualityChoice.Items.Cast<ComboBoxItem>().FirstOrDefault(item => (string)item.Tag == snapshot.Mirror.Quality) ?? QualityChoice.Items[1];
         }
+        var rejected = pairingInput.Apply(snapshot.Pairing);
         if (snapshot.Pairing is { } pairing)
         {
-            if (oldPairing is null || oldPairing.PeerName != pairing.PeerName || oldPairing.Mode != pairing.Mode || pairing.Code != oldPairing.Code)
-            {
-                PairingDraft.Text = pairing.Mode == "enter" ? "" : pairing.Code ?? "";
-                if (pairing.Mode == "enter") PairingDraft.Focus();
-            }
-            if (pairing.ExpiresIn == 0 && pairing.Mode != "enter") PairingDraft.Text = "";
+            PairingDraft.Text = pairing.Mode == "enter" ? pairingInput.Text : pairing.Code ?? "";
+            if (pairing.CanEnter && !pairingInput.Feedback && (oldPairing?.WindowId != pairing.WindowId || oldPairing.Attempt != pairing.Attempt)) PairingDraft.Focus();
         }
         rendering = false;
         if (errors.Consume(snapshot) is { } error) ShowNativeError(error);
         Render();
+        if (rejected && pairingInput.WindowId is { } window) _ = ShowPairingFeedbackAsync(window, pairingInput.RejectionCount);
+    }
+
+    private async Task ShowPairingFeedbackAsync(string window, int revision)
+    {
+        if (SystemParameters.ClientAreaAnimation)
+        {
+            var animation = new DoubleAnimationUsingKeyFrames { Duration = TimeSpan.FromMilliseconds(320), FillBehavior = FillBehavior.Stop };
+            foreach (var (time, offset) in new[] { (0, 0d), (64, -5d), (128, 5d), (192, -3d), (256, 2d), (320, 0d) })
+                animation.KeyFrames.Add(new LinearDoubleKeyFrame(offset, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(time))));
+            PairingShake.BeginAnimation(TranslateTransform.XProperty, animation);
+        }
+        try { await Task.Delay(520, cancellation.Token); } catch (OperationCanceledException) { return; }
+        if (closing || pairingInput.WindowId != window || pairingInput.RejectionCount != revision) return;
+        pairingInput.ClearRejected(window, revision);
+        rendering = true; PairingDraft.Text = pairingInput.Text; rendering = false;
+        RenderPairing(ready && pending == 0);
+        if (current.Pairing?.CanEnter == true) PairingDraft.Focus();
     }
 
     // Preserve row identity, selection, keyboard focus and partially entered form values on polls.
@@ -181,11 +199,18 @@ public partial class MainWindow : Window
         PairingPanel.Visibility = pairing is null ? Visibility.Collapsed : Visibility.Visible;
         if (pairing is null) return;
         PairingPeer.Text = pairing.PeerName;
-        PairingHint.Text = L(pairing.ExpiresIn == 0 ? "pairing_expired" : pairing.Mode == "enter" ? "enter_pairing_hint" : "display_pairing_hint");
-        PairingDraft.IsReadOnly = pairing.Mode != "enter" || pairing.ExpiresIn == 0;
-        PairConfirmButton.Visibility = pairing.Mode == "enter" ? Visibility.Visible : Visibility.Collapsed;
-        PairConfirmButton.IsEnabled = enabled && pairing.ExpiresIn > 0 && Pairing.IsValidCode(PairingDraft.Text);
-        WaitingPair.Visibility = pairing.Mode == "enter" ? Visibility.Collapsed : Visibility.Visible;
+        PairingHint.Text = L(pairing.Terminal ? pairing.MessageKey : pairing.Mode == "enter" ? "enter_pairing_hint" : "display_pairing_hint");
+        PairingDraft.IsReadOnly = !enabled || !pairing.CanEnter || pairingInput.Feedback;
+        PairRetryButton.Visibility = pairing.Mode == "enter" && pairing.Terminal ? Visibility.Visible : Visibility.Collapsed;
+        PairRetryButton.IsEnabled = enabled && pairing.RetryAfterMs == 0;
+        WaitingPair.Visibility = pairing.Terminal ? Visibility.Collapsed : Visibility.Visible;
+        WaitingPair.Text = L(pairing.Stage == "verifying" ? "pairing_verifying" : "waiting_confirmation");
+        PairingError.Text = pairingInput.ErrorVisible && pairing.Mode == "enter" ? L("pairing_incorrect") : "";
+        var code = pairing.Mode == "enter" ? pairingInput.Text : pairing.Terminal ? "" : pairing.Code ?? "";
+        var slots = new[] { Code0, Code1, Code2, Code3 };
+        for (var i = 0; i < slots.Length; i++) slots[i].Text = i < code.Length ? code[i].ToString() : "";
+        foreach (var border in PairingSlots.Children.OfType<Border>()) border.SetResourceReference(Border.BorderBrushProperty, pairingInput.ErrorVisible && pairing.Mode == "enter" ? "ErrorInk" : "Hairline");
+        PairingExpiry.Visibility = pairing.WindowId.Length > 0 && pairing.Stage != "limited" ? Visibility.Visible : Visibility.Collapsed;
         PairingExpiry.Text = string.Format(L("pairing_expiry"), pairing.ExpiresIn / 60, pairing.ExpiresIn % 60);
     }
 
@@ -199,7 +224,7 @@ public partial class MainWindow : Window
 
     private async Task Send(string action, params (string Key, object Value)[] fields)
     {
-        if (!ready || closing || pending > 0) return;
+        if (!CommandAdmission.CanSend(action, ready, closing, pending)) return;
         pending++;
         Render();
         try
@@ -232,21 +257,18 @@ public partial class MainWindow : Window
     }
     private async void AddressKeyDown(object sender, KeyEventArgs e) { if (e.Key == Key.Enter) { e.Handled = true; await ConnectAddressAsync(); } }
     private async void CancelPairing(object sender, RoutedEventArgs e) => await Send("cancel_pairing");
-    private async void ConfirmPairing(object sender, RoutedEventArgs e) => await SubmitPairing();
-    private async Task SubmitPairing()
-    {
-        if (current.Pairing is { Mode: "enter", ExpiresIn: > 0 } && Pairing.IsValidCode(PairingDraft.Text)) await Send("pair", ("code", PairingDraft.Text));
-    }
-    private void PairingTextChanged(object sender, TextChangedEventArgs e)
+    private async void RetryPairing(object sender, RoutedEventArgs e) => await Send("retry_pairing");
+    private async void PairingTextChanged(object sender, TextChangedEventArgs e)
     {
         if (rendering || !IsInitialized) return;
-        var digits = new string(PairingDraft.Text.Where(c => c is >= '0' and <= '9').Take(6).ToArray());
-        if (digits != PairingDraft.Text) { var caret = PairingDraft.CaretIndex; PairingDraft.Text = digits; PairingDraft.CaretIndex = Math.Min(caret, digits.Length); }
+        var code = pairingInput.Edit(PairingDraft.Text, current.Pairing, CommandAdmission.CanSend("pair", ready, closing, pending));
+        rendering = true; PairingDraft.Text = pairingInput.Text; PairingDraft.CaretIndex = PairingDraft.Text.Length; rendering = false;
         RenderPairing(ready && pending == 0 && !closing);
+        if (code is not null && current.Pairing is { } pairing) await Send("pair", ("code", code), ("window_id", pairing.WindowId), ("attempt", pairing.Attempt));
     }
     private async void PairingKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Enter) { e.Handled = true; await SubmitPairing(); }
+        if (e.Key == Key.Enter) e.Handled = true;
         if (e.Key == Key.Escape) { e.Handled = true; await Send("cancel_pairing"); }
     }
     private async void DisplaySelectionChanged(object sender, SelectionChangedEventArgs e)

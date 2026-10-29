@@ -2,6 +2,7 @@
 
 pub mod capture;
 mod model;
+mod pairing;
 mod runtime;
 pub mod wire;
 

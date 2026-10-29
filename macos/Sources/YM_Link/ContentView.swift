@@ -17,6 +17,8 @@ struct ContentView: View {
     @State private var selectedDisplay: UInt32?
     @State private var audio = true
     @State private var quality = "balanced"
+    @FocusState private var pairingFocused: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         NavigationSplitView {
@@ -480,40 +482,62 @@ struct ContentView: View {
                     Text(model.l("pair_device")).font(.title2.weight(.semibold))
                     Text(pairing.peerName).font(.subheadline).foregroundStyle(.secondary)
                 }
-                Text(model.l(pairing.expiresIn == 0 ? "pairing_expired" : (pairing.mode == "enter" ? "enter_pairing_hint" : "display_pairing_hint")))
+                Text(model.l(pairing.terminal ? pairing.messageKey : (pairing.mode == "enter" ? "enter_pairing_hint" : "display_pairing_hint")))
                     .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                if pairing.mode == "enter" {
-                    TextField("000000", text: $model.pairingDraft)
-                        .font(.system(size: 32, weight: .medium, design: .monospaced))
-                        .multilineTextAlignment(.center).textFieldStyle(.roundedBorder)
-                        .accessibilityLabel(model.l("pairing_code"))
-                        .onSubmit { model.command("pair", ["code": model.pairingDraft]) }
-                        .onChange(of: model.pairingDraft) { _, value in
-                            model.pairingDraft = String(value.filter { $0 >= "0" && $0 <= "9" }.prefix(6))
+                VStack(spacing: 0) {
+                    ZStack {
+                        if pairing.mode == "enter" {
+                            TextField("", text: Binding(get: { model.pairingInput.text }, set: model.editPairing))
+                                .textFieldStyle(.plain).foregroundStyle(.clear).tint(.clear)
+                                .frame(width: 280, height: 66).focused($pairingFocused)
+                                .accessibilityLabel(model.l("pairing_code"))
+                                .disabled(!pairing.canEnter || model.pairingInput.feedback)
                         }
-                } else {
-                    Text(pairing.expiresIn == 0 ? "— — — — — —" : (pairing.code ?? "— — — — — —"))
-                        .font(.system(size: 38, weight: .medium, design: .monospaced)).tracking(7)
-                        .textSelection(.enabled).padding(.vertical, 14).frame(maxWidth: .infinity)
-                        .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 10))
-                        .accessibilityLabel(model.l("pairing_code") + ": " + (pairing.code ?? ""))
+                        HStack(spacing: 24) {
+                            ForEach(0..<4) { index in
+                                let text = pairing.mode == "enter" ? model.pairingInput.text : (pairing.terminal ? "" : pairing.code ?? "")
+                                Text(index < text.count ? String(Array(text)[index]) : "")
+                                    .font(.system(size: 32, weight: .medium, design: .monospaced))
+                                    .frame(width: 52, height: 66)
+                                    .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 10))
+                                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(model.pairingInput.errorVisible && pairing.mode == "enter" ? Color.red.opacity(0.7) : Color.secondary.opacity(0.25)))
+                            }
+                        }.allowsHitTesting(false)
+                    }
+                    .modifier(PairingShake(progress: reduceMotion ? 0 : CGFloat(model.pairingInput.rejectionCount)))
+                    .animation(reduceMotion ? nil : .linear(duration: 0.32), value: model.pairingInput.rejectionCount)
+                    .onAppear { pairingFocused = pairing.canEnter }
+                    .onChange(of: pairing.attempt) { _, _ in pairingFocused = pairing.canEnter }
+                    .onChange(of: model.pairingInput.feedback) { _, active in if !active && pairing.canEnter { pairingFocused = true } }
+                    Text(model.pairingInput.errorVisible && pairing.mode == "enter" ? model.l("pairing_incorrect") : " ")
+                        .font(.caption).foregroundStyle(.red).frame(height: 22)
+                        .accessibilityHidden(!model.pairingInput.errorVisible)
                 }
-                Text(String(format: model.l("pairing_expiry"), pairing.expiresIn / 60, pairing.expiresIn % 60))
-                    .font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                if !pairing.windowId.isEmpty && pairing.stage != "limited" {
+                    Text(String(format: model.l("pairing_expiry"), pairing.expiresIn / 60, pairing.expiresIn % 60))
+                        .font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                }
                 HStack {
                     Button(model.l("cancel")) { model.command("cancel_pairing") }.keyboardShortcut(.cancelAction)
                     Spacer()
-                    if pairing.mode == "enter" {
-                        Button(model.l("confirm")) { model.command("pair", ["code": model.pairingDraft]) }
-                            .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
-                            .disabled(model.pairingDraft.count != 6 || pairing.expiresIn == 0)
+                    if pairing.terminal && pairing.mode == "enter" {
+                        Button(model.l("pairing_retry")) { model.command("retry_pairing") }
+                            .disabled(pairing.retryAfterMs > 0)
                     } else {
-                        Text(model.l("waiting_confirmation")).font(.caption).foregroundStyle(.secondary)
+                        Text(model.l(pairing.stage == "verifying" ? "pairing_verifying" : "waiting_confirmation")).font(.caption).foregroundStyle(.secondary)
                     }
                 }
             }
             .padding(30).frame(width: 430)
             .interactiveDismissDisabled()
         }
+    }
+}
+
+private struct PairingShake: GeometryEffect {
+    var progress: CGFloat
+    var animatableData: CGFloat { get { progress } set { progress = newValue } }
+    func effectValue(size: CGSize) -> ProjectionTransform {
+        ProjectionTransform(CGAffineTransform(translationX: 5 * sin(progress * .pi * 6), y: 0))
     }
 }

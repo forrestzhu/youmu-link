@@ -146,6 +146,572 @@ async fn wait_state(backend: &Backend, predicate: impl Fn(&Snapshot) -> bool) {
     }
 }
 
+async fn command_ack(backend: &Backend, command: Command) -> Result<(), String> {
+    let (tx, rx) = oneshot::channel();
+    backend
+        .commands
+        .send(Request {
+            command,
+            reply: Some(tx),
+            generation: None,
+        })
+        .await
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(3), rx)
+        .await
+        .unwrap()
+        .unwrap()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn disconnecting_before_noise_prevents_automatic_reconnect_for_both_selectors() {
+    use tokio::io::AsyncReadExt;
+    let (shared, mut writer, _incoming, _read, server, _commands) = isolated_file_server().await;
+    writer.send(&Message::Bye { v: VERSION }).await.unwrap();
+    server.await.unwrap().unwrap();
+    *shared.active.lock().unwrap() = None;
+    shared.edit(|s| s.listen_port = 32000);
+    let (events, _events) = mpsc::channel(8);
+    let discovery = Discovery::start(
+        discovery::Config {
+            listen_port: Some(0),
+            allow_loopback: true,
+            ..Default::default()
+        },
+        events,
+    )
+    .await
+    .unwrap();
+    let peer = Identity::generate().unwrap();
+    let id = peer.device_id();
+    for address_only in [false, true] {
+        for selected in [Some(id.clone()), None] {
+            let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+            let address = listener.local_addr().unwrap();
+            shared.disconnected.lock().unwrap().remove(&id);
+            shared.edit(|s| {
+                s.peers = vec![Peer {
+                    id: id.clone(),
+                    address: address.to_string(),
+                    name: "Remembered PC".into(),
+                    platform: "windows".into(),
+                    status: "disconnected".into(),
+                    trusted: true,
+                }]
+            });
+            handle_command(
+                shared.clone(),
+                &discovery,
+                Command::Connect {
+                    address: address_only.then(|| address.to_string()),
+                    peer_id: (!address_only).then(|| id.clone()),
+                },
+                None,
+            )
+            .await
+            .unwrap();
+            let (mut stream, _) = tokio::time::timeout(Duration::from_secs(1), listener.accept())
+                .await
+                .unwrap()
+                .unwrap();
+            assert!(shared.active.lock().unwrap().is_none());
+            assert!(shared.pending_dial_matches(&id));
+            handle_command(
+                shared.clone(),
+                &discovery,
+                Command::Disconnect { peer_id: selected },
+                None,
+            )
+            .await
+            .unwrap();
+            let mut bytes = Vec::new();
+            tokio::time::timeout(Duration::from_secs(1), stream.read_to_end(&mut bytes))
+                .await
+                .unwrap()
+                .unwrap();
+            tokio::time::timeout(Duration::from_secs(1), async {
+                while shared.dialing.load(Ordering::Acquire) {
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await
+            .unwrap();
+            assert!(
+                shared.disconnected.lock().unwrap().contains(&id),
+                "explicit disconnect must exclude the pending peer from the reconnect tick"
+            );
+            assert!(shared.dial_target.lock().unwrap().is_none());
+            assert!(shared.active.lock().unwrap().is_none());
+            assert!(shared.state.lock().unwrap().pairing.is_none());
+        }
+    }
+}
+
+#[test]
+fn forgetting_a_device_cancels_its_pending_noise_handshake() {
+    let temp =
+        std::env::temp_dir().join(format!("ymlink-forget-dial-{:016x}", rand::random::<u64>()));
+    let backend = Backend::start_inner(
+        temp.clone(),
+        "Forget Mac".into(),
+        Some(Identity::generate().unwrap()),
+        true,
+    )
+    .unwrap();
+    let client = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    client.block_on(async {
+        use tokio::io::AsyncReadExt;
+        wait_state(&backend, |s| s.listen_port != 0).await;
+        let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let id = Identity::generate().unwrap().device_id();
+        backend.state.lock().unwrap().peers.push(Peer {
+            id: id.clone(),
+            address: address.to_string(),
+            name: "Remembered PC".into(),
+            platform: "windows".into(),
+            status: "disconnected".into(),
+            trusted: true,
+        });
+        command_ack(
+            &backend,
+            Command::Connect {
+                address: None,
+                peer_id: Some(id.clone()),
+            },
+        )
+        .await
+        .unwrap();
+        let (mut stream, _) = tokio::time::timeout(Duration::from_secs(3), listener.accept())
+            .await
+            .unwrap()
+            .unwrap();
+        // The remote deliberately never answers Noise: active peer identity is
+        // unavailable, so cancellation must match the claimed outbound target.
+        command_ack(&backend, Command::Forget { peer_id: id })
+            .await
+            .unwrap();
+        let mut bytes = Vec::new();
+        tokio::time::timeout(Duration::from_secs(1), stream.read_to_end(&mut bytes))
+            .await
+            .expect("forgotten dial must close before handshake timeout")
+            .unwrap();
+        let state = backend.state.lock().unwrap();
+        assert!(state.pairing.is_none());
+        assert!(!state.peers.iter().any(|p| p.trusted));
+        assert_ne!(state.status, "connected");
+    });
+    drop(client);
+    drop(backend);
+    std::fs::remove_dir_all(temp).unwrap();
+}
+
+#[test]
+fn rejection_before_ready_keeps_a_route_for_an_explicit_fresh_retry() {
+    let temp =
+        std::env::temp_dir().join(format!("ymlink-first-limit-{:016x}", rand::random::<u64>()));
+    let backend = Backend::start_inner(
+        temp.clone(),
+        "Limited Mac".into(),
+        Some(Identity::generate().unwrap()),
+        true,
+    )
+    .unwrap();
+    let client = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    client.block_on(async {
+        wait_state(&backend, |s| s.listen_port != 0).await;
+        let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+        let address = listener.local_addr().unwrap();
+        command_ack(
+            &backend,
+            Command::Connect {
+                address: Some(address.to_string()),
+                peer_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        let identity = Identity::generate().unwrap();
+        let server = async {
+            let trust = TrustStore::memory();
+            for attempt in 0..2 {
+                let (stream, _) = tokio::time::timeout(Duration::from_secs(3), listener.accept())
+                    .await
+                    .unwrap()
+                    .unwrap();
+                let mut session = SecureSession::handshake(
+                    stream,
+                    false,
+                    &identity,
+                    Hello::new(&identity, "Limited PC", "windows", address.port()),
+                )
+                .await
+                .unwrap();
+                assert!(session.needs_pairing(&trust).await.unwrap());
+                assert_eq!(
+                    session.receive_pairing_request().await.unwrap(),
+                    None,
+                    "terminal rejection must not invent a resumable window"
+                );
+                if attempt == 0 {
+                    session
+                        .reject_pairing(session::AuthErrorCode::RateLimited, 500)
+                        .await
+                        .unwrap();
+                } else {
+                    session
+                        .offer_pairing([8; 16], Instant::now() + Duration::from_secs(30))
+                        .await
+                        .unwrap();
+                    let mut trust = TrustStore::memory();
+                    assert!(matches!(
+                        session
+                            .authorize(
+                                &mut trust,
+                                Pairing::Display {
+                                    code: "0427".into(),
+                                    expires_at: Instant::now() + Duration::from_secs(30)
+                                }
+                            )
+                            .await,
+                        Err(session::Error::Cancelled)
+                    ));
+                }
+            }
+        };
+        let ui = async {
+            wait_state(&backend, |s| {
+                s.pairing.as_ref().is_some_and(|p| p.stage == "limited")
+            })
+            .await;
+            let p = backend.state.lock().unwrap().pairing.clone().unwrap();
+            assert!(p.window_id.is_empty());
+            assert!(p.cooldown_deadline.is_some());
+            assert!(command_ack(&backend, Command::RetryPairing {})
+                .await
+                .is_err());
+            tokio::time::sleep(
+                p.cooldown_deadline
+                    .unwrap()
+                    .saturating_duration_since(Instant::now())
+                    + Duration::from_millis(5),
+            )
+            .await;
+            command_ack(&backend, Command::RetryPairing {})
+                .await
+                .unwrap();
+            wait_state(&backend, |s| {
+                s.pairing.as_ref().is_some_and(|p| p.stage == "ready")
+            })
+            .await;
+            assert_eq!(
+                backend
+                    .state
+                    .lock()
+                    .unwrap()
+                    .pairing
+                    .as_ref()
+                    .unwrap()
+                    .window_id,
+                hex_window(&[8; 16])
+            );
+            command_ack(&backend, Command::CancelPairing).await.unwrap();
+            wait_state(&backend, |s| s.pairing.is_none()).await;
+        };
+        tokio::join!(server, ui);
+    });
+    drop(client);
+    drop(backend);
+    std::fs::remove_dir_all(temp).unwrap();
+}
+
+#[test]
+fn wrong_code_preserves_the_display_window_and_five_attempts_limit_new_connections() {
+    let temp = std::env::temp_dir().join(format!("ymlink-retry-{:016x}", rand::random::<u64>()));
+    let backend = Backend::start_inner(
+        temp.clone(),
+        "Retry Mac".into(),
+        Some(Identity::generate().unwrap()),
+        true,
+    )
+    .unwrap();
+    let client = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    client.block_on(async {
+        wait_state(&backend, |s| s.listen_port != 0).await;
+        let port = backend.state.lock().unwrap().listen_port;
+        let identity = Identity::generate().unwrap();
+        let mut trust = TrustStore::memory();
+        let mut resume = None;
+        let mut original = None;
+        for attempt in 0..6 {
+            let stream = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+            let mut session = SecureSession::handshake(
+                stream,
+                true,
+                &identity,
+                Hello::new(&identity, "Quest retry", "quest", 32009),
+            )
+            .await
+            .unwrap();
+            assert!(session.needs_pairing(&trust).await.unwrap());
+            let ready = session.request_pairing(resume).await;
+            if attempt == 5 {
+                assert!(matches!(
+                    ready,
+                    Err(session::Error::RateLimited(1..=60_000))
+                ));
+                wait_state(&backend, |s| {
+                    s.pairing.as_ref().is_some_and(|p| p.stage == "limited")
+                })
+                .await;
+                assert!(backend.state.lock().unwrap().error.is_none());
+                break;
+            }
+            let ready = ready.unwrap();
+            resume = Some(ready.window_id);
+            wait_state(&backend, |s| {
+                s.pairing.as_ref().is_some_and(|p| p.stage == "ready")
+            })
+            .await;
+            let current = backend.state.lock().unwrap().pairing.clone().unwrap();
+            if let Some((id, code, deadline)) = &original {
+                assert_eq!(&current.window_id, id);
+                assert_eq!(&current.code, code);
+                assert_eq!(&current.deadline, deadline);
+            } else {
+                original = Some((
+                    current.window_id.clone(),
+                    current.code.clone(),
+                    current.deadline,
+                ));
+            }
+            let wrong = if current.code.as_deref() == Some("0000") {
+                "0001"
+            } else {
+                "0000"
+            };
+            assert!(matches!(
+                session
+                    .authorize(&mut trust, Pairing::Enter { code: wrong.into() })
+                    .await,
+                Err(session::Error::PairingRejected)
+            ));
+            drop(session);
+            wait_state(&backend, |s| {
+                s.pairing.as_ref().is_some_and(|p| p.stage == "incorrect")
+            })
+            .await;
+            assert!(backend.state.lock().unwrap().error.is_none());
+            assert!(trust.peers().is_empty());
+            assert!(!backend
+                .state
+                .lock()
+                .unwrap()
+                .peers
+                .iter()
+                .any(|p| p.trusted));
+        }
+        backend.command(r#"{"action":"cancel_pairing"}"#).unwrap();
+        wait_state(&backend, |s| s.pairing.is_none()).await;
+    });
+    drop(client);
+    drop(backend);
+    std::fs::remove_dir_all(temp).unwrap();
+}
+
+#[test]
+fn desktop_input_retries_on_a_new_noise_session_without_replaying_the_wrong_code() {
+    desktop_input_retry(false);
+}
+
+#[test]
+fn resumed_input_cannot_authorize_after_the_original_logical_deadline() {
+    desktop_input_retry(true);
+}
+
+fn desktop_input_retry(expire: bool) {
+    let temp =
+        std::env::temp_dir().join(format!("ymlink-enter-retry-{:016x}", rand::random::<u64>()));
+    let backend = Backend::start_inner(
+        temp.clone(),
+        "Input Mac".into(),
+        Some(Identity::generate().unwrap()),
+        true,
+    )
+    .unwrap();
+    let client = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    client.block_on(async {
+        wait_state(&backend, |s| s.listen_port != 0).await;
+        let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+        let address = listener.local_addr().unwrap();
+        backend
+            .command(&json!({"action":"connect","address":address.to_string()}).to_string())
+            .unwrap();
+        let (done_tx, done_rx) = oneshot::channel();
+        let server = async {
+            let identity = Identity::generate().unwrap();
+            let mut trust = TrustStore::memory();
+            let deadline = Instant::now()
+                + if expire {
+                    Duration::from_millis(1200)
+                } else {
+                    Duration::from_secs(30)
+                };
+            for attempt in 0..2 {
+                let (stream, _) = tokio::time::timeout(Duration::from_secs(4), listener.accept())
+                    .await
+                    .unwrap()
+                    .unwrap();
+                let mut session = SecureSession::handshake(
+                    stream,
+                    false,
+                    &identity,
+                    Hello::new(&identity, "Display PC", "windows", address.port()),
+                )
+                .await
+                .unwrap();
+                assert!(session.needs_pairing(&trust).await.unwrap());
+                assert_eq!(
+                    session.receive_pairing_request().await.unwrap(),
+                    if attempt == 0 { None } else { Some([7; 16]) }
+                );
+                let offered = if expire && attempt == 1 {
+                    Instant::now() + Duration::from_secs(30)
+                } else {
+                    deadline
+                };
+                session.offer_pairing([7; 16], offered).await.unwrap();
+                let result = session
+                    .authorize(
+                        &mut trust,
+                        Pairing::Display {
+                            code: "0427".into(),
+                            expires_at: offered,
+                        },
+                    )
+                    .await;
+                if attempt == 0 {
+                    assert!(matches!(result, Err(session::Error::PairingRejected)));
+                    assert!(trust.peers().is_empty());
+                } else {
+                    if expire {
+                        assert!(
+                            result.is_err(),
+                            "a longer resumed ready must not extend the logical window"
+                        );
+                        assert!(trust.peers().is_empty());
+                        break;
+                    }
+                    result.unwrap();
+                    let _ = done_rx.await;
+                    let (_, mut writer) = session.into_split().unwrap();
+                    writer.send(&Message::Bye { v: VERSION }).await.unwrap();
+                    break;
+                }
+            }
+        };
+        let ui = async {
+            wait_state(&backend, |s| {
+                s.pairing.as_ref().is_some_and(|p| p.stage == "ready")
+            })
+            .await;
+            let first = backend.state.lock().unwrap().pairing.clone().unwrap();
+            submit_code(&backend, "0000");
+            wait_state(&backend, |s| {
+                s.pairing
+                    .as_ref()
+                    .is_some_and(|p| p.error.as_deref() == Some("incorrect"))
+            })
+            .await;
+            wait_state(&backend, |s| {
+                s.pairing
+                    .as_ref()
+                    .is_some_and(|p| p.stage == "ready" && p.attempt != first.attempt)
+            })
+            .await;
+            let second = backend.state.lock().unwrap().pairing.clone().unwrap();
+            assert_eq!(first.window_id, second.window_id);
+            assert!(
+                second.deadline <= first.deadline,
+                "resuming must never extend the original deadline"
+            );
+            assert!(backend.state.lock().unwrap().error.is_none());
+            if expire {
+                tokio::time::sleep(
+                    first.deadline.saturating_duration_since(Instant::now())
+                        + Duration::from_millis(40),
+                )
+                .await;
+                wait_state(&backend, |s| {
+                    s.pairing.as_ref().is_some_and(|p| p.stage == "expired")
+                })
+                .await;
+                assert!(!backend
+                    .state
+                    .lock()
+                    .unwrap()
+                    .peers
+                    .iter()
+                    .any(|p| p.trusted));
+                command_ack(&backend, Command::CancelPairing).await.unwrap();
+                return;
+            }
+            command_ack(
+                &backend,
+                Command::Pair {
+                    code: "0000".into(),
+                    window_id: first.window_id,
+                    attempt: first.attempt,
+                },
+            )
+            .await
+            .unwrap();
+            assert_eq!(
+                backend
+                    .state
+                    .lock()
+                    .unwrap()
+                    .pairing
+                    .as_ref()
+                    .unwrap()
+                    .stage,
+                "ready",
+                "late UI input from the old TCP attempt must not submit the new one"
+            );
+            submit_code(&backend, "0427");
+            wait_state(&backend, |s| s.status == "connected").await;
+            let _ = done_tx.send(());
+        };
+        tokio::join!(server, ui);
+    });
+    drop(client);
+    drop(backend);
+    std::fs::remove_dir_all(temp).unwrap();
+}
+
+fn submit_code(backend: &Backend, code: &str) {
+    let pairing = backend
+        .state
+        .lock()
+        .unwrap()
+        .pairing
+        .clone()
+        .expect("pending input");
+    backend.command(&json!({"action":"pair","code":code,"window_id":pairing.window_id,"attempt":pairing.attempt}).to_string()).unwrap();
+}
+
 async fn next(
     receiver: &mut mpsc::Receiver<Message>,
     writer: &mut session::SecureWriter,
@@ -228,6 +794,7 @@ fn native_backend_pairs_serves_ranges_controls_transfer_reconnects_and_cancels()
         let mut session=SecureSession::handshake(stream,true,&identity,Hello::new(&identity,"Quest test","headset-test",32009)).await.unwrap();
         assert_eq!(session.remote().platform, std::env::consts::OS);
         assert!(session.needs_pairing(&trust).await.unwrap());
+        session.request_pairing(None).await.unwrap();
         wait_state(&backend,|s|s.pairing.is_some()).await;
         let code=backend.state.lock().unwrap().pairing.as_ref().unwrap().code.clone().unwrap();
         session.authorize(&mut trust,Pairing::Enter{code}).await.unwrap();
@@ -294,6 +861,7 @@ fn native_backend_pairs_serves_ranges_controls_transfer_reconnects_and_cancels()
         let stream=TcpStream::connect(("127.0.0.1",port)).await.unwrap();
         let mut unpaired=SecureSession::handshake(stream,true,&identity,Hello::new(&identity,"Other Quest","headset-test",32010)).await.unwrap();
         assert!(unpaired.needs_pairing(&TrustStore::memory()).await.unwrap());
+        unpaired.request_pairing(None).await.unwrap();
         wait_state(&backend,|s|s.pairing.is_some()).await;
         backend.command(r#"{"action":"cancel_pairing"}"#).unwrap();
         wait_state(&backend,|s|s.pairing.is_none()).await;
@@ -412,6 +980,15 @@ fn native_runtime_pairs_windows_macos_and_headset_roles_in_both_directions() {
             assert_eq!(session.remote().platform, std::env::consts::OS);
             let mut trust = TrustStore::memory();
             assert!(session.needs_pairing(&trust).await.unwrap());
+            if mode == "enter" {
+                assert!(session.receive_pairing_request().await.unwrap().is_none());
+                session
+                    .offer_pairing([4; 16], Instant::now() + Duration::from_secs(30))
+                    .await
+                    .unwrap();
+            } else {
+                session.request_pairing(None).await.unwrap();
+            }
             wait_state(&backend, |s| s.pairing.is_some()).await;
             let pairing = backend.state.lock().unwrap().pairing.clone().unwrap();
             assert_eq!(
@@ -420,11 +997,9 @@ fn native_runtime_pairs_windows_macos_and_headset_roles_in_both_directions() {
             );
             let remote_role = if mode == "enter" {
                 assert!(pairing.code.is_none());
-                backend
-                    .command(r#"{"action":"pair","code":"123456"}"#)
-                    .unwrap();
+                submit_code(&backend, "0427");
                 Pairing::Display {
-                    code: "123456".into(),
+                    code: "0427".into(),
                     expires_at: Instant::now() + Duration::from_secs(30),
                 }
             } else {
@@ -525,7 +1100,10 @@ async fn isolated_file_server() -> (
         active: Mutex::new(None),
         generation: AtomicU64::new(1),
         dialing: AtomicBool::new(false),
-        pairing_attempts: Mutex::new(HashMap::new()),
+        dial_cancel: watch::channel(0).0,
+        dial_target: Mutex::new(None),
+        pairing_attempts: Mutex::new(Budget::default()),
+        pairing_windows: Mutex::new(Windows::default()),
         config_path: PathBuf::new(),
         mirror_cancel: Mutex::new(None),
         disconnected: Mutex::new(HashSet::new()),

@@ -43,7 +43,7 @@ final class DesktopModel: ObservableObject {
     }
     @Published var showAddress = false
     @Published var addressDraft = ""
-    @Published var pairingDraft = ""
+    @Published private(set) var pairingInput = PairingInput()
     @Published private(set) var pendingActions: Set<String> = []
 
     private let queue = DispatchQueue(label: "app.youmu.link.backend", qos: .userInitiated)
@@ -51,6 +51,7 @@ final class DesktopModel: ObservableObject {
     private var timer: DispatchSourceTimer?
     private var errorCursor = SnapshotErrorCursor()
     private var didReportReadError = false
+    private var clearPairingTask: Task<Void, Never>?
 
     init() {
         let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -93,6 +94,10 @@ final class DesktopModel: ObservableObject {
     var isMirroring: Bool { snapshot.mirror.isMirroring }
     var isMirrorActive: Bool { snapshot.mirror.isActive }
 
+    func editPairing(_ value: String) {
+        if let pairing = snapshot.pairing, let code = pairingInput.edit(value, pairing: pairing) { command("pair", ["code": code, "window_id": pairing.windowId, "attempt": pairing.attempt]) }
+    }
+
     func command(_ action: String, _ arguments: [String: Any] = [:]) {
         guard !pendingActions.contains(action) else { return }
         var value = arguments
@@ -131,7 +136,14 @@ final class DesktopModel: ObservableObject {
             let value = try decoder.decode(Snapshot.self, from: data)
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
-                if snapshot.pairing == nil && value.pairing != nil { pairingDraft = "" }
+                if pairingInput.apply(value.pairing), let window = pairingInput.windowId {
+                    clearPairingTask?.cancel()
+                    let revision = pairingInput.rejectionCount
+                    clearPairingTask = Task { [weak self] in
+                        do { try await Task.sleep(for: .milliseconds(520)) } catch { return }
+                        self?.pairingInput.clearRejected(window: window, revision: revision)
+                    }
+                } else if value.pairing == nil { clearPairingTask?.cancel() }
                 snapshot = value
                 if let message = errorCursor.consume(value) {
                     error = backendMessage(message)

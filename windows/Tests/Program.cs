@@ -30,9 +30,9 @@ using (var reader = new StreamReader(stream))
     foreach (Match match in Regex.Matches(reader.ReadToEnd(), "\"((?:Unable to |Invalid |Windows |Direct3D |Screen |The captured |No default |H\\.264 |Empty H\\.264 |Unsupported H\\.264 |Display (?:dimensions|size) |Mirror |Unknown mirror |Media Foundation )[^\"]+)\""))
         Check(en.BackendMessage(match.Groups[1].Value) != en["command_failed"], "Untranslated capture failure: " + match.Groups[1].Value);
 var snapshot = JsonSerializer.Deserialize<Snapshot>("""
-{"device_name":"PC","status":"ready","listen_port":4,"discovery_port":5,"peers":[],"pairing":{"peer_name":"Quest","code":"001234","expires_in":50,"mode":"display"},"displays":[{"id":7,"name":"Display 7","width":1920,"height":1080}],"mirror":{"status":"paused","permission":"granted","display_id":7,"audio":true,"quality":"balanced"},"shares":[],"transfers":[],"error_id":3,"error":"connection closed"}
+{"device_name":"PC","status":"ready","listen_port":4,"discovery_port":5,"peers":[],"pairing":{"peer_name":"Quest","code":"0427","expires_in":50,"mode":"display","window_id":"window-1","attempt":1,"stage":"ready","error":null,"error_revision":0,"retry_after_ms":0},"displays":[{"id":7,"name":"Display 7","width":1920,"height":1080}],"mirror":{"status":"paused","permission":"granted","display_id":7,"audio":true,"quality":"balanced"},"shares":[],"transfers":[],"error_id":3,"error":"connection closed"}
 """, WireJson.Options)!;
-Check(snapshot.DeviceName == "PC" && snapshot.Pairing?.Code == "001234" && snapshot.Mirror.IsActive, "Snake case snapshot decoding.");
+Check(snapshot.DeviceName == "PC" && snapshot.Pairing?.Code == "0427" && snapshot.Mirror.IsActive, "Snake case snapshot decoding.");
 Check(snapshot.Displays[0].Id == 7, "Display decoding.");
 var cursor = new ErrorCursor();
 Check(cursor.Consume(snapshot) == "connection closed", "First error event.");
@@ -46,7 +46,7 @@ using (var command = JsonDocument.Parse(WireJson.Command("start_mirror", ("displ
 }
 var transfer = new Transfer { Total = 100, Transferred = 120 };
 Check(transfer.Fraction == 1 && (transfer with { Total = 0 }).Fraction == 0, "Transfer fraction is bounded.");
-Check(Pairing.IsValidCode("001234") && !Pairing.IsValidCode("１２３４５６") && !Pairing.IsValidCode("12345"), "ASCII pairing boundary.");
+Check(Pairing.IsValidCode("0427") && !Pairing.IsValidCode("１２３４５６") && !Pairing.IsValidCode("12345"), "ASCII pairing boundary.");
 await using (var backend = new NativeBackend())
 {
     await backend.DisposeAsync();
@@ -83,3 +83,22 @@ if (args is ["--native", var dll])
     }
     finally { Directory.Delete(directory, true); }
 }
+
+var pair = new Pairing { PeerName = "Synthetic PC", WindowId = "window-1", Attempt = 1, Stage = "ready", Mode = "enter", ExpiresIn = 120 };
+var input = new PairingInput(); input.Apply(pair);
+Check(input.Edit("042", pair) is null, "Partial input waits.");
+Check(input.Edit("0427", pair, CommandAdmission.CanSend("pair", true, false, 1)) is null && input.Text == "042", "Busy dispatch cannot consume the fourth digit or mark the attempt submitted.");
+Check(input.Edit("042", pair) is null && input.Edit("0427", pair) == "0427", "Fourth digit auto submits with leading zero.");
+Check(CommandAdmission.CanSend("cancel_pairing", true, false, 1) && !CommandAdmission.CanSend("pair", true, false, 1) && !CommandAdmission.CanSend("rescan", true, false, 1), "Cancel queues while native work is pending; other actions wait.");
+Check(!CommandAdmission.CanSend("cancel_pairing", true, true, 1) && !CommandAdmission.CanSend("cancel_pairing", false, false, 0), "Cancellation respects actual backend lifetime.");
+Check(input.Edit("9999", pair) is null, "One submit per ready attempt.");
+pair = pair with { Stage = "incorrect", Error = "incorrect", ErrorRevision = 1 };
+Check(input.Apply(pair) && input.Feedback, "Wrong code starts feedback.");
+pair = pair with { Stage = "ready", Attempt = 2 };
+Check(!input.Apply(pair), "TCP retry does not repeat the same rejection.");
+input.ClearRejected("window-1", input.RejectionCount);
+Check(input.Text == "" && input.ErrorVisible, "Clear the code, keep the inline error.");
+Check(input.Edit("0427", pair) == "0427" && !input.ErrorVisible, "Direct reentry after rejection.");
+pair = pair with { WindowId = "window-2", Attempt = 3, Error = null, ErrorRevision = 0 }; input.Apply(pair); input.Edit("4", pair);
+input.ClearRejected("window-1", 1);
+Check(input.Text == "4", "Late feedback cannot erase a new window.");

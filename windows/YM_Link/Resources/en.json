@@ -59,8 +59,8 @@
   "action_failed": "Action could not be completed",
   "address_hint": "Enter the local IP address and TCP port of another YM_Link device. Pairing is still required on first connection.",
   "pair_device": "Pair device",
-  "enter_pairing_hint": "Enter the six-digit code shown on the other device.",
-  "display_pairing_hint": "Enter this six-digit code in the YM_Link panel on your headset.",
+  "enter_pairing_hint": "Enter the four-digit code shown on the other device.",
+  "display_pairing_hint": "Enter this four-digit code in the YM_Link panel on your headset.",
   "pairing_code": "Pairing code",
   "pairing_expiry": "Code expires in {0:00}:{1:00}",
   "waiting_confirmation": "Waiting for confirmation…",
@@ -89,9 +89,9 @@
   "pairing_expired": "The pairing code has expired. Cancel and reconnect to get a new code.",
   "device_address": "Device IP address and port",
   "error_identity_changed": "The device identity key has changed. Verify the device, forget its old pairing, then reconnect.",
-  "error_pairing_rejected": "The pairing code was rejected. Reconnect and try again.",
+  "error_pairing_rejected": "Incorrect pairing code.",
   "error_pairing_required": "Pair this device again before connecting.",
-  "error_pairing_digits": "Enter the complete six-digit pairing code.",
+  "error_pairing_digits": "Enter the complete four-digit pairing code.",
   "error_pairing_not_pending": "No pairing is awaiting confirmation. Reconnect to try again.",
   "error_pairing_rate": "Too many pairing attempts. Wait one minute before trying again.",
   "error_authentication": "The encrypted session could not be authenticated. Reconnect the device.",
@@ -163,5 +163,8 @@
   "language_chinese": "简体中文",
   "firewall_hint": "If discovery fails, allow YM_Link through Windows Firewall for private networks, then search again. The other device shows its current TCP port.",
   "error_display_changed": "The display size changed. Start mirroring again to use its current size.",
-  "error_media_feature": "Windows media encoding is unavailable. On Windows N, install the Media Feature Pack in Windows Settings, then reopen YM_Link."
+  "error_media_feature": "Windows media encoding is unavailable. On Windows N, install the Media Feature Pack in Windows Settings, then reopen YM_Link.",
+  "pairing_incorrect": "Incorrect pairing code",
+  "pairing_retry": "Reconnect",
+  "pairing_verifying": "Pairing…"
 }

@@ -60,9 +60,19 @@
               <TextBlock Text="{DynamicResource pair_device}" FontSize="19" FontWeight="SemiBold" />
               <TextBlock x:Name="PairingPeer" Margin="0,6,0,0" />
               <TextBlock x:Name="PairingHint" Style="{StaticResource Secondary}" Margin="0,8,0,12" />
-              <TextBox x:Name="PairingDraft" FontFamily="Consolas" FontSize="32" MaxLength="6" TextAlignment="Center" MaxWidth="280" HorizontalAlignment="Left" TextChanged="PairingTextChanged" KeyDown="PairingKeyDown" AutomationProperties.Name="{DynamicResource pairing_code}" />
+              <Grid x:Name="PairingCodeArea" Width="280" Height="66" HorizontalAlignment="Left">
+                <Grid.RenderTransform><TranslateTransform x:Name="PairingShake" /></Grid.RenderTransform>
+                <TextBox x:Name="PairingDraft" FontFamily="Consolas" FontSize="32" MaxLength="4" Foreground="Transparent" CaretBrush="Transparent" Background="Transparent" BorderThickness="0" TextAlignment="Center" TextChanged="PairingTextChanged" KeyDown="PairingKeyDown" AutomationProperties.Name="{DynamicResource pairing_code}" />
+                <StackPanel x:Name="PairingSlots" Orientation="Horizontal" IsHitTestVisible="False">
+                  <Border Width="52" Height="66" CornerRadius="10" Background="{DynamicResource SoftSurface}" BorderBrush="{DynamicResource Hairline}" BorderThickness="1" Margin="0,0,24,0"><TextBlock x:Name="Code0" FontSize="32" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
+                  <Border Width="52" Height="66" CornerRadius="10" Background="{DynamicResource SoftSurface}" BorderBrush="{DynamicResource Hairline}" BorderThickness="1" Margin="0,0,24,0"><TextBlock x:Name="Code1" FontSize="32" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
+                  <Border Width="52" Height="66" CornerRadius="10" Background="{DynamicResource SoftSurface}" BorderBrush="{DynamicResource Hairline}" BorderThickness="1" Margin="0,0,24,0"><TextBlock x:Name="Code2" FontSize="32" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
+                  <Border Width="52" Height="66" CornerRadius="10" Background="{DynamicResource SoftSurface}" BorderBrush="{DynamicResource Hairline}" BorderThickness="1"><TextBlock x:Name="Code3" FontSize="32" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
+                </StackPanel>
+              </Grid>
+              <TextBlock x:Name="PairingError" Height="22" Foreground="{DynamicResource ErrorInk}" FontSize="12" AutomationProperties.LiveSetting="Assertive" />
               <TextBlock x:Name="PairingExpiry" Style="{StaticResource Secondary}" Margin="0,10,0,12" />
-              <WrapPanel><Button Content="{DynamicResource cancel}" Click="CancelPairing" /><Button x:Name="PairConfirmButton" Content="{DynamicResource confirm}" Click="ConfirmPairing" Style="{StaticResource PrimaryButton}" /><TextBlock x:Name="WaitingPair" Text="{DynamicResource waiting_confirmation}" Style="{StaticResource Secondary}" VerticalAlignment="Center" /></WrapPanel>
+              <WrapPanel><Button Content="{DynamicResource cancel}" Click="CancelPairing" /><Button x:Name="PairRetryButton" Content="{DynamicResource pairing_retry}" Click="RetryPairing" Style="{StaticResource PrimaryButton}" /><TextBlock x:Name="WaitingPair" Text="{DynamicResource waiting_confirmation}" Style="{StaticResource Secondary}" VerticalAlignment="Center" /></WrapPanel>
             </StackPanel>
           </Border>
           <Border x:Name="ConnectionNotice" Background="{DynamicResource SoftSurface}" CornerRadius="8" Padding="15" Margin="0,0,0,24">

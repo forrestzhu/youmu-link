@@ -1,6 +1,6 @@
 # 当前进度
 
-更新：2026-10-28。仅记录最近实测事实、未关闭问题与下一步；详细证据见任务。
+更新：2026-10-29。仅记录最近实测事实、未关闭问题与下一步；详细证据见任务。
 
 用户授权的历史邮箱修正已完成：20 个既有提交的 author / committer 均统一为目标邮箱，20 个文件树不变，16 个提交号变化；旧记录中的提交号见[旧 → 新映射](evidence/2026-10-27-history-email-rewrite.md)。
 
@@ -23,6 +23,7 @@
 
 | 工作 | 当前结论 / 下一动作 |
 | --- | --- |
+| [YML-008 四位配对](tasks/YML-008-four-digit-pairing.md) | verifying：已确认demo的v4四位自动提交 /原位错码重输 /固定窗口新连接实现；两轮全新独立CR共4项P2修复复核，Rust98 /Python37 /Swift6与最终.app构建通过；Android完整2040 /双lint /24配对视觉通过。当前正在冻结最终包、reviewed peer与Quest设备链；Windows实际CI待main推送，Mac锁定的GUI /真实采集与XR未验。 |
 | [YML-007 配对与重复候选](tasks/archive/YML-007-pairing-discovery-regression.md) | done（桌面归并与原生配对）：同IP端口变化改为替换匿名行，认证清理历史行并保留可信身份；4项新回归、完整37 Python /78 Rust /1 ignored、Swift4与本机app构建启动通过。初轮端口占用 /超时保留；同一实现CI三平台单次重跑全success（首轮Mac容量取消保留）；Quest2339→原生Mac1/1真实组件配对 /Known重连通过，临时身份已清理；XR /实际录屏声音另验。[报告](evidence/2026-10-28-pairing-discovery-regression.md)。 |
 | [YML-002 原生 macOS 实现](tasks/YML-002-macos-native.md) | verifying：双端控制、传输边界与弱网策略自动回归通过；真实屏幕 / 系统音频采集等待用户确认，弱网切档与 Quest 验收未完成。 |
 | [YML-003 Windows 原生实现](tasks/YML-003-windows-native.md) | verifying：两轮 CR 的三项发现全部修复并复核；最终门禁 76 Rust passed / 2 ignored，另实际系统编码器 / SPS 检查、WPF 数据行 / 本地化 / ABI、Release 构建与启动通过。实际 Quest / LAN、文件播放与屏幕 / 音频仍待设备，证据见 [Windows 实现与两轮 CR](evidence/2026-10-27-windows-two-round-cr.md)。 |
@@ -33,5 +34,7 @@
 | 真实 LAN / Quest | 相邻游目YM-285已接入v3，并已有生产Rust core与Quest3S互操作；这不是本仓库原生GUI通过。用户本轮实测暴露配对输入失焦与重复端口候选，现由[YML-007](tasks/archive/YML-007-pairing-discovery-regression.md) /游目YM-293修复；原生Mac /Quest组件复验进行中，XR /真实录屏声音尚未通过。 |
 
 ## 下一步
+
+继续YML-008已确认demo的v4双端落地，完成固定窗口 /取消竞态回归、视觉还原、真实LAN /设备链、至少两轮最终独立CR及main交付。当前尚未安装四位验证包，既有六位包证据不改签。
 
 YML-007桌面重复候选修复已推main，Mac修复版已本机启动；待游目YM-293最终包完成，验证原生Mac配对 /重连 /候选数量，再按实际条件补XR /真实录屏音频。正式签名 / 公证 / 安装器按 M6 后续推进，见 [ROADMAP](product/ROADMAP.md)。

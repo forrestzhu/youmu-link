@@ -17,6 +17,14 @@ pub struct PairingView {
     pub code: Option<String>,
     pub expires_in: u64,
     pub mode: String,
+    pub window_id: String,
+    pub attempt: u64,
+    pub stage: String,
+    pub error: Option<String>,
+    pub error_revision: u64,
+    pub retry_after_ms: u32,
+    #[serde(skip)]
+    pub cooldown_deadline: Option<Instant>,
     #[serde(skip)]
     pub deadline: Instant,
 }
@@ -124,8 +132,11 @@ pub enum Command {
     },
     Pair {
         code: String,
+        window_id: String,
+        attempt: u64,
     },
     CancelPairing,
+    RetryPairing {},
     Disconnect {
         peer_id: Option<String>,
     },

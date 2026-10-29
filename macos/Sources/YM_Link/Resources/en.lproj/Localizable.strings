@@ -58,8 +58,8 @@
 "action_failed" = "Action could not be completed";
 "address_hint" = "Enter the local IP address and TCP port of another YM_Link device. Pairing is still required on first connection.";
 "pair_device" = "Pair device";
-"enter_pairing_hint" = "Enter the six-digit code shown on the other device.";
-"display_pairing_hint" = "Enter this six-digit code in the YM_Link panel on your headset.";
+"enter_pairing_hint" = "Enter the four-digit code shown on the other device.";
+"display_pairing_hint" = "Enter this four-digit code in the YM_Link panel on your headset.";
 "pairing_code" = "Pairing code";
 "pairing_expiry" = "Code expires in %02llu:%02llu";
 "waiting_confirmation" = "Waiting for confirmation…";
@@ -89,9 +89,9 @@
 "pairing_expired" = "The pairing code has expired. Cancel and reconnect to get a new code.";
 "device_address" = "Device IP address and port";
 "error_identity_changed" = "The device identity key has changed. Verify the device, forget its old pairing, then reconnect.";
-"error_pairing_rejected" = "The pairing code was rejected. Reconnect and try again.";
+"error_pairing_rejected" = "Incorrect pairing code.";
 "error_pairing_required" = "Pair this device again before connecting.";
-"error_pairing_digits" = "Enter the complete six-digit pairing code.";
+"error_pairing_digits" = "Enter the complete four-digit pairing code.";
 "error_pairing_not_pending" = "No pairing is awaiting confirmation. Reconnect to try again.";
 "error_pairing_rate" = "Too many pairing attempts. Wait one minute before trying again.";
 "error_authentication" = "The encrypted session could not be authenticated. Reconnect the device.";
@@ -136,3 +136,7 @@
 "error_version_incompatible" = "The device versions are incompatible. Update YM_Link on both devices and reconnect.";
 "error_mirror_busy" = "The connection is busy. Try starting mirroring again shortly.";
 "error_mirror_connection_slow" = "The connection is too slow to continue mirroring. Turn off system audio or reconnect.";
+
+"pairing_incorrect" = "Incorrect pairing code";
+"pairing_retry" = "Reconnect";
+"pairing_verifying" = "Pairing…";

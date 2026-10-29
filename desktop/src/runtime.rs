@@ -1,7 +1,8 @@
 use crate::model::{Command, PairingView, Peer, Share, Snapshot, Transfer};
+use crate::pairing::{Budget, EnterTarget, EnterWindow, Windows};
 use crate::wire::{Message, MirrorAction, MirrorInfo, VERSION};
 use serde_json::json;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
 use std::net::{IpAddr, SocketAddr};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -12,7 +13,7 @@ use tokio::sync::{mpsc, oneshot, watch, Mutex as AsyncMutex, Semaphore};
 use ymlink_core::discovery::{self, Discovery};
 use ymlink_core::files::{FileCatalog, FileRequest, FileResponse, MAX_READ_BYTES};
 use ymlink_core::identity::{Identity, TrustStore};
-use ymlink_core::session::{self, Hello, Pairing, SecureSession};
+use ymlink_core::session::{self, AuthErrorCode, Hello, Pairing, SecureSession};
 
 pub struct Backend {
     runtime: Option<tokio::runtime::Runtime>,
@@ -104,7 +105,14 @@ impl Backend {
             pairing.expires_in = pairing
                 .deadline
                 .saturating_duration_since(Instant::now())
-                .as_secs();
+                .as_secs_f64()
+                .ceil() as u64;
+            if let Some(deadline) = pairing.cooldown_deadline {
+                pairing.retry_after_ms = deadline
+                    .saturating_duration_since(Instant::now())
+                    .as_millis()
+                    .min(60_000) as u32;
+            }
         }
         serde_json::to_string(&*state)
             .unwrap_or_else(|_| json!({"status":"error","error":"cannot encode state"}).to_string())
@@ -151,6 +159,11 @@ struct Active {
     authorized: bool,
 }
 
+struct DialTarget {
+    address: SocketAddr,
+    expected: Option<String>,
+}
+
 struct Shared {
     state: Arc<Mutex<Snapshot>>,
     identity: Identity,
@@ -159,7 +172,10 @@ struct Shared {
     active: Mutex<Option<Active>>,
     generation: AtomicU64,
     dialing: AtomicBool,
-    pairing_attempts: Mutex<HashMap<IpAddr, VecDeque<Instant>>>,
+    dial_cancel: watch::Sender<u64>,
+    dial_target: Mutex<Option<DialTarget>>,
+    pairing_attempts: Mutex<Budget>,
+    pairing_windows: Mutex<Windows>,
     config_path: PathBuf,
     mirror_cancel: Mutex<Option<watch::Sender<Option<MirrorEnd>>>>,
     disconnected: Mutex<HashSet<String>>,
@@ -173,6 +189,28 @@ struct Shared {
 }
 
 impl Shared {
+    fn pending_dial_matches(&self, id: &str) -> bool {
+        self.dial_target
+            .lock()
+            .expect("lock poisoned")
+            .as_ref()
+            .is_some_and(|target| {
+                target.expected.as_ref().map_or_else(
+                    || {
+                        self.state
+                            .lock()
+                            .expect("lock poisoned")
+                            .peers
+                            .iter()
+                            .any(|p| {
+                                p.id == id
+                                    && p.address.parse::<SocketAddr>().ok() == Some(target.address)
+                            })
+                    },
+                    |expected| expected == id,
+                )
+            })
+    }
     fn edit(&self, edit: impl FnOnce(&mut Snapshot)) {
         edit(
             &mut self
@@ -183,6 +221,42 @@ impl Shared {
     }
     fn error(&self, error: impl Into<String>) {
         self.edit(|s| s.set_error(error));
+    }
+    fn dial_error(&self, address: SocketAddr, error: String, epoch: Option<u64>) {
+        let active = self.active.lock().expect("lock poisoned");
+        if epoch.is_some_and(|epoch| epoch != *self.dial_cancel.borrow()) {
+            return;
+        }
+        if active.is_some() {
+            return;
+        }
+        let mut windows = self.pairing_windows.lock().expect("lock poisoned");
+        if let Some(target) = windows
+            .target
+            .as_ref()
+            .filter(|w| w.address == address)
+            .cloned()
+        {
+            windows.invalidate_peer(&ymlink_core::identity::device_id(&target.peer_key));
+            self.edit(|s| {
+                if let Some(view) = s.pairing.as_mut().filter(|p| p.mode == "enter") {
+                    view.stage = "disconnected".into();
+                    view.error = Some(
+                        if error.contains("incompatible application version") {
+                            "version"
+                        } else {
+                            "disconnected"
+                        }
+                        .into(),
+                    );
+                    view.code = None;
+                } else {
+                    s.set_error(error);
+                }
+            });
+        } else {
+            self.error(error);
+        }
     }
     fn stop_mirror(&self) {
         self.end_mirror(MirrorEnd::Stopped);
@@ -225,33 +299,35 @@ impl Shared {
         };
         if authorized {
             active.authorized = true;
+            self.pairing_windows
+                .lock()
+                .expect("lock poisoned")
+                .clear_peer(&active.peer_id);
         }
         self.edit(edit);
         true
     }
-    fn pairing_allowed(&self, ip: IpAddr) -> bool {
-        let now = Instant::now();
-        let mut attempts = self.pairing_attempts.lock().expect("lock poisoned");
-        attempts.retain(|_, entries| {
-            entries
-                .back()
-                .is_some_and(|t| now.duration_since(*t) < Duration::from_secs(60))
-        });
-        if attempts.len() >= 128 && !attempts.contains_key(&ip) {
-            return false;
-        }
-        let entries = attempts.entry(ip).or_default();
-        while entries
-            .front()
-            .is_some_and(|t| now.duration_since(*t) >= Duration::from_secs(60))
+    fn pairing_window<T>(
+        &self,
+        generation: u64,
+        edit: impl FnOnce(&mut Windows) -> T,
+    ) -> session::Result<T> {
+        let active = self.active.lock().expect("lock poisoned");
+        if !active
+            .as_ref()
+            .is_some_and(|a| a.generation == generation && !*a.cancel.borrow())
         {
-            entries.pop_front();
+            return Err(session::Error::Cancelled);
         }
-        if entries.len() >= 5 {
-            return false;
-        }
-        entries.push_back(now);
-        true
+        Ok(edit(
+            &mut self.pairing_windows.lock().expect("lock poisoned"),
+        ))
+    }
+    fn pairing_admission(&self, ip: IpAddr) -> Result<(), u32> {
+        self.pairing_attempts
+            .lock()
+            .expect("lock poisoned")
+            .admit(ip, Instant::now())
     }
 }
 
@@ -325,6 +401,9 @@ async fn run(
     let discovery = Discovery::start(
         discovery::Config {
             advertised_port: Some(port),
+            // Unit backends dial explicit TCP endpoints; avoid exhausting the
+            // three production discovery ports when these tests run in parallel.
+            listen_port: (cfg!(test) && allow_loopback).then_some(0),
             caps: vec!["control".into(), "files".into(), "mirror".into()],
             allow_loopback,
             ..Default::default()
@@ -347,7 +426,10 @@ async fn run(
         active: Mutex::new(None),
         generation: AtomicU64::new(1),
         dialing: AtomicBool::new(false),
-        pairing_attempts: Mutex::new(HashMap::new()),
+        dial_cancel: watch::channel(0).0,
+        dial_target: Mutex::new(None),
+        pairing_attempts: Mutex::new(Budget::default()),
+        pairing_windows: Mutex::new(Windows::default()),
         config_path,
         mirror_cancel: Mutex::new(None),
         disconnected: Mutex::new(HashSet::new()),
@@ -394,7 +476,7 @@ async fn run(
                 if shared.active.lock().expect("lock poisoned").is_none() && !shared.dialing.load(Ordering::Acquire) {
                     let state=shared.state.lock().expect("lock poisoned");
                     let has_trust=state.peers.iter().any(|p|p.trusted);
-                    let candidates:Vec<_>=state.peers.iter().filter(|p| !p.address.is_empty() && !shared.disconnected.lock().expect("lock poisoned").contains(&p.id) && (p.trusted || (has_trust && p.status=="discovered"))).cloned().collect();
+                    let candidates:Vec<_>=state.peers.iter().filter(|p| state.pairing.is_none() && !p.address.is_empty() && !shared.disconnected.lock().expect("lock poisoned").contains(&p.id) && (p.trusted || (has_trust && p.status=="discovered"))).cloned().collect();
                     drop(state);
                     if !candidates.is_empty() {
                         let peer = &candidates[reconnect_cursor % candidates.len()];
@@ -456,26 +538,41 @@ fn dial(shared: Arc<Shared>, address: SocketAddr, expected: Option<String>, manu
     if shared.dialing.swap(true, Ordering::AcqRel) {
         return;
     }
+    let mut cancelled = shared.dial_cancel.subscribe();
+    let epoch = *cancelled.borrow();
+    *shared.dial_target.lock().expect("lock poisoned") = Some(DialTarget {
+        address,
+        expected: expected.clone(),
+    });
     tokio::spawn(async move {
-        let connected =
-            tokio::time::timeout(Duration::from_secs(5), TcpStream::connect(address)).await;
+        let connected = tokio::select! {
+            biased;
+            _=cancelled.changed()=>None,
+            result=tokio::time::timeout(Duration::from_secs(5),TcpStream::connect(address))=>Some(result),
+        };
         match connected {
-            Ok(Ok(stream)) => {
-                connection(
+            Some(Ok(Ok(stream))) => {
+                connection_guarded(
                     Arc::clone(&shared),
                     stream,
                     address,
                     true,
                     expected.clone(),
                     manual,
+                    Some((epoch, cancelled)),
                 )
                 .await;
             }
-            _ if manual => {
-                shared.error("cannot connect; confirm the other device is on the same Wi-Fi");
+            Some(_) if manual => {
+                shared.dial_error(
+                    address,
+                    "cannot connect; confirm the other device is on the same Wi-Fi".into(),
+                    Some(epoch),
+                );
             }
             _ => {}
         }
+        shared.dial_target.lock().expect("lock poisoned").take();
         shared.dialing.store(false, Ordering::Release);
     });
 }
@@ -488,16 +585,47 @@ async fn connection(
     expected: Option<String>,
     manual: bool,
 ) {
+    connection_guarded(shared, stream, address, initiator, expected, manual, None).await;
+}
+
+async fn connection_guarded(
+    shared: Arc<Shared>,
+    stream: TcpStream,
+    address: SocketAddr,
+    initiator: bool,
+    expected: Option<String>,
+    manual: bool,
+    mut dial_guard: Option<(u64, watch::Receiver<u64>)>,
+) {
     let (name, port) = {
         let s = shared.state.lock().expect("lock poisoned");
         (s.device_name.clone(), s.listen_port)
     };
     let local = Hello::new(&shared.identity, name, std::env::consts::OS, port);
-    let session = match SecureSession::handshake(stream, initiator, &shared.identity, local).await {
+    let handshake = SecureSession::handshake(stream, initiator, &shared.identity, local);
+    let result = if let Some((epoch, cancelled)) = &mut dial_guard {
+        if *epoch != *cancelled.borrow() {
+            return;
+        }
+        tokio::select! { biased; _=cancelled.changed()=>return, result=handshake=>result }
+    } else {
+        handshake.await
+    };
+    let session = match result {
         Ok(session) => session,
         Err(error) => {
             if initiator && manual {
-                shared.error(error.to_string());
+                shared.dial_error(
+                    address,
+                    error.to_string(),
+                    dial_guard.as_ref().map(|(epoch, _)| *epoch),
+                );
+            } else if matches!(&error, session::Error::Protocol(detail) if detail.contains("incompatible application version"))
+            {
+                let active = shared.active.lock().expect("lock poisoned");
+                if active.is_none() {
+                    shared.error(error.to_string());
+                }
             }
             return;
         }
@@ -526,11 +654,17 @@ async fn connection(
     }
     let (outbox, receiver) = mpsc::channel(32);
     let (media, media_receiver) = mpsc::channel(8);
-    let (cancel, mut cancelled) = watch::channel(false);
-    let generation = shared.generation.fetch_add(1, Ordering::Relaxed);
+    let (cancel, cancelled) = watch::channel(false);
+    let generation;
     let preferred = initiator == (shared.identity.device_id() < remote.device_id);
     {
         let mut active = shared.active.lock().expect("lock poisoned");
+        if dial_guard
+            .as_ref()
+            .is_some_and(|(epoch, guard)| *epoch != *guard.borrow())
+        {
+            return;
+        }
         if manual {
             shared
                 .disconnected
@@ -554,6 +688,7 @@ async fn connection(
             // after these records become interrupted and the new owner starts.
             shared.edit(Snapshot::interrupt_transfers);
         }
+        generation = shared.generation.fetch_add(1, Ordering::AcqRel);
         *active = Some(Active {
             generation,
             peer_id: remote.device_id.clone(),
@@ -566,16 +701,37 @@ async fn connection(
         });
     }
     shared.stop_mirror();
-    let result = tokio::select! {
-        _ = cancelled.changed() => Ok(()),
-        result = authorize_and_serve(Arc::clone(&shared),generation,session,&remote,&endpoint,initiator,receiver,media_receiver,!initiator||manual) => result,
-    };
+    let result = authorize_and_serve(
+        Arc::clone(&shared),
+        generation,
+        session,
+        &remote,
+        &endpoint,
+        initiator,
+        receiver,
+        media_receiver,
+        !initiator || manual,
+        cancelled,
+    )
+    .await;
     let mut active = shared.active.lock().expect("lock poisoned");
+    let mut retry = None;
+    let mut clear_window = false;
     if active.as_ref().is_some_and(|a| a.generation == generation) {
-        active.take();
+        let was_authorized = active.take().is_some_and(|a| a.authorized);
+        let same_window = shared
+            .pairing_windows
+            .lock()
+            .expect("lock poisoned")
+            .contains_key(
+                &remote
+                    .public_key
+                    .as_slice()
+                    .try_into()
+                    .expect("validated Hello key"),
+            );
         shared.stop_mirror();
         shared.edit(|s| {
-            s.pairing = None;
             s.status = "ready".into();
             for peer in &mut s.peers {
                 if peer.id == remote.device_id {
@@ -583,11 +739,122 @@ async fn connection(
                 }
             }
             s.interrupt_transfers();
-            if let Err(error) = result {
-                s.set_error(error.to_string());
+            if !was_authorized
+                && same_window
+                && s.pairing.is_none()
+                && matches!(
+                    result,
+                    Err(session::Error::RateLimited(_) | session::Error::PairingExpired)
+                )
+            {
+                let mut view =
+                    pairing_view(&remote, "enter", [0; 16], Instant::now(), generation, None);
+                view.window_id.clear();
+                s.pairing = Some(view);
+            }
+            let pending = !was_authorized && same_window && s.pairing.is_some();
+            if let Err(error) = &result {
+                if pending {
+                    let view = s.pairing.as_mut().expect("pending view");
+                    match error {
+                        session::Error::PairingRejected if view.deadline > Instant::now() => {
+                            view.stage = "incorrect".into();
+                            view.error = Some("incorrect".into());
+                            view.error_revision = generation;
+                            if view.mode == "enter" {
+                                retry = Some(view.window_id.clone());
+                            }
+                        }
+                        session::Error::RateLimited(ms) => {
+                            view.stage = "limited".into();
+                            view.error = Some("rate_limited".into());
+                            view.retry_after_ms = *ms;
+                            view.cooldown_deadline =
+                                Some(Instant::now() + Duration::from_millis(u64::from(*ms)));
+                        }
+                        session::Error::PairingExpired | session::Error::PairingRejected => {
+                            view.stage = "expired".into();
+                            view.error = Some("expired".into());
+                            view.code = None;
+                            clear_window = true;
+                        }
+                        session::Error::Cancelled => {
+                            s.pairing = None;
+                            clear_window = true;
+                        }
+                        _ => {
+                            view.stage = "disconnected".into();
+                            view.error = Some("disconnected".into());
+                            view.code = None;
+                            clear_window = true;
+                        }
+                    }
+                } else if !matches!(error, session::Error::Cancelled) {
+                    s.set_error(error.to_string());
+                }
+            } else {
+                s.pairing = None;
             }
         });
+        if matches!(result, Err(session::Error::Cancelled)) {
+            shared
+                .pairing_windows
+                .lock()
+                .expect("lock poisoned")
+                .clear_peer(&remote.device_id);
+        } else if clear_window {
+            shared
+                .pairing_windows
+                .lock()
+                .expect("lock poisoned")
+                .invalidate_peer(&remote.device_id);
+        }
     }
+    drop(active);
+    if let Some(id) = retry {
+        queue_pairing_retry(shared, generation, id);
+    }
+}
+
+fn queue_pairing_retry(shared: Arc<Shared>, generation: u64, window_id: String) {
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(520)).await;
+        // A failed outbound connection still owns `dialing` until its caller
+        // returns. Never overlap it, or retry after cancel / another owner.
+        let until = Instant::now() + Duration::from_secs(3);
+        loop {
+            {
+                let active = shared.active.lock().expect("lock poisoned");
+                if active.is_some()
+                    || shared.generation.load(Ordering::Acquire) != generation.wrapping_add(1)
+                {
+                    return;
+                }
+                let windows = shared.pairing_windows.lock().expect("lock poisoned");
+                let Some(window) = windows
+                    .enter
+                    .as_ref()
+                    .filter(|w| hex_window(&w.id) == window_id && w.deadline > Instant::now())
+                else {
+                    return;
+                };
+                if !shared.dialing.load(Ordering::Acquire) {
+                    // Cancel owns this same gate, including incrementing dial_cancel.
+                    dial(
+                        Arc::clone(&shared),
+                        window.address,
+                        Some(ymlink_core::identity::device_id(&window.peer_key)),
+                        true,
+                    );
+                    return;
+                }
+                if Instant::now() >= until {
+                    return;
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    });
 }
 
 async fn authorize_and_serve(
@@ -600,73 +867,33 @@ async fn authorize_and_serve(
     receiver: mpsc::Receiver<Message>,
     media_receiver: mpsc::Receiver<Message>,
     allow_pairing: bool,
+    mut cancelled: watch::Receiver<bool>,
 ) -> session::Result<()> {
-    let mut local_trust = shared.trust.lock().await.detached();
-    let needs_pairing = session.needs_pairing(&local_trust).await?;
-    let pairing = if needs_pairing {
-        if !allow_pairing {
-            return Err(session::Error::PairingRequired);
-        }
-        let ip = endpoint
-            .parse::<SocketAddr>()
-            .map_err(|_| session::Error::Protocol("invalid peer endpoint"))?
-            .ip();
-        if !shared.pairing_allowed(ip) {
-            return Err(session::Error::Protocol(
-                "pairing rate limit; wait one minute",
-            ));
-        }
-        let deadline = Instant::now() + session::PAIRING_TTL;
-        let display = !matches!(remote.platform.as_str(), "macos" | "windows") || !initiator;
-        if display {
-            let code = session::new_pairing_code();
-            if !shared.publish(generation, false, |s| {
-                s.pairing = Some(PairingView {
-                    peer_name: remote.name.clone(),
-                    code: Some(code.clone()),
-                    expires_in: 300,
-                    mode: "display".into(),
-                    deadline,
-                });
-            }) {
-                return Err(session::Error::PairingRejected);
-            }
-            Pairing::Display {
-                code,
-                expires_at: deadline,
-            }
-        } else {
-            let (send, receive) = oneshot::channel();
-            if let Some(active) = shared
-                .active
-                .lock()
-                .expect("lock poisoned")
-                .as_mut()
-                .filter(|a| a.generation == generation)
-            {
-                active.pair_input = Some(send);
-            }
-            if !shared.publish(generation, false, |s| {
-                s.pairing = Some(PairingView {
-                    peer_name: remote.name.clone(),
-                    code: None,
-                    expires_in: 300,
-                    mode: "enter".into(),
-                    deadline,
-                });
-            }) {
-                return Err(session::Error::PairingRejected);
-            }
-            let code = tokio::time::timeout(session::PAIRING_TTL, receive)
-                .await
-                .map_err(|_| session::Error::PairingExpired)?
-                .map_err(|_| session::Error::PairingRejected)?;
-            Pairing::Enter { code }
-        }
-    } else {
-        Pairing::ReconnectOnly
+    let authorization = authenticate(
+        &shared,
+        generation,
+        &mut session,
+        remote,
+        endpoint,
+        initiator,
+        allow_pairing,
+    );
+    let result = tokio::select! {
+        biased;
+        _ = cancelled.changed() => Err(session::Error::Cancelled),
+        result = authorization => result,
     };
-    session.authorize(&mut local_trust, pairing).await?;
+    if matches!(result, Err(session::Error::Cancelled)) {
+        // The session is still exclusively owned here. Dropping the pending
+        // reader first then closing after this terminal frame prevents a new
+        // read on a partially consumed encrypted frame.
+        let _ = tokio::time::timeout(
+            Duration::from_millis(200),
+            session.reject_pairing(AuthErrorCode::Cancelled, 0),
+        )
+        .await;
+    }
+    result?;
     {
         let mut trust = shared.trust.lock().await;
         let active = shared.active.lock().expect("lock poisoned");
@@ -674,7 +901,7 @@ async fn authorize_and_serve(
             .as_ref()
             .is_some_and(|a| a.generation == generation && !*a.cancel.borrow())
         {
-            return Err(session::Error::PairingRejected);
+            return Err(session::Error::Cancelled);
         }
         trust.check_endpoint(remote, &session.remote_key(), endpoint)?;
         trust.remember_endpoint(remote, &session.remote_key(), Some(endpoint.to_string()))?;
@@ -695,9 +922,190 @@ async fn authorize_and_serve(
         s.status = "connected".into();
         s.error = None;
     }) {
-        return Err(session::Error::PairingRejected);
+        return Err(session::Error::Cancelled);
     }
-    serve(shared, session, receiver, media_receiver, generation).await
+    tokio::select! {
+        _ = cancelled.changed() => Ok(()),
+        result = serve(shared, session, receiver, media_receiver, generation) => result,
+    }
+}
+
+async fn authenticate(
+    shared: &Arc<Shared>,
+    generation: u64,
+    session: &mut SecureSession,
+    remote: &Hello,
+    endpoint: &str,
+    initiator: bool,
+    allow_pairing: bool,
+) -> session::Result<()> {
+    let mut local_trust = shared.trust.lock().await.detached();
+    let needs_pairing = session.needs_pairing(&local_trust).await?;
+    if needs_pairing {
+        if !allow_pairing {
+            return Err(session::Error::PairingRequired);
+        }
+        let ip = endpoint
+            .parse::<SocketAddr>()
+            .map_err(|_| session::Error::Protocol("invalid peer endpoint"))?
+            .ip();
+        let display = !matches!(remote.platform.as_str(), "macos" | "windows") || !initiator;
+        let peer_key = session.remote_key();
+        if display {
+            let resume = session.receive_pairing_request().await?;
+            if let Err(ms) = shared.pairing_admission(ip) {
+                session
+                    .reject_pairing(AuthErrorCode::RateLimited, ms)
+                    .await?;
+                return Err(session::Error::RateLimited(ms));
+            }
+            let selected = shared.pairing_window(generation, |windows| {
+                windows.display(peer_key, resume, Instant::now())
+            })?;
+            let window = match selected {
+                Ok(window) => window,
+                Err(code) => {
+                    session.reject_pairing(code, 0).await?;
+                    return Err(if code == AuthErrorCode::Expired {
+                        session::Error::PairingExpired
+                    } else {
+                        session::Error::Busy
+                    });
+                }
+            };
+            session.offer_pairing(window.id, window.deadline).await?;
+            if !shared.publish(generation, false, |s| {
+                s.pairing = Some(pairing_view(
+                    remote,
+                    "display",
+                    window.id,
+                    window.deadline,
+                    generation,
+                    Some(window.code.to_string()),
+                ));
+            }) {
+                return Err(session::Error::Cancelled);
+            }
+            let result = session
+                .authorize(
+                    &mut local_trust,
+                    Pairing::Display {
+                        code: window.code.to_string(),
+                        expires_at: window.deadline,
+                    },
+                )
+                .await;
+            if matches!(result, Err(session::Error::PairingExpired)) {
+                let _ = session.reject_pairing(AuthErrorCode::Expired, 0).await;
+            }
+            result?;
+        } else {
+            let address = endpoint
+                .parse()
+                .map_err(|_| session::Error::Protocol("invalid peer endpoint"))?;
+            shared.pairing_window(generation, |windows| {
+                windows.target = Some(EnterTarget { address, peer_key })
+            })?;
+            if let Err(ms) = shared.pairing_admission(ip) {
+                session
+                    .reject_pairing(AuthErrorCode::RateLimited, ms)
+                    .await?;
+                return Err(session::Error::RateLimited(ms));
+            }
+            let old = shared
+                .pairing_windows
+                .lock()
+                .expect("lock poisoned")
+                .enter
+                .clone();
+            if old.as_ref().is_some_and(|w| w.peer_key != peer_key) {
+                return Err(session::Error::IdentityChanged);
+            }
+            if old.as_ref().is_some_and(|w| w.deadline <= Instant::now()) {
+                return Err(session::Error::PairingExpired);
+            }
+            if let Some(old) = &old {
+                session.restrict_pairing_deadline(old.deadline)?;
+            }
+            let ready = session.request_pairing(old.as_ref().map(|w| w.id)).await?;
+            let mut deadline =
+                Instant::now() + Duration::from_millis(u64::from(ready.remaining_ms));
+            if let Some(old) = &old {
+                deadline = deadline.min(old.deadline);
+            }
+            shared.pairing_window(generation, |windows| {
+                windows.enter = Some(EnterWindow {
+                    id: ready.window_id,
+                    peer_key,
+                    deadline,
+                    address,
+                })
+            })?;
+            let (send, receive) = oneshot::channel();
+            if let Some(active) = shared
+                .active
+                .lock()
+                .expect("lock poisoned")
+                .as_mut()
+                .filter(|a| a.generation == generation)
+            {
+                active.pair_input = Some(send);
+            }
+            if !shared.publish(generation, false, |s| {
+                let prior = s
+                    .pairing
+                    .as_ref()
+                    .filter(|p| p.window_id == hex_window(&ready.window_id));
+                let prior_error = prior.and_then(|p| p.error.clone());
+                let prior_revision = prior.map_or(0, |p| p.error_revision);
+                let mut view =
+                    pairing_view(remote, "enter", ready.window_id, deadline, generation, None);
+                view.error = prior_error;
+                view.error_revision = prior_revision;
+                s.pairing = Some(view);
+            }) {
+                return Err(session::Error::Cancelled);
+            }
+            session
+                .authorize_enter(&mut local_trust, async {
+                    receive.await.map_err(|_| session::Error::Cancelled)
+                })
+                .await?;
+        }
+    } else {
+        session
+            .authorize(&mut local_trust, Pairing::ReconnectOnly)
+            .await?;
+    }
+    Ok(())
+}
+
+fn hex_window(id: &[u8; 16]) -> String {
+    id.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+fn pairing_view(
+    remote: &Hello,
+    mode: &str,
+    id: [u8; 16],
+    deadline: Instant,
+    attempt: u64,
+    code: Option<String>,
+) -> PairingView {
+    PairingView {
+        peer_name: remote.name.clone(),
+        code,
+        expires_in: deadline.saturating_duration_since(Instant::now()).as_secs(),
+        mode: mode.into(),
+        deadline,
+        window_id: hex_window(&id),
+        attempt,
+        stage: "ready".into(),
+        error: None,
+        error_revision: 0,
+        retry_after_ms: 0,
+        cooldown_deadline: None,
+    }
 }
 
 struct AbortTask(tokio::task::JoinHandle<()>);
@@ -1071,7 +1479,11 @@ async fn handle_command(
             discovery.rescan().await.map_err(|e| e.to_string())?;
         }
         Command::Connect { address, peer_id } => {
-            if shared.active.lock().expect("lock poisoned").is_some() {
+            let active = shared.active.lock().expect("lock poisoned");
+            if shared.dialing.load(Ordering::Acquire) {
+                return Err("pairing busy; try again".into());
+            }
+            if active.is_some() {
                 return Err("disconnect the current device first".into());
             }
             let peer = peer_id.and_then(|id| {
@@ -1104,30 +1516,157 @@ async fn handle_command(
                     .expect("lock poisoned")
                     .remove(id);
             }
-            shared.edit(|s| s.error = None);
-            dial(Arc::clone(&shared), address, expected, true);
-        }
-        Command::Pair { code } => {
-            if code.len() != 6 || !code.bytes().all(|b| b.is_ascii_digit()) {
-                return Err("enter the six digit pairing code".into());
-            }
-            let input = shared
-                .active
+            shared
+                .pairing_windows
                 .lock()
                 .expect("lock poisoned")
+                .clear();
+            shared.edit(|s| {
+                s.error = None;
+                s.pairing = None;
+            });
+            dial(Arc::clone(&shared), address, expected, true);
+            drop(active);
+        }
+        Command::Pair {
+            code,
+            window_id,
+            attempt,
+        } => {
+            if code.len() != 4 || !code.bytes().all(|b| b.is_ascii_digit()) {
+                return Err("enter the four digit pairing code".into());
+            }
+            let mut active = shared.active.lock().expect("lock poisoned");
+            let Some(current) = active
                 .as_mut()
-                .and_then(|a| a.pair_input.take())
+                .filter(|a| a.generation == attempt && !*a.cancel.borrow())
+            else {
+                return Ok(());
+            };
+            let mut state = shared.state.lock().expect("lock poisoned");
+            let Some(view) = state
+                .pairing
+                .as_mut()
+                .filter(|p| p.window_id == window_id && p.attempt == attempt && p.stage == "ready")
+            else {
+                return Ok(());
+            };
+            let Some(input) = current.pair_input.take() else {
+                return Ok(());
+            };
+            if input.send(code).is_err() {
+                return Ok(());
+            }
+            view.stage = "verifying".into();
+            view.error = None;
+        }
+        Command::RetryPairing {} => {
+            let active = shared.active.lock().expect("lock poisoned");
+            if active.is_some() || shared.dialing.load(Ordering::Acquire) {
+                return Err("pairing busy; try again".into());
+            }
+            let mut windows = shared.pairing_windows.lock().expect("lock poisoned");
+            let target = windows
+                .target
+                .clone()
                 .ok_or("no pairing input is pending")?;
-            input.send(code).map_err(|_| "pairing expired")?;
+            if shared
+                .state
+                .lock()
+                .expect("lock poisoned")
+                .pairing
+                .as_ref()
+                .and_then(|p| p.cooldown_deadline)
+                .is_some_and(|d| d > Instant::now())
+            {
+                return Err("pairing rate limit; wait one minute".into());
+            }
+            if windows
+                .enter
+                .as_ref()
+                .is_some_and(|w| w.deadline <= Instant::now())
+            {
+                windows.enter.take();
+            }
+            dial(
+                Arc::clone(&shared),
+                target.address,
+                Some(ymlink_core::identity::device_id(&target.peer_key)),
+                true,
+            );
         }
         Command::CancelPairing => {
-            if let Some(active) = shared.active.lock().expect("lock poisoned").as_ref() {
+            let active = shared.active.lock().expect("lock poisoned");
+            shared
+                .dial_cancel
+                .send_modify(|epoch| *epoch = epoch.wrapping_add(1));
+            if let Some(active) = active.as_ref() {
                 let _ = active.cancel.send(true);
             }
+            shared
+                .pairing_windows
+                .lock()
+                .expect("lock poisoned")
+                .clear();
+            shared.edit(|s| s.pairing = None);
         }
         Command::Disconnect { peer_id } => {
-            if let Some(active) = shared.active.lock().expect("lock poisoned").as_ref() {
-                if peer_id.as_ref().is_none_or(|id| *id == active.peer_id) {
+            let active = shared.active.lock().expect("lock poisoned");
+            let mut windows = shared.pairing_windows.lock().expect("lock poisoned");
+            // Remember an explicit disconnect even before Noise has produced an
+            // active identity, otherwise the reconnect tick dials it straight back.
+            let pending_ids: Vec<String> = {
+                let target = shared.dial_target.lock().expect("lock poisoned");
+                target
+                    .as_ref()
+                    .map(|target| {
+                        let state = shared.state.lock().expect("lock poisoned");
+                        state
+                            .peers
+                            .iter()
+                            .filter(|p| {
+                                peer_id.as_ref().is_none_or(|id| p.id == *id)
+                                    && target.expected.as_ref().map_or_else(
+                                        || {
+                                            p.address.parse::<SocketAddr>().ok()
+                                                == Some(target.address)
+                                        },
+                                        |id| p.id == *id,
+                                    )
+                            })
+                            .map(|p| p.id.clone())
+                            .collect()
+                    })
+                    .unwrap_or_default()
+            };
+            shared
+                .disconnected
+                .lock()
+                .expect("lock poisoned")
+                .extend(pending_ids);
+            let pending_selected = peer_id
+                .as_ref()
+                .is_some_and(|id| shared.pending_dial_matches(id));
+            let selected = peer_id.as_ref().is_none_or(|id| {
+                active.as_ref().is_some_and(|a| a.peer_id == *id)
+                    || windows
+                        .target
+                        .as_ref()
+                        .is_some_and(|t| ymlink_core::identity::device_id(&t.peer_key) == *id)
+            });
+            if pending_selected && !selected {
+                shared
+                    .dial_cancel
+                    .send_modify(|epoch| *epoch = epoch.wrapping_add(1));
+            }
+            if selected {
+                shared
+                    .dial_cancel
+                    .send_modify(|epoch| *epoch = epoch.wrapping_add(1));
+                if let Some(active) = active
+                    .as_ref()
+                    .filter(|a| peer_id.as_ref().is_none_or(|id| *id == a.peer_id))
+                {
                     shared
                         .disconnected
                         .lock()
@@ -1135,18 +1674,38 @@ async fn handle_command(
                         .insert(active.peer_id.clone());
                     let _ = active.cancel.send(true);
                 }
+                shared.edit(|s| s.pairing = None);
+            }
+            if let Some(id) = &peer_id {
+                windows.clear_peer(id);
+            } else {
+                windows.clear();
             }
         }
         Command::Forget { peer_id } => {
-            // Cancel before taking the trust lock: authorization can be waiting for UI.
-            if let Some(active) = shared
-                .active
-                .lock()
-                .expect("lock poisoned")
-                .as_ref()
-                .filter(|a| a.peer_id == peer_id)
             {
-                let _ = active.cancel.send(true);
+                let active = shared.active.lock().expect("lock poisoned");
+                let mut windows = shared.pairing_windows.lock().expect("lock poisoned");
+                if shared.pending_dial_matches(&peer_id) {
+                    shared
+                        .dial_cancel
+                        .send_modify(|epoch| *epoch = epoch.wrapping_add(1));
+                }
+                if windows
+                    .target
+                    .as_ref()
+                    .is_some_and(|t| ymlink_core::identity::device_id(&t.peer_key) == peer_id)
+                {
+                    shared
+                        .dial_cancel
+                        .send_modify(|epoch| *epoch = epoch.wrapping_add(1));
+                    shared.edit(|s| s.pairing = None);
+                }
+                if let Some(active) = active.as_ref().filter(|a| a.peer_id == peer_id) {
+                    let _ = active.cancel.send(true);
+                    shared.edit(|s| s.pairing = None);
+                }
+                windows.clear_peer(&peer_id);
             }
             shared
                 .trust
@@ -1159,9 +1718,7 @@ async fn handle_command(
                 .lock()
                 .expect("lock poisoned")
                 .remove(&peer_id);
-            shared.edit(|s| {
-                s.peers.retain(|p| p.id != peer_id);
-            });
+            shared.edit(|s| s.peers.retain(|p| p.id != peer_id));
         }
         command @ (Command::AddShare { .. } | Command::RemoveShare { .. }) => {
             tokio::task::spawn_blocking(move || {

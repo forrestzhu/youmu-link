@@ -40,7 +40,7 @@ final class ModelsTests: XCTestCase {
         {
           "device_name":"Test Mac","status":"connected","listen_port":47620,"discovery_port":47610,
           "peers":[{"id":"peer-1","address":"192.168.1.2:47620","name":"Test headset","platform":"android","status":"connected","trusted":true}],
-          "pairing":{"peer_name":"Test headset","code":"123456","expires_in":120,"mode":"display"},
+          "pairing":{"peer_name":"Test headset","code":"0427","expires_in":120,"mode":"display","window_id":"window-1","attempt":4,"stage":"ready","error":null,"error_revision":0,"retry_after_ms":0},
           "displays":[{"id":1,"name":"Display","width":1920,"height":1080}],
           "mirror":{"status":"running","permission":"granted","display_id":1,"audio":true,"quality":"balanced","fps":30.0,"bitrate_mbps":12.5,"latency_ms":null,"error":null},
           "shares":[{"id":"share-1","name":"Films","path":"/test/Films"}],
@@ -61,7 +61,7 @@ final class ModelsTests: XCTestCase {
         XCTAssertEqual(snapshot.transfers.first?.fraction, 0.5)
         XCTAssertEqual(Localizer.string("start_mirror", language: "en"), "Start mirroring")
         XCTAssertEqual(Localizer.string("start_mirror", language: "zh-Hans"), "开始镜像")
-        XCTAssertEqual(Localizer.backendMessage("pairing code rejected", language: "zh-Hans"), "配对码不正确，请重新连接后再试。")
+        XCTAssertEqual(Localizer.backendMessage("pairing code rejected", language: "zh-Hans"), "配对码不正确。")
         XCTAssertEqual(Localizer.backendMessage("connection timed out", language: "en"), "The connection timed out. Check that both devices are on the same network and try again.")
         XCTAssertEqual(Localizer.backendMessage("unexpected failure at /private/test/file", language: "zh-Hans"), Localizer.string("command_failed", language: "zh-Hans"))
         XCTAssertEqual(Localizer.backendMessage("mirror is not active", language: "zh-Hans"), "当前没有活动的屏幕镜像，请先在这台 Mac 上开始镜像。")
@@ -115,4 +115,35 @@ final class ModelsTests: XCTestCase {
         snapshot.errorId = 4
         XCTAssertEqual(cursor.consume(snapshot), snapshot.error)
     }
+    func testNonAsciiGraphemesCannotConsumeTheReadyAttemptsSubmission() {
+        let pairing = Pairing(peerName: "Synthetic PC", code: nil, expiresIn: 120, mode: "enter", windowId: "unicode-window", attempt: 1, stage: "ready", error: nil, errorRevision: 0, retryAfterMs: 0)
+        for malformed in ["0\u{0301}427", "0\u{FE0F}427", "０４２７"] {
+            var input = PairingInput()
+            _ = input.apply(pairing)
+            XCTAssertNil(input.edit(malformed, pairing: pairing))
+            XCTAssertEqual(input.edit("0427", pairing: pairing), "0427", "rejected graphemes must leave the same attempt available")
+        }
+    }
+    func testFourDigitInputSubmitsOnceAndWrongCodeClearsWithinItsLogicalWindow() {
+        var pairing = Pairing(peerName: "Synthetic PC", code: nil, expiresIn: 120, mode: "enter", windowId: "window-1", attempt: 1, stage: "ready", error: nil, errorRevision: 0, retryAfterMs: 0)
+        var input = PairingInput()
+        XCTAssertFalse(input.apply(pairing))
+        XCTAssertNil(input.edit("042", pairing: pairing))
+        XCTAssertEqual(input.edit("0427", pairing: pairing), "0427")
+        XCTAssertNil(input.edit("9999", pairing: pairing))
+        pairing.stage = "incorrect"; pairing.error = "incorrect"; pairing.errorRevision = 1
+        XCTAssertTrue(input.apply(pairing)); XCTAssertTrue(input.feedback)
+        pairing.stage = "ready"; pairing.attempt = 2
+        XCTAssertFalse(input.apply(pairing), "same rejection must not shake again on TCP retry")
+        input.clearRejected(window: "window-1", revision: input.rejectionCount)
+        XCTAssertEqual(input.text, ""); XCTAssertTrue(input.errorVisible)
+        XCTAssertNil(input.edit("０４２７", pairing: pairing)); XCTAssertEqual(input.text, "")
+        XCTAssertEqual(input.edit("0427", pairing: pairing), "0427"); XCTAssertFalse(input.errorVisible)
+        pairing.windowId = "window-2"; pairing.attempt = 3; pairing.error = nil; pairing.errorRevision = 0
+        XCTAssertFalse(input.apply(pairing)); XCTAssertNil(input.edit("4", pairing: pairing))
+        input.clearRejected(window: "window-1", revision: 1)
+        XCTAssertEqual(input.text, "4", "late clearing must not erase a new window")
+        XCTAssertFalse(input.apply(nil)); XCTAssertEqual(input.text, "")
+    }
+
 }

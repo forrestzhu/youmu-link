@@ -13,6 +13,13 @@ internal static class WireJson
     }
 }
 
+internal static class CommandAdmission
+{
+    // Cancellation must queue behind any native call already in flight.
+    public static bool CanSend(string action, bool ready, bool closing, int pending) =>
+        ready && !closing && (pending == 0 || action == "cancel_pairing");
+}
+
 internal sealed record Snapshot
 {
     public string DeviceName { get; init; } = "";
@@ -44,7 +51,52 @@ internal sealed record Pairing
     public string? Code { get; init; }
     public ulong ExpiresIn { get; init; }
     public string Mode { get; init; } = "";
-    public static bool IsValidCode(string code) => code.Length == 6 && code.All(c => c is >= '0' and <= '9');
+    public string WindowId { get; init; } = "";
+    public ulong Attempt { get; init; }
+    public string Stage { get; init; } = "";
+    public string? Error { get; init; }
+    public ulong ErrorRevision { get; init; }
+    public uint RetryAfterMs { get; init; }
+    public bool CanEnter => Mode == "enter" && Stage == "ready" && ExpiresIn > 0;
+    public bool Terminal => Stage is "expired" or "limited" or "disconnected" || ExpiresIn == 0;
+    public string MessageKey => Error switch { "incorrect" => "pairing_incorrect", "expired" => "pairing_expired", "rate_limited" => "error_pairing_rate", "version" => "error_version_incompatible", _ => "error_connection" };
+    public static bool IsValidCode(string code) => code.Length == 4 && code.All(c => c is >= '0' and <= '9');
+}
+internal sealed class PairingInput
+{
+    public string Text { get; private set; } = "";
+    public string? WindowId { get; private set; }
+    public bool Feedback { get; private set; }
+    public bool ErrorVisible { get; private set; }
+    public int RejectionCount { get; private set; }
+    private ulong? submittedAttempt;
+    private ulong rejectedRevision;
+
+    public bool Apply(Pairing? pairing)
+    {
+        if (pairing is null || pairing.WindowId != WindowId)
+        {
+            Text = ""; WindowId = pairing?.WindowId; Feedback = false; ErrorVisible = false;
+            RejectionCount = 0; submittedAttempt = null; rejectedRevision = 0;
+        }
+        if (pairing is { Mode: "enter", Error: "incorrect", ErrorRevision: > 0 } && pairing.ErrorRevision != rejectedRevision)
+        {
+            rejectedRevision = pairing.ErrorRevision; RejectionCount++; Feedback = true; ErrorVisible = true; return true;
+        }
+        return false;
+    }
+    public string? Edit(string value, Pairing? pairing, bool canDispatch = true)
+    {
+        if (!canDispatch || pairing?.CanEnter != true || Feedback || submittedAttempt == pairing.Attempt) return null;
+        Text = new string(value.Where(c => c is >= '0' and <= '9').Take(4).ToArray()); ErrorVisible = false;
+        if (!Pairing.IsValidCode(Text)) return null;
+        submittedAttempt = pairing.Attempt; return Text;
+    }
+    public void ClearRejected(string window, int revision)
+    {
+        if (WindowId != window || RejectionCount != revision) return;
+        Text = ""; Feedback = false;
+    }
 }
 internal sealed record Display
 {

@@ -1161,6 +1161,7 @@ dependencies = [
  "tokio",
  "windows",
  "ymlink-core",
+ "zeroize",
 ]
 
 [[package]]

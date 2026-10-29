@@ -59,8 +59,8 @@
   "action_failed": "操作未完成",
   "address_hint": "输入另一台 YM_Link 设备的局域网 IP 地址和 TCP 端口。首次连接仍需配对。",
   "pair_device": "配对设备",
-  "enter_pairing_hint": "输入另一台设备显示的六位配对码。",
-  "display_pairing_hint": "在头显的 YM_Link 面板中输入以下六位码。",
+  "enter_pairing_hint": "输入另一台设备显示的四位配对码。",
+  "display_pairing_hint": "在头显的 YM_Link 面板中输入以下四位码。",
   "pairing_code": "配对码",
   "pairing_expiry": "有效期剩余 {0:00}:{1:00}",
   "waiting_confirmation": "等待对方确认…",
@@ -89,9 +89,9 @@
   "pairing_expired": "配对码已过期。请取消后重新连接，获取新的配对码。",
   "device_address": "设备 IP 地址与端口",
   "error_identity_changed": "设备身份密钥已变化。请核实设备后移除旧配对，再重新连接。",
-  "error_pairing_rejected": "配对码不正确，请重新连接后再试。",
+  "error_pairing_rejected": "配对码不正确。",
   "error_pairing_required": "此设备需要重新配对后才能连接。",
-  "error_pairing_digits": "请输入完整的六位数字配对码。",
+  "error_pairing_digits": "请输入完整的四位数字配对码。",
   "error_pairing_not_pending": "当前没有待确认的配对，请重新连接。",
   "error_pairing_rate": "配对尝试过于频繁，请等待一分钟后再试。",
   "error_authentication": "无法验证加密会话，请重新连接设备。",
@@ -163,5 +163,8 @@
   "language_chinese": "简体中文",
   "firewall_hint": "如果搜索不到设备，请在 Windows 防火墙中允许 YM_Link 使用专用网络，然后重新搜索。TCP 端口以对方设备当前显示的端口为准。",
   "error_display_changed": "显示器尺寸已变化，请重新开始镜像以使用当前尺寸。",
-  "error_media_feature": "Windows 媒体编码不可用。如果使用 Windows N，请在 Windows 设置中安装媒体功能包，再重新打开 YM_Link。"
+  "error_media_feature": "Windows 媒体编码不可用。如果使用 Windows N，请在 Windows 设置中安装媒体功能包，再重新打开 YM_Link。",
+  "pairing_incorrect": "配对码不正确",
+  "pairing_retry": "重新连接",
+  "pairing_verifying": "正在配对…"
 }

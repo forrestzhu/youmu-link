@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>YM_Link · 四位配对体验</title>
+  <link rel="stylesheet" href="demo.css?v=4f0aba7d0fcc">
+  <script src="demo.js?v=0215af944942" defer></script>
+</head>
+<body>
+<svg class="symbols" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><defs>
+  <symbol id="i-link" viewBox="0 0 24 24"><path d="m9 15 6-6M8 13l-2 2a4 4 0 0 0 6 6l4-4a4 4 0 0 0 0-6M16 11l2-2a4 4 0 0 0-6-6l-4 4a4 4 0 0 0 0 6"/></symbol>
+  <symbol id="i-headset" viewBox="0 0 24 24"><path d="M4 6h16l2 7-1 4h-5l-4-3-4 3H3l-1-4zM8 9h.01M16 9h.01"/></symbol>
+  <symbol id="i-computer" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 22h8M12 17v5"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="m14 5-7 7 7 7M7 12h14"/></symbol>
+  <symbol id="i-delete" viewBox="0 0 24 24"><path d="m8 5-6 7 6 7h13V5zM11 9l6 6M17 9l-6 6"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5M5 8a8 8 0 0 1 13-3l2 3M4 16l2 3a8 8 0 0 0 13-3"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="12" rx="2"/><path d="M8 10V6a4 4 0 0 1 8 0v4M12 15v3"/></symbol>
+  <symbol id="i-wifi" viewBox="0 0 24 24"><path d="M2 8a16 16 0 0 1 20 0M5 12a11 11 0 0 1 14 0M9 16a5 5 0 0 1 6 0M12 20h.01"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="m12 3 10 18H2zM12 9v5M12 17h.01"/></symbol>
+</defs></svg>
+<header class="review-header">
+  <a href="#" class="review-brand" aria-label="YM_Link"><svg><use href="#i-link"/></svg><span>YM_Link</span></a>
+  <div><h1 data-copy="title">四位配对体验</h1><p data-copy="reviewNote">交互讨论稿 · 所有设备与连接均为演示</p></div>
+  <button id="language" class="review-button" type="button" aria-label="Switch to English">English</button>
+</header>
+<main>
+  <section class="review-tools" aria-label="演示控制">
+    <div class="scenario-field"><label for="scenario" data-copy="scenario">查看状态</label><select id="scenario"></select></div>
+    <label class="compact-control"><input type="checkbox" id="compact"><span data-copy="compact">窄面板</span></label>
+    <button id="change-port" class="review-button" type="button" data-copy="changePort">模拟端口变化</button>
+    <button id="restart" class="review-button" type="button" data-copy="restart">重新演示</button>
+    <span class="demo-code-note" id="demo-note"></span>
+  </section>
+  <div class="stage-grid">
+    <section class="surface-section quest-section" aria-labelledby="quest-caption">
+      <div class="surface-caption"><h2 id="quest-caption" data-copy="questCaption">头显里的游目</h2><span data-copy="questCaptionNote">原位输入，大按键</span></div>
+      <div class="quest-window" id="quest-window">
+        <header class="quest-header"><svg class="brand-icon"><use href="#i-link"/></svg><strong>YM_Link</strong><span id="quest-header-state"></span></header>
+        <div id="quest-stage" class="quest-stage" tabindex="-1"></div>
+        <footer class="quest-footer"><svg><use href="#i-lock"/></svg><span data-copy="local">局域网直连</span><span id="quest-footer-state"></span></footer>
+      </div>
+    </section>
+    <section class="surface-section desktop-section" aria-labelledby="desktop-caption">
+      <div class="surface-caption"><h2 id="desktop-caption" data-copy="desktopCaption">电脑上的 YM_Link</h2><span data-copy="desktopCaptionNote">同一次配对</span></div>
+      <div class="mac-window">
+        <header class="mac-titlebar"><span class="traffic" aria-hidden="true"><i></i><i></i><i></i></span><strong>YM_Link</strong><span></span></header>
+        <div class="mac-body">
+          <aside class="mac-sidebar"><div class="mac-brand"><svg><use href="#i-link"/></svg><strong>YM_Link</strong></div><div class="device-label"><span data-copy="devices">设备</span><span id="device-count">1</span></div><div id="desktop-peer"></div><span class="sidebar-foot" data-copy="sameNetwork">同一局域网</span></aside>
+          <div class="mac-content" id="desktop-stage"></div>
+        </div>
+        <footer class="mac-footer" id="desktop-footer"></footer>
+      </div>
+    </section>
+  </div>
+  <p id="announcement" class="sr-only" aria-live="polite"></p>
+</main>
+</body>
+</html>

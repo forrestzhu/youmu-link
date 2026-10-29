@@ -5,8 +5,8 @@ use ymlink_desktop::wire::{Message, MirrorAction, MirrorInfo, VERSION};
 
 #[test]
 fn application_wire_rejects_unknown_fields_at_both_boundaries() {
-    assert!(serde_json::from_str::<Message>(r#"{"kind":"ping","v":3,"extra":1}"#).is_err());
-    assert!(serde_json::from_str::<Message>(r#"{"kind":"file_request","v":3,"id":1,"request":{"kind":"stat","share_id":"films","path":"film","extra":1}}"#).is_err());
+    assert!(serde_json::from_str::<Message>(r#"{"kind":"ping","v":4,"extra":1}"#).is_err());
+    assert!(serde_json::from_str::<Message>(r#"{"kind":"file_request","v":4,"id":1,"request":{"kind":"stat","share_id":"films","path":"film","extra":1}}"#).is_err());
     let request = Message::FileRequest {
         v: VERSION,
         id: 42,
@@ -30,12 +30,12 @@ fn application_wire_rejects_unknown_fields_at_both_boundaries() {
 
 #[test]
 fn mirror_control_schema_roundtrips_and_rejects_unknown_actions_or_fields() {
-    assert_eq!(VERSION, 3);
+    assert_eq!(VERSION, 4);
     assert_eq!(VERSION, ymlink_core::session::VERSION);
     let query = Message::MirrorQuery { v: VERSION, id: 1 };
     assert_eq!(
         serde_json::to_value(query).unwrap(),
-        serde_json::json!({"kind":"mirror_query","v":3,"id":1})
+        serde_json::json!({"kind":"mirror_query","v":4,"id":1})
     );
     for (id, command) in [
         MirrorAction::Pause,
@@ -67,7 +67,7 @@ fn mirror_control_schema_roundtrips_and_rejects_unknown_actions_or_fields() {
     assert_eq!(
         serde_json::to_value(select).unwrap(),
         serde_json::json!({
-            "kind":"mirror_control","v":3,"id":9,"command":{"action":"select_display","display_id":7}
+            "kind":"mirror_control","v":4,"id":9,"command":{"action":"select_display","display_id":7}
         })
     );
     for rejected in [

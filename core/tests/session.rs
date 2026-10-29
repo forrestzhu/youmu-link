@@ -49,6 +49,184 @@ async fn paired(
     (a, b)
 }
 
+#[test]
+fn four_digit_generation_is_exact_ascii() {
+    for _ in 0..256 {
+        let code = new_pairing_code();
+        assert_eq!(code.len(), 4);
+        assert!(code.bytes().all(|b| b.is_ascii_digit()));
+    }
+}
+
+#[tokio::test]
+async fn four_digit_pairing_keeps_leading_zero() {
+    let (mut enter, mut display) = sessions(
+        &Identity::generate().unwrap(),
+        &Identity::generate().unwrap(),
+    )
+    .await;
+    let mut enter_trust = TrustStore::memory();
+    let mut display_trust = TrustStore::memory();
+    let (a, b) = tokio::join!(
+        enter.authorize(
+            &mut enter_trust,
+            Pairing::Enter {
+                code: "0427".into()
+            }
+        ),
+        display.authorize(
+            &mut display_trust,
+            Pairing::Display {
+                code: "0427".into(),
+                expires_at: Instant::now() + PAIRING_TTL,
+            }
+        )
+    );
+    a.unwrap();
+    b.unwrap();
+    assert_eq!(enter_trust.peers().len(), 1);
+    assert_eq!(display_trust.peers().len(), 1);
+}
+
+#[tokio::test]
+async fn ready_window_and_pending_input_receive_typed_termination() {
+    use ymlink_core::session::AuthErrorCode;
+    let (mut enter, mut display) = sessions(
+        &Identity::generate().unwrap(),
+        &Identity::generate().unwrap(),
+    )
+    .await;
+    let mut trust = TrustStore::memory();
+    let display_trust = TrustStore::memory();
+    let (a, b) = tokio::join!(
+        enter.needs_pairing(&trust),
+        display.needs_pairing(&display_trust)
+    );
+    assert!(a.unwrap() && b.unwrap());
+    let window = [7u8; 16];
+    let deadline = Instant::now() + Duration::from_secs(30);
+    let (ready, ()) = tokio::join!(enter.request_pairing(Some(window)), async {
+        assert_eq!(
+            display.receive_pairing_request().await.unwrap(),
+            Some(window)
+        );
+        display.offer_pairing(window, deadline).await.unwrap();
+    });
+    let ready = ready.unwrap();
+    assert_eq!(ready.window_id, window);
+    assert!((1..=30_000).contains(&ready.remaining_ms));
+    let (result, sent) = tokio::join!(
+        enter.authorize_enter(&mut trust, std::future::pending()),
+        display.reject_pairing(AuthErrorCode::Cancelled, 0)
+    );
+    sent.unwrap();
+    assert!(matches!(result, Err(Error::Cancelled)));
+    assert!(trust.peers().is_empty());
+    assert!(matches!(enter.into_split(), Err(Error::PairingRequired)));
+}
+
+#[tokio::test]
+async fn rate_limit_is_received_before_code_input_or_trust() {
+    use ymlink_core::session::AuthErrorCode;
+    let (mut enter, mut display) = sessions(
+        &Identity::generate().unwrap(),
+        &Identity::generate().unwrap(),
+    )
+    .await;
+    let trust = TrustStore::memory();
+    let (a, b) = tokio::join!(enter.needs_pairing(&trust), display.needs_pairing(&trust));
+    assert!(a.unwrap() && b.unwrap());
+    let (result, ()) = tokio::join!(enter.request_pairing(None), async {
+        assert_eq!(display.receive_pairing_request().await.unwrap(), None);
+        display
+            .reject_pairing(AuthErrorCode::RateLimited, 1234)
+            .await
+            .unwrap();
+    });
+    assert!(matches!(result, Err(Error::RateLimited(1234))));
+    assert!(trust.peers().is_empty());
+    assert!(matches!(enter.into_split(), Err(Error::PairingRequired)));
+}
+
+#[tokio::test]
+async fn input_can_arrive_later_without_restarting_authentication_read() {
+    let (mut enter, mut display) = sessions(
+        &Identity::generate().unwrap(),
+        &Identity::generate().unwrap(),
+    )
+    .await;
+    let mut a_trust = TrustStore::memory();
+    let mut b_trust = TrustStore::memory();
+    let (a, b) = tokio::join!(
+        enter.needs_pairing(&a_trust),
+        display.needs_pairing(&b_trust)
+    );
+    assert!(a.unwrap() && b.unwrap());
+    let (a, ()) = tokio::join!(enter.request_pairing(None), async {
+        display.receive_pairing_request().await.unwrap();
+        display
+            .offer_pairing([8; 16], Instant::now() + PAIRING_TTL)
+            .await
+            .unwrap();
+    });
+    a.unwrap();
+    let (a, b) = tokio::join!(
+        enter.authorize_enter(&mut a_trust, async {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            Ok("0427".into())
+        }),
+        display.authorize(
+            &mut b_trust,
+            Pairing::Display {
+                code: "0427".into(),
+                expires_at: Instant::now() + PAIRING_TTL
+            }
+        )
+    );
+    a.unwrap();
+    b.unwrap();
+    assert!(enter.into_split().is_ok());
+    assert!(display.into_split().is_ok());
+}
+
+#[tokio::test]
+async fn invalid_lengths_or_non_ascii_never_open_authorized_transport() {
+    for code in ["", "123", "12345", "123456", "１２３４", "12 4", "ab12"] {
+        let (mut enter, mut display) = sessions(
+            &Identity::generate().unwrap(),
+            &Identity::generate().unwrap(),
+        )
+        .await;
+        let ((), ()) = tokio::join!(
+            async {
+                let mut trust = TrustStore::memory();
+                assert!(matches!(
+                    enter
+                        .authorize(&mut trust, Pairing::Enter { code: code.into() })
+                        .await,
+                    Err(Error::PairingRejected)
+                ));
+                assert!(trust.peers().is_empty());
+                assert!(matches!(enter.into_split(), Err(Error::PairingRequired)));
+            },
+            async {
+                let mut trust = TrustStore::memory();
+                assert!(display
+                    .authorize(
+                        &mut trust,
+                        Pairing::Display {
+                            code: "0427".into(),
+                            expires_at: Instant::now() + PAIRING_TTL
+                        }
+                    )
+                    .await
+                    .is_err());
+                assert!(trust.peers().is_empty());
+            }
+        );
+    }
+}
+
 #[tokio::test]
 async fn real_tcp_pairing_encrypts_bidirectional_frames_and_reconnects() {
     let a_id = Identity::generate().unwrap();
@@ -97,13 +275,13 @@ async fn wrong_code_never_opens_business_or_records_trust() {
         a.authorize(
             &mut a_trust,
             Pairing::Enter {
-                code: "000001".into()
+                code: "0001".into()
             }
         ),
         b.authorize(
             &mut b_trust,
             Pairing::Display {
-                code: "000002".into(),
+                code: "0002".into(),
                 expires_at: Instant::now() + PAIRING_TTL
             }
         )
@@ -175,7 +353,7 @@ async fn pairing_expires_while_waiting_for_input() {
         .authorize(
             &mut b_trust,
             Pairing::Display {
-                code: "001234".into(),
+                code: "1234".into(),
                 expires_at: Instant::now() + Duration::from_millis(10),
             },
         )
@@ -210,17 +388,29 @@ async fn cancelled_receive_cannot_restart_in_the_middle_of_a_frame() {
 
 // A raw Noise peer bypasses local Hello validation so regression tests verify
 // rejection of actual remote encrypted fields, not only our own constructor.
-async fn raw_hello_peer(mut stream: TcpStream, hello: impl FnOnce(Vec<u8>) -> Hello) {
+async fn raw_hello_peer(
+    mut stream: TcpStream,
+    initiator: bool,
+    hello: impl FnOnce(Vec<u8>) -> Hello,
+) {
     let params = "Noise_XX_25519_ChaChaPoly_SHA256".parse().unwrap();
     let keypair = snow::Builder::new(params).generate_keypair().unwrap();
-    let mut handshake = snow::Builder::new("Noise_XX_25519_ChaChaPoly_SHA256".parse().unwrap())
+    let builder = snow::Builder::new("Noise_XX_25519_ChaChaPoly_SHA256".parse().unwrap())
         .prologue(b"youmu-link-v2")
-        .local_private_key(&keypair.private)
-        .build_responder()
-        .unwrap();
-    let mut magic = [0u8; 9];
-    stream.read_exact(&mut magic).await.unwrap();
-    assert_eq!(&magic, MAGIC);
+        .local_private_key(&keypair.private);
+    let mut handshake = if initiator {
+        builder.build_initiator()
+    } else {
+        builder.build_responder()
+    }
+    .unwrap();
+    if initiator {
+        stream.write_all(MAGIC).await.unwrap();
+    } else {
+        let mut magic = [0u8; 9];
+        stream.read_exact(&mut magic).await.unwrap();
+        assert_eq!(&magic, MAGIC);
+    }
     let mut output = vec![0u8; MAX_CIPHERTEXT];
     while !handshake.is_handshake_finished() {
         if handshake.is_my_turn() {
@@ -262,7 +452,7 @@ async fn forged_device_id_is_rejected_by_authenticated_noise_key() {
         },
         async {
             let (stream, _) = listener.accept().await.unwrap();
-            raw_hello_peer(stream, |public| {
+            raw_hello_peer(stream, false, |public| {
                 let mut forged = Hello::new(&b, "Mac", "macos", port);
                 forged.public_key = public;
                 forged.device_id = old_b.device_id();
@@ -282,42 +472,54 @@ async fn forged_device_id_is_rejected_by_authenticated_noise_key() {
 }
 
 #[tokio::test]
-async fn encrypted_hello_v2_is_rejected_with_upgrade_before_other_field_checks() {
-    let identity = Identity::generate().unwrap();
-    let old_peer = Identity::generate().unwrap();
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let port = listener.local_addr().unwrap().port();
-    assert_eq!(ymlink_core::session::VERSION, 3);
+async fn encrypted_v2_and_v3_hello_are_rejected_in_both_directions_before_other_fields() {
+    assert_eq!(ymlink_core::session::VERSION, 4);
     assert_eq!(MAGIC, b"YL-CTRL2\0");
-    let (result, ()) = tokio::join!(
-        async {
-            let stream = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
-            SecureSession::handshake(
-                stream,
-                true,
-                &identity,
-                Hello::new(&identity, "Current peer", "quest", port),
-            )
-            .await
-        },
-        async {
-            let (stream, _) = listener.accept().await.unwrap();
-            raw_hello_peer(stream, |public| {
-                let mut legacy = Hello::new(&old_peer, "", "macos", 0);
-                legacy.v = 2;
-                legacy.device_id = ymlink_core::identity::device_id(&public);
-                legacy.public_key = public;
-                legacy
-            })
-            .await;
+    for version in [2, 3] {
+        for initiator in [true, false] {
+            let identity = Identity::generate().unwrap();
+            let old_peer = Identity::generate().unwrap();
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let port = listener.local_addr().unwrap().port();
+            let (result, ()) = tokio::join!(
+                async {
+                    let stream = if initiator {
+                        TcpStream::connect(("127.0.0.1", port)).await.unwrap()
+                    } else {
+                        listener.accept().await.unwrap().0
+                    };
+                    SecureSession::handshake(
+                        stream,
+                        initiator,
+                        &identity,
+                        Hello::new(&identity, "Current peer", "quest", port),
+                    )
+                    .await
+                },
+                async {
+                    let stream = if initiator {
+                        listener.accept().await.unwrap().0
+                    } else {
+                        TcpStream::connect(("127.0.0.1", port)).await.unwrap()
+                    };
+                    raw_hello_peer(stream, !initiator, |public| {
+                        let mut legacy = Hello::new(&old_peer, "", "macos", 0);
+                        legacy.v = version;
+                        legacy.device_id = ymlink_core::identity::device_id(&public);
+                        legacy.public_key = public;
+                        legacy
+                    })
+                    .await;
+                }
+            );
+            assert!(matches!(
+                result,
+                Err(Error::Protocol(
+                    "incompatible application version; upgrade YM_Link on both devices"
+                ))
+            ));
         }
-    );
-    assert!(matches!(
-        result,
-        Err(Error::Protocol(
-            "incompatible application version; upgrade YM_Link on both devices"
-        ))
-    ));
+    }
 }
 
 #[tokio::test]

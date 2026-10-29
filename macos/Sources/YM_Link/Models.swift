@@ -44,6 +44,56 @@ struct Pairing: Decodable {
     var code: String?
     var expiresIn: UInt64
     var mode: String
+    var windowId: String
+    var attempt: UInt64
+    var stage: String
+    var error: String?
+    var errorRevision: UInt64
+    var retryAfterMs: UInt32
+
+    var canEnter: Bool { mode == "enter" && stage == "ready" && expiresIn > 0 }
+    var terminal: Bool { ["expired", "limited", "disconnected"].contains(stage) || expiresIn == 0 }
+    var messageKey: String {
+        switch error {
+        case "incorrect": return "pairing_incorrect"
+        case "expired": return "pairing_expired"
+        case "rate_limited": return "error_pairing_rate"
+        case "version": return "error_version_incompatible"
+        default: return "error_connection"
+        }
+    }
+}
+
+/// Logical-window input survives TCP retries; each ready attempt submits once.
+struct PairingInput {
+    private(set) var text = ""
+    private(set) var feedback = false
+    private(set) var errorVisible = false
+    private(set) var rejectionCount = 0
+    private(set) var windowId: String?
+    private var submittedAttempt: UInt64?
+    private var rejectedRevision: UInt64 = 0
+
+    mutating func apply(_ pairing: Pairing?) -> Bool {
+        guard let pairing else { self = PairingInput(); return false }
+        if windowId != pairing.windowId { self = PairingInput(); windowId = pairing.windowId }
+        if pairing.mode == "enter" && pairing.error == "incorrect" && pairing.errorRevision != 0 && pairing.errorRevision != rejectedRevision {
+            rejectedRevision = pairing.errorRevision; rejectionCount += 1; feedback = true; errorVisible = true
+            return true
+        }
+        return false
+    }
+    mutating func edit(_ value: String, pairing: Pairing?) -> String? {
+        guard let pairing, pairing.canEnter, !feedback, submittedAttempt != pairing.attempt else { return nil }
+        text = String(value.filter { $0.asciiValue.map { (48...57).contains($0) } == true }.prefix(4)); errorVisible = false
+        guard text.count == 4 else { return nil }
+        submittedAttempt = pairing.attempt
+        return text
+    }
+    mutating func clearRejected(window: String, revision: Int) {
+        guard windowId == window && rejectionCount == revision else { return }
+        text = ""; feedback = false
+    }
 }
 
 struct Display: Decodable, Identifiable {
@@ -140,7 +190,7 @@ enum Localizer {
         case "pairing code rejected": key = "error_pairing_rejected"
         case "pairing code expired", "pairing expired": key = "pairing_expired"
         case "explicit pairing required": key = "error_pairing_required"
-        case "enter the six digit pairing code": key = "error_pairing_digits"
+        case "enter the four digit pairing code": key = "error_pairing_digits"
         case "no pairing input is pending": key = "error_pairing_not_pending"
         case "session authentication failed": key = "error_authentication"
         case "connection timed out": key = "error_connection_timeout"

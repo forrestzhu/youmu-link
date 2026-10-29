@@ -39,7 +39,7 @@ internal sealed class Localizer
             "pairing code rejected" => "error_pairing_rejected",
             "pairing code expired" or "pairing expired" => "pairing_expired",
             "explicit pairing required" => "error_pairing_required",
-            "enter the six digit pairing code" => "error_pairing_digits",
+            "enter the four digit pairing code" => "error_pairing_digits",
             "no pairing input is pending" => "error_pairing_not_pending",
             "session authentication failed" => "error_authentication",
             "connection timed out" => "error_connection_timeout",
