@@ -32,6 +32,23 @@ CI 保留 Windows x64 / macOS arm64 ZIP，新增用户级 Windows EXE 安装器�
 
 ## 未完成项
 
-公开 Release 发布方式尚待用户选择；不创建 Release 或标签。CI artifacts 保留 7 天且需要 GitHub 登录。安装器未正式签名，macOS 未公证；真实 Quest 播放 / 录屏 / 声音与旧目标 OS 验收继续按原任务，不能以打包或 CI 代签。
+2026-10-30 用户明确选择“手动发布开发预览”，此前发布方式阻塞解除。CI artifacts 仍保留 7 天且需要 GitHub 登录；本次另以手动公开 prerelease 提供无需登录的下载。安装器未正式签名，macOS 未公证；真实 Quest 播放 / 录屏 / 声音与旧目标 OS 验收继续按原任务，不能以打包或 CI 代签。
 
-官网三语言首页 / 下载页已在游目仓库实现并经14回归与两轮独立CR；尚未上线，当前 Mac 没有腾讯云部署访问，已向用户询问已有授权访问位置，不请求在聊天传密钥。恢复访问并确认公开分发方式后完成上线和实际下载回读；任务保留 blocked。
+官网三语言首页 / 下载页已在游目仓库实现并经14回归与两轮独立CR；尚未上线，当前 Mac 没有腾讯云部署访问，已向用户询问已有授权访问位置，不请求在聊天传密钥。用户已授权通过 UU 远程检查 Windows 上的现有访问；官网上线和实际 HTTPS 回读继续由 YM-308 推进，任务保留 verifying。
+
+## 手动公开预览与英文公共页面（追加授权）
+
+用户于 2026-10-30 选择手动发布开发预览，并要求贡献指南和安全政策也以英文优先。`20ba100` 已将根目录 CONTRIBUTING / SECURITY 改为英文主文，中文分别移入 `docs/CONTRIBUTING.zh-CN.md` 和 `docs/SECURITY.zh-CN.md`；保留原安全支持边界、私下漏洞入口与许可约定，修正开发指南相对链接。只改文档，不改安全政策或应用行为。
+
+已手动发布 [v0.1.0-preview.20261030.1](https://github.com/forrestzhu/youmu-link/releases/tag/v0.1.0-preview.20261030.1)，Release ID `428704324`，发布时间北京时间 2026-10-30 14:20:14。先以 draft 上传，再核对 8 个文件的大小 / 完整 SHA-256 与已验证 CI 输出一致后公开；`draft=false`、`prerelease=true`、`latest=false`。公开标签精确指向已验源码 `62cf58ca4b0f79da7098b90fdb23c7760f3cbc55`，不是之后的文档提交，不重编译任何制品；没有新增 main 自动发版工作流。
+
+公开资产为上表 4 个 EXE / DMG / ZIP 和各自 `.sha256`。英文 Release notes 明确未签名 / 未公证、真实硬件与系统兼容性边界，并明确要求头显侧是包含 YM_Link application protocol v4 / 四位配对的兼容 Youmu 构建；当前 Meta Store 已发布构建的兼容性未另验证，不能假定可用。
+
+实际回读：
+
+- 已认证 GitHub API：8 个上传资产的服务端 digest / 大小与本地已验证文件全部一致；tag object 为 commit，SHA 精确为62cf。
+- 匿名 Release 页面 GET 200，包含正确版本与标题。
+- 4 个公开二进制 URL 的匿名 Range GET 206，返回前 4096 字节逐一与本地文件一致。
+- 4 个公开 `.sha256` 匿名 GET 200，完整正文与本地 sidecar 一致；下载不需要 GitHub 登录。
+- 匿名 API 元数据请求曾收到共享出口 `403 rate limit exceeded`；这不是发布权限或下载失败，未改变任何计费 / 权限设置。随后匿名页面与全部 8 个实际下载链接均通过；认证 API 全文件 digest 验证与匿名下载可达性分别记录。
+- 本轮纯文档 `harness check` 72 文本与 `git diff --check` 通过；完整 native / Rust 证据沿用上面已验源码与真实 CI，不重复构建。

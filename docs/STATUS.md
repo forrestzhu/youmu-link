@@ -16,14 +16,14 @@
 | Windows 原生应用 | 10-30 同步 `efe6f56` 后，Windows 11 Pro x64 build 26200 的完整 Rust 103 passed / 2 ignored、Python 36 passed / 2 skipped、WPF 模型 / 本地化 / 行模板 / ABI、Release 自包含目录与 smoke、系统 H.264 合成编码通过。实际窗口中英 / 显示器 / 四位前导零 / 取消、单机加密 Shares 查询与正常断开无误报通过；修复 CLI 配对协商前等待 stdin 的测试桩缺陷，临时信任清至 0。真实 Windows↔Quest LAN / 采集、Windows 10 / ARM64、安装器 / 签名 not-run。[报告](evidence/2026-10-30-windows-regression.md)、[YML-003](tasks/YML-003-windows-native.md)。 |
 | 镜像 | Rust ScreenCaptureKit + VideoToolbox 硬件 H.264、系统 PCM 与加密分片、双端控制、持续背压降分辨率实现就位。首次开始必须本机确认；独立故障信号跨暂停 / 恢复保存，采集或初始化失败不能自动重启，对端不请求系统权限。真实硬件合成帧编码单测通过；真实采集 / 弱网切档、权限恢复、Quest 解码 / 音画同步 / 延迟仍 not-run。 |
 | Windows 镜像 | Rust WGC / D3D11、CPU NV12 转换与系统 Media Foundation 软件 H.264、WASAPI loopback，复用 v3 AVCC / PCM 输出与双端控制。合成 HD 编码及实际 SPS 色彩标记检查通过；修复 WinRT 工厂缓存跨 apartment 销毁造成的反复启动崩溃。真实屏幕 / 系统音频采集及性能 not-run，不推断硬件编码性能。 |
-| harness / CI | 62cf58c 的 run41002505749 三平台全 success；Linux / Windows / Mac 完整测试，Windows x64 EXE 安装与卸载、Mac arm64 DMG 挂载与移位资源通过。EXE / DMG / ZIP、完整许可及 SHA-256 已上传并独立下载核验，保留7天、需 GitHub 登录；未创建 Release。见[分发记录](evidence/2026-10-30-distribution-home.md)。 |
+| harness / CI | 62cf58c 的 run41002505749 三平台全 success；Linux / Windows / Mac 完整测试，Windows x64 EXE 安装与卸载、Mac arm64 DMG 挂载与移位资源通过。EXE / DMG / ZIP、完整许可及 SHA-256 已上传并独立下载核验，CI 保留7天、需 GitHub 登录；用户追加授权后已手动发布 [开发预览](https://github.com/forrestzhu/youmu-link/releases/tag/v0.1.0-preview.20261030.1)，8个公开资产 digest / 大小及匿名下载回读通过，无 main 自动发版。见[分发记录](evidence/2026-10-30-distribution-home.md)。 |
 | gitleaks 防泄漏 CI | `.github/workflows/gitleaks.yml` 于 push(main) / PR / 手动触发，SHA 锁定 gitleaks-action v3.0.0；push/PR 增量扫新提交、dispatch 全量历史（run 40624080000 扫 31 commits 通过），本地 26 commits 全量基线无泄漏，见 [YML-005](tasks/archive/YML-005-ci-gitleaks.md)。 |
 
 ## 当前工作与待验收
 
 | 工作 | 当前结论 / 下一动作 |
-| [YML-009 首页与安装包](tasks/YML-009-distribution-home.md) | blocked（仅待公开分发 / 官网访问）：英文功能首页 / 中文页 / 连接图、工程文档分离已推送；62cf58c 的三平台 CI 全 success，Windows 安装 / 启停 / 卸载、Mac DMG / 移位资源及两平台最终制品独立下载校验全部通过。[记录](evidence/2026-10-30-distribution-home.md)。官网源码由游目 YM-308 完成两轮 CR，当前缺腾讯云访问，线上未更新；Release 方式待用户确认。 |
 | --- | --- |
+| [YML-009 首页与安装包](tasks/YML-009-distribution-home.md) | verifying（仅待官网上线）：英文功能首页 / 贡献指南 / 安全政策及中文对应页已推送；62cf 的三平台 CI、Windows 安装 / 卸载、Mac DMG 与双平台云制品独立核验通过；用户已授权手动公开 [v0.1.0-preview.20261030.1](https://github.com/forrestzhu/youmu-link/releases/tag/v0.1.0-preview.20261030.1)，8资产全部发布且匿名下载通过。[记录](evidence/2026-10-30-distribution-home.md)。官网部署由游目 YM-308 与 UU 上的现有 Windows 访问继续推进；main 不自动发版。 |
 | [YML-008 四位配对](tasks/archive/YML-008-four-digit-pairing.md) | **原生实现与组件验证通过**：四位v4、原位错码清空、自动提交与信任保持；Android1147的22E2E /171语言 /192视觉通过。正常断开误报及SwiftPM复用旧后端均已修，完整99 Rust /38 Python /6 Swift、真实重链与各增量双轮独立CR通过。6d613d0新app双方向原生配对 /Known重连 /共享目录各1/1，结束无误报，临时配对清理至0；[证据](evidence/2026-10-29-four-digit-native-relink.md)。真实录屏 /声音 /XR与Windows↔Quest LAN另验。 |
 | [YML-007 配对与重复候选](tasks/archive/YML-007-pairing-discovery-regression.md) | done（桌面归并与原生配对）：同IP端口变化改为替换匿名行，认证清理历史行并保留可信身份；4项新回归、完整37 Python /78 Rust /1 ignored、Swift4与本机app构建启动通过。初轮端口占用 /超时保留；同一实现CI三平台单次重跑全success（首轮Mac容量取消保留）；Quest2339→原生Mac1/1真实组件配对 /Known重连通过，临时身份已清理；XR /实际录屏声音另验。[报告](evidence/2026-10-28-pairing-discovery-regression.md)。 |
 | [YML-002 原生 macOS 实现](tasks/YML-002-macos-native.md) | verifying：双端控制、传输边界与弱网策略自动回归通过；真实屏幕 / 系统音频采集等待用户确认，弱网切档与 Quest 验收未完成。 |

@@ -2,6 +2,14 @@
 
 YM_Link currently targets **Windows x64** and **macOS on Apple Silicon**. The build target is Windows 10 1903+ / macOS 14+; the systems actually tested, and outstanding device acceptance, are recorded in [STATUS](../STATUS.md). Intel Macs and Windows ARM64 do not have a package in this pipeline.
 
+## Public preview
+
+The manually published [development preview v0.1.0-preview.20261030.1](https://github.com/forrestzhu/youmu-link/releases/tag/v0.1.0-preview.20261030.1) provides Windows x64 EXE / ZIP and macOS arm64 DMG / ZIP downloads without a GitHub login, with a `.sha256` file beside each download. These are the exact tested CI outputs from source `62cf58ca4b0f79da7098b90fdb23c7760f3cbc55`.
+
+A compatible Youmu headset build must include YM_Link application protocol v4 and four-digit pairing. Compatibility with the currently published Meta Store build has not been verified.
+
+Future previews are published manually after verification. Successful main builds do not automatically create or update a public Release.
+
 ## CI outputs
 
 [Repository checks](../../.github/workflows/repository-checks.yml) run on pushes to `main`, pull requests, and manual dispatch. Linux runs the repository and Rust gates. Each native runner builds the application, collects exact dependency licenses, and creates:
@@ -23,7 +31,7 @@ The macOS DMG is a compressed, read-only disk image with an Applications shortcu
 
 Successful main push / manual main runs upload their artifacts for **7 days**. Download them from a successful run under [Actions](https://github.com/forrestzhu/youmu-link/actions/workflows/repository-checks.yml). GitHub Actions artifact downloads require signing in to GitHub. Pull requests verify packages but do not upload them.
 
-The workflow has read-only repository permissions and does **not** create tags, GitHub Releases, or public download assets. Publishing an externally downloadable preview is a separate maintainer action; the website must not present a direct installer link until the corresponding public asset actually exists.
+The workflow has read-only repository permissions and does **not** create tags, GitHub Releases, or public download assets. Public previews are a separate manual maintainer action; the first preview above was explicitly authorized on 2026-10-30. The website links only to assets whose publication and anonymous download access have been verified.
 
 ## Build locally
 
