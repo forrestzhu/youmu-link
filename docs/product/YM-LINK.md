@@ -41,7 +41,7 @@ YM_Link 是游目的桌面伴侣：一台 Windows / macOS 电脑 + 一台 Meta Q
 
 ## 分发
 
-- 当前为公开开发预览。GitHub Actions 配置为在成功 main 构建后上传 Windows x64 ZIP 与 macOS arm64 ZIP，附校验和与完整许可；实际构建 / 上传结果见 [STATUS](../STATUS.md)。Windows x64 用户级安装器与 macOS arm64 DMG 的构建 / 安装验证及首次手动公开预览由 [YML-009](../tasks/YML-009-distribution-home.md) 推进；用户于 2026-10-30 选择手动发布开发预览，main CI 不自动发 Release。正式签名 / 公证、Intel / 通用包与正式发行另行确认，Meta 商店不涉及。
+- 当前为公开开发预览。GitHub Actions 在成功 main 构建后上传 Windows x64 安装程序 / ZIP 与 macOS arm64 DMG / ZIP，附校验和与完整许可；实际构建 / 上传结果见 [STATUS](../STATUS.md)。Windows 安装 / 卸载、macOS DMG 挂载及首次手动公开预览已由 [YML-009](../tasks/archive/YML-009-distribution-home.md) 验证，官网下载页提供匿名下载；用户于 2026-10-30 选择手动发布开发预览，main CI 不自动发 Release。正式签名 / 公证、Intel / 通用包与正式发行另行确认，Meta 商店不涉及。
 - 版本号策略随 M6 分发任务确定（对齐游目 `yyyyMMdd.HHmm` 显示版本惯例）。
 - 许可证：原创代码采用 Apache-2.0；依赖保留各自许可。GitHub 仓库已于 2026-10-27 按用户授权公开，历史邮箱已修正；后续历史改写与正式发行仍由用户明确决定，见 [AGENTS](../../AGENTS.md)。GitLab 迁移不再作为分发前置条件。
 

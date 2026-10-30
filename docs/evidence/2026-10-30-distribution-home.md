@@ -1,6 +1,6 @@
 # 首页与多平台安装包（2026-10-30）
 
-任务：[YML-009](../tasks/YML-009-distribution-home.md)。官网实现由 [YM-308](https://github.com/forrestzhu/youmu/blob/main/docs/tasks/YM-308-ym-link-download.md) 跟踪。
+任务：[YML-009](../tasks/archive/YML-009-distribution-home.md)。官网实现由 [YM-308](https://github.com/forrestzhu/youmu/blob/main/docs/tasks/archive/YM-308-ym-link-download.md) 跟踪。
 
 ## 实现与边界
 
@@ -52,3 +52,14 @@ CI 保留 Windows x64 / macOS arm64 ZIP，新增用户级 Windows EXE 安装器�
 - 4 个公开 `.sha256` 匿名 GET 200，完整正文与本地 sidecar 一致；下载不需要 GitHub 登录。
 - 匿名 API 元数据请求曾收到共享出口 `403 rate limit exceeded`；这不是发布权限或下载失败，未改变任何计费 / 权限设置。随后匿名页面与全部 8 个实际下载链接均通过；认证 API 全文件 digest 验证与匿名下载可达性分别记录。
 - 本轮纯文档 `harness check` 72 文本与 `git diff --check` 通过；完整 native / Rust 证据沿用上面已验源码与真实 CI，不重复构建。
+
+
+## 官网品牌下载与交付闭环
+
+用户追加品牌标识与平台图标后，官网下载页已沿用批准YM几何，加入Windows / Apple图标和双平台醒目安装按钮；[英文默认页](https://youmu.forrestzhu.com/ym-link/)、[中文页](https://youmu.forrestzhu.com/zh/ym-link/)、[日文页](https://youmu.forrestzhu.com/ja/ym-link/)已上线，三语言产品首页导航与介绍区均可进入。GitHub中英首页主下载入口改为实际官网，Release仍提供原始资产与版本说明。
+
+游目候选d40dabd9的36项Python、9页面check及新鲜两轮独立只读CR通过；修复部署期间政策原地修改可能被覆盖的P2并复核关闭。用户在Chrome完成官方TCCLI授权后，CLI实际核对现有实例 / TAT、单次原子切换已审静态归档ea4995，旧release保留。没有更改后台服务、数据库、DNS、政策正文。
+
+独立curl正常TLS回读24/24通过：9页面与11资源完整字节匹配，无Set-Cookie、HTML script-src none，4后台相关路由404。原Python urllib检查器握手超时（含限定IPv4）单独保留，未冒记为通过；正常TLS curl与实际Chrome检查补齐公开验收。Chrome实际首页→中文下载→英文下载、桌面 / 手机390及日文320候选检查通过；线上完整DMG下载SHA-256 `1e205624d1b0658f9626aa19cf2253654204d4c58fd7e904cb709cd40a369192`匹配已验制品。CONTRIBUTING / SECURITY英文主文亦已在Chrome实查。
+
+详细站点 / CLI / 线上证据由[游目YM-308报告](https://github.com/forrestzhu/youmu/blob/main/docs/evidence/2026-10-30-ym-link-download.md)维护。当前手动开发预览已交付；正式签名 / 公证与实际Quest播放 / 镜像仍属后继验收，main CI不自动发版。

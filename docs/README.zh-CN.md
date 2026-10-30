@@ -4,7 +4,7 @@
 
 YM_Link 是 Youmu VR Player（游目）的 Windows / macOS 桌面伴侣，与 Meta Quest 3 / 3S 通过局域网连接。
 
-[**下载开发预览**](https://github.com/forrestzhu/youmu-link/releases/tag/v0.1.0-preview.20261030.1) · [安装说明](engineering/DISTRIBUTION.md) · [English](../README.md) · [游目官网](https://youmu.forrestzhu.com/)
+[**下载开发预览**](https://youmu.forrestzhu.com/zh/ym-link/#download) · [安装说明](engineering/DISTRIBUTION.md) · [English](../README.md) · [游目官网](https://youmu.forrestzhu.com/)
 
 ![电脑与 Quest 通过加密局域网连接，授权目录后在游目中浏览影片；屏幕镜像仍为实验功能。](assets/ym-link-overview.svg)
 
@@ -16,6 +16,8 @@ YM_Link 是 Youmu VR Player（游目）的 Windows / macOS 桌面伴侣，与 Me
 
 安装并打开两端 → 连接同一局域网 → 在游目打开 YM_Link，输入四位码 → 电脑添加共享目录。
 
-当前为**开发预览**：Windows x64、Apple Silicon Mac（目标 macOS 14+），尚未正式签名 / 公证。Intel Mac、Windows ARM64 与旧版目标系统未完成兼容性验收；外部媒体来源适用游目的使用权益要求。实际构建与安装说明见[下载指南](engineering/DISTRIBUTION.md)；独立官网下载页正在准备，Quest 影片播放仍需进一步硬件验证，实测边界见 [STATUS](STATUS.md)。
+头显需使用支持 YM_Link 协议 v4 的游目构建；当前 Meta 商店版本的兼容性尚未验证。
+
+当前为**开发预览**：Windows x64、Apple Silicon Mac（目标 macOS 14+），尚未正式签名 / 公证。Intel Mac、Windows ARM64 与旧版目标系统未完成兼容性验收；外部媒体来源适用游目的使用权益要求。实际构建与安装说明见[下载指南](engineering/DISTRIBUTION.md)；Quest 影片播放仍需进一步硬件验证，实测边界见 [STATUS](STATUS.md)。
 
 [反馈问题](https://github.com/forrestzhu/youmu-link/issues) · [开发指南](engineering/DEVELOPMENT.md) · [文档索引](README.md) · [Apache-2.0](../LICENSE) · [第三方许可](../THIRD_PARTY_NOTICES.md)
