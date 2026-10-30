@@ -20,6 +20,7 @@ OutputBaseFilename={#OutputName}
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile=..\assets\app-icon\YM_Link.ico
 UninstallDisplayIcon={app}\YM_Link.exe
 CloseApplications=yes
 RestartApplications=no

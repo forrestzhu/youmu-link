@@ -3,6 +3,7 @@
 import hashlib
 import json
 from pathlib import Path
+import plistlib
 import shutil
 import stat
 import subprocess
@@ -19,7 +20,7 @@ class PackageBuildTests(unittest.TestCase):
         self.root = Path(temporary.name).resolve()
         (self.root / "scripts").mkdir()
         self.script = self.root / "scripts/package_build.py"
-        for filename in ("package_build.py", "build_privacy.py"):
+        for filename in ("package_build.py", "build_privacy.py", "app_icons.py"):
             source = Path(__file__).with_name(filename)
             if source.exists():
                 shutil.copy2(source, self.script.with_name(filename))
@@ -28,6 +29,7 @@ class PackageBuildTests(unittest.TestCase):
             self.write("dist/legal/" + name, "legal text\n")
         for name in ("YM_Link.exe", "ymlink_desktop.dll", "coreclr.dll", "hostfxr.dll", "PresentationFramework.dll"):
             self.write("dist/YM_Link/" + name, "binary")
+        self.write("assets/app-icon/YM_Link.icns", "icon fixture")
 
     def write(self, name, content):
         path = self.root / name
@@ -40,6 +42,14 @@ class PackageBuildTests(unittest.TestCase):
             [sys.executable, str(self.script), "--platform", platform, "--revision", revision],
             cwd=self.root, capture_output=True, text=True, timeout=30,
         )
+
+    def mac_app(self):
+        binary = self.write("dist/YM_Link.app/Contents/MacOS/YM_Link", "executable")
+        metadata = self.root / "dist/YM_Link.app/Contents/Info.plist"
+        metadata.write_bytes(plistlib.dumps({"CFBundleIconFile": "YM_Link.icns"}))
+        self.write("dist/YM_Link.app/Contents/Resources/YM_Link.icns", "icon fixture")
+        self.write("dist/YM_Link.app/Contents/_CodeSignature/CodeResources", "signature")
+        return binary
 
     def test_windows_archive_contains_only_build_and_legal_files_with_verified_checksum(self):
         self.write(".identity.json", "private identity")
@@ -92,13 +102,32 @@ class PackageBuildTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_mac_main_binary_with_local_build_path_cannot_be_packaged(self):
-        self.write("dist/YM_Link.app/Contents/MacOS/YM_Link", str(self.root) + "/macos/main.swift")
-        self.write("dist/YM_Link.app/Contents/Info.plist", "plist")
-        self.write("dist/YM_Link.app/Contents/_CodeSignature/CodeResources", "signature")
+        self.mac_app().write_text(str(self.root) + "/macos/main.swift", encoding="utf-8")
         result = self.package("macos-arm64")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("build-machine path", result.stderr)
         self.assertNotIn(str(self.root), result.stderr)
+
+    def test_missing_macos_icon_prevents_archive(self):
+        self.mac_app()
+        (self.root / "dist/YM_Link.app/Contents/Resources/YM_Link.icns").unlink()
+        result = self.package("macos-arm64")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("YM_Link.icns", result.stderr)
+        self.assertFalse(list((self.root / "dist").glob("packages/*.zip")))
+
+    def test_stale_macos_icon_and_wrong_plist_reference_prevent_archive(self):
+        self.mac_app()
+        self.write("dist/YM_Link.app/Contents/Resources/YM_Link.icns", "stale icon")
+        result = self.package("macos-arm64")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("differs from the committed application icon", result.stderr)
+        self.write("dist/YM_Link.app/Contents/Resources/YM_Link.icns", "icon fixture")
+        (self.root / "dist/YM_Link.app/Contents/Info.plist").write_bytes(plistlib.dumps({}))
+        result = self.package("macos-arm64")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("CFBundleIconFile", result.stderr)
+        self.assertFalse(list((self.root / "dist").glob("packages/*.zip")))
 
     def test_directory_links_cannot_include_files_outside_either_archive_input(self):
         private = self.write("private/identity.json", "private fixture").parent
@@ -132,16 +161,16 @@ class PackageBuildTests(unittest.TestCase):
 
     @unittest.skipIf(sys.platform == "win32", "Windows does not expose Unix executable modes")
     def test_mac_archive_preserves_executable_mode_and_rejects_symlinks(self):
-        binary = self.write("dist/YM_Link.app/Contents/MacOS/YM_Link", "executable")
+        binary = self.mac_app()
         binary.chmod(0o755)
-        self.write("dist/YM_Link.app/Contents/Info.plist", "plist")
-        self.write("dist/YM_Link.app/Contents/_CodeSignature/CodeResources", "signature")
         result = self.package("macos-arm64")
         self.assertEqual(result.returncode, 0, result.stderr)
         archive = next((self.root / "dist/packages").glob("*.zip"))
         with zipfile.ZipFile(archive) as packaged:
             info = packaged.getinfo("YM_Link-0.1.0-macos-arm64-abcdefabcdef/YM_Link.app/Contents/MacOS/YM_Link")
             self.assertEqual(stat.S_IMODE(info.external_attr >> 16), 0o755)
+            self.assertEqual(packaged.read("YM_Link-0.1.0-macos-arm64-abcdefabcdef/YM_Link.app/Contents/Resources/YM_Link.icns"),
+                             (self.root / "assets/app-icon/YM_Link.icns").read_bytes())
         (binary.parent / "unexpected-link").symlink_to(self.root / ".identity.json")
         result = self.package("macos-arm64")
         self.assertNotEqual(result.returncode, 0)

@@ -43,6 +43,7 @@ public partial class App : Application
             var result = 1;
             try
             {
+                WindowIconSmoke.Verify();
                 await using var backend = new NativeBackend();
                 if (await backend.StartAsync(StateDirectory, Environment.MachineName))
                 {

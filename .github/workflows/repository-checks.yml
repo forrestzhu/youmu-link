@@ -56,7 +56,7 @@ jobs:
           dotnet-version: "8.0.x"
       - name: Windows Rust tests
         run: cargo test --workspace --all-targets --locked
-      - name: Native models, localization, ABI, release build and bounded smoke test
+      - name: Native models, localization, ABI, embedded icon, release build and bounded smoke test
         run: python scripts/build_windows.py --smoke-test
       - name: Collect exact dependency notices
         run: python scripts/collect_licenses.py --output dist/legal --windows-assets windows/YM_Link/obj/project.assets.json
@@ -101,7 +101,7 @@ jobs:
         run: cargo test --workspace --all-targets --locked
       - name: Verify native archive changes force Swift relinking
         run: python -m unittest discover -s scripts -p 'test_build_macos.py'
-      - name: Build and verify static Rust linkage and ad-hoc signature
+      - name: Build and verify bundle icon, static Rust linkage and ad-hoc signature
         run: python scripts/build_macos.py
       - name: Swift tests
         run: swift test --package-path macos -c release

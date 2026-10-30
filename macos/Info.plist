@@ -10,6 +10,8 @@
     <string>app.youmu.link</string>
     <key>CFBundleExecutable</key>
     <string>YM_Link</string>
+    <key>CFBundleIconFile</key>
+    <string>YM_Link.icns</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>

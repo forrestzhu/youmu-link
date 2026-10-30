@@ -9,6 +9,7 @@ import sys
 import tempfile
 
 from build_privacy import rust_build_environment
+from app_icons import verify_macos_icon
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -54,10 +55,13 @@ def main():
     resources.mkdir(parents=True)
     shutil.copy2(binaries / "YM_Link", executable / "YM_Link")
     shutil.copy2(ROOT / "macos/Info.plist", app / "Contents/Info.plist")
+    icon = ROOT / "assets/app-icon/YM_Link.icns"
+    shutil.copy2(icon, resources / icon.name)
     for bundle in binaries.glob("*.bundle"):
         shutil.copytree(bundle, resources / bundle.name)
     for locale in (ROOT / "macos/Resources").glob("*.lproj"):
         shutil.copytree(locale, resources / locale.name)
+    verify_macos_icon(app, icon)
     dependencies = run(["otool", "-L", str(executable / "YM_Link")], capture=True).stdout.splitlines()[1:]
     verify_runtime_dependencies([line.strip().split(" (", 1)[0] for line in dependencies])
     # Remove debug/source records before signing; runtime resource paths are
@@ -68,6 +72,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix="ym-link-resources-") as temporary:
         relocated = Path(temporary) / app.name
         shutil.copytree(app, relocated)
+        verify_macos_icon(relocated, icon)
         run([str(relocated / "Contents/MacOS/YM_Link"), "--verify-localizations"], timeout=30)
     print(f"Built {app.relative_to(ROOT)} (local development signing; not notarized).")
 

@@ -17,6 +17,7 @@ import time
 import zipfile
 
 from package_build import ROOT, package_build
+from app_icons import verify_windows_icon
 
 
 def run(arguments, timeout=300):
@@ -111,6 +112,7 @@ def build_windows(archive, payload, temporary, *, iscc=None, smoke_test=False):
     installer = temporary / (name + ".exe")
     if not installer.is_file():
         raise ValueError("Inno Setup did not produce the expected installer")
+    verify_windows_icon(installer, ROOT / "assets/app-icon/YM_Link.ico")
     if smoke_test:
         smoke_windows(installer, payload, temporary)
     result = archive.with_name(installer.name)

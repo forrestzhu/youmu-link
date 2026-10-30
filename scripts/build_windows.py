@@ -7,6 +7,7 @@ import subprocess
 import sys
 
 from build_privacy import rust_build_environment
+from app_icons import verify_windows_icon
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -46,9 +47,10 @@ def main():
     ])
     # Native ABI is loaded beside the EXE, never from a search path or a user folder.
     shutil.copy2(native, output / "ymlink_desktop.dll")
+    verify_windows_icon(output / "YM_Link.exe", ROOT / "assets/app-icon/YM_Link.ico")
     if args.smoke_test:
         run([str(output / "YM_Link.exe"), "--smoke-test"], timeout=30)
-        print("Smoke test passed: real Rust startup, snapshot and clean shutdown.")
+        print("Smoke test passed: WPF native window icons, real Rust startup, snapshot and clean shutdown.")
     print(f"Built {output.relative_to(ROOT)} (Windows x64; local unsigned build).")
 
 

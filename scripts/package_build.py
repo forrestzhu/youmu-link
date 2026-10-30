@@ -10,6 +10,7 @@ import tempfile
 import zipfile
 
 from build_privacy import build_path_mappings, verify_binary_privacy
+from app_icons import verify_macos_icon
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -26,7 +27,7 @@ def package_build(platform, revision):
     source = ROOT / ("dist/YM_Link" if platform == "windows-x64" else "dist/YM_Link.app")
     legal = ROOT / "dist/legal"
     required = ("YM_Link.exe", "ymlink_desktop.dll", "coreclr.dll", "hostfxr.dll", "PresentationFramework.dll") if platform == "windows-x64" else (
-        "Contents/MacOS/YM_Link", "Contents/Info.plist", "Contents/_CodeSignature/CodeResources",
+        "Contents/MacOS/YM_Link", "Contents/Info.plist", "Contents/Resources/YM_Link.icns", "Contents/_CodeSignature/CodeResources",
     )
     for path in [*(source / name for name in required),
                  *(legal / name for name in ("LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md"))]:
@@ -63,6 +64,8 @@ def package_build(platform, revision):
     own_binaries = ("YM_Link.exe", "YM_Link.dll", "ymlink_desktop.dll") if platform == "windows-x64" else ("Contents/MacOS/YM_Link",)
     verify_binary_privacy([source / name for name in own_binaries if (source / name).is_file()],
                           [prefix for prefix, _ in build_path_mappings(ROOT)])
+    if platform == "macos-arm64":
+        verify_macos_icon(source, ROOT / "assets/app-icon/YM_Link.icns")
 
     name = f"YM_Link-{version}-{platform}-{revision[:12].lower()}"
     output = ROOT / "dist/packages"
