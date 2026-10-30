@@ -1,5 +1,7 @@
 # YM_Link
 
+<img src="assets/app-icon/ym-link.svg" width="96" height="96" alt="YM_Link app icon">
+
 **Your computer. Your Quest. One private cinema.**
 
 The Windows and macOS desktop companion for **Youmu VR Player** on Meta Quest 3 and 3S. Bring your computer's videos into your headset over your local network.

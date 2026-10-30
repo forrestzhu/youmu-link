@@ -1,5 +1,7 @@
 # YM_Link
 
+<img src="../assets/app-icon/ym-link.svg" width="96" height="96" alt="YM_Link 应用图标">
+
 **把电脑上的内容，带进你的私人影院。**
 
 YM_Link 是 Youmu VR Player（游目）的 Windows / macOS 桌面伴侣，与 Meta Quest 3 / 3S 通过局域网连接。

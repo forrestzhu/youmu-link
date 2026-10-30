@@ -1,6 +1,6 @@
 # YML-011：YM_Link 家族应用图标与原生平台接入
 
-Status: verifying
+Status: done
 Workflow: maintenance
 Requires-Device: no
 Tests: 资源与打包回归、harness verify、Swift测试、Mac实际构建/启动与Windows CI；不改Rust协议/业务行为
@@ -11,10 +11,10 @@ Tests: 资源与打包回归、harness verify、Swift测试、Mac实际构建/�
 
 ## Acceptance
 
-- [ ] 图标与游目家族一致、无小字，16/32/64/128与大图可辨识，附实际预览。
-- [ ] macOS bundle和Windows EXE/窗口使用同一资产，未来构建不丢失。
-- [ ] 资源/脚本检查与适用完整verify、Swift测试、Mac实际app构建及启动有结果；Windows云构建结果与设备限制分别记录。
-- [ ] 自查/独立审查、main提交推送与严格门禁闭环。
+- [x] 图标与游目家族一致、无小字，16/32/64/128与大图可辨识，附实际预览。
+- [x] macOS bundle和Windows EXE/窗口使用同一资产，未来构建不丢失。
+- [x] 资源/脚本检查与适用完整verify、Swift测试、Mac实际app构建及启动有结果；Windows云构建结果与设备限制分别记录。
+- [x] 自查/独立审查、main提交推送与严格门禁闭环。
 
 ## Verification
 
@@ -26,7 +26,7 @@ Tests: 资源与打包回归、harness verify、Swift测试、Mac实际构建/�
 
 ## Next
 
-2026-10-30用户明确选择round-3第4个“镂刻”。已按所选结构重绘正式矢量、导出原生资源并通过Mac本机验收；完成main提交与三平台CI，随后归档。官网三语下载页的独立YM_Link页眉标识在游目YM-314跟踪，父品牌保持独立；不替换既有公开Release资产。
+2026-10-30用户选择round-3第4个“镂刻”后，正式矢量/原生资源/双平台接入、本机与三平台CI、官网下载页同步及main提交已完成。任务归档；后续签名/公证、人工Windows任务栏视觉及新的公开Release按既有分发流程推进，不属于本次已验收范围。
 
 
 用户追加：2026-10-30要求5个Logo变体先看，视觉选择尚未完成。初版资产仅候选，不能作为通过。平台接入已准备、Python47及打包18回归和独立只读资源API审查通过；这些只证明配置 / 校验逻辑，不代表图标已获用户认可或原生包已启动。当前尚未构建 / 覆盖用户app、未提交推送、未发布Release。
@@ -41,4 +41,7 @@ Tests: 资源与打包回归、harness verify、Swift测试、Mac实际构建/�
 用户再次明确要求5个新变体。round-3使用原Youmu SVG的无字标渲染作为参考，按同一米白/深蓝/金色体系分别生成：连弧（底弧贯通）、双幕（中央分体）、曲幕（上缘圆弧）、镂刻（轮廓M与实形Y）、折面（中央折线与轻微面色差）。五个独立原图、编号对比图及32/48px缩略预览已保存于ignored dist/icon-concepts/round-3/；concepts.json保存完整提示和生成源路径。五款全部供用户选择，未用旧图替代或只交付反白一款。一次完整视觉检查与独立只读对照确认了实际差异；未改原生资源/应用，仍待视觉选择。文档harness check与diff检查结果见本轮工具记录，不将概念图当成最终可分发图标。
 
 
-定稿与本机验收：用户选定round-3第4个后，正式源assets/app-icon/ym-link.svg保留轮廓M、实心Y、分段金弧，清理生成稿边缘和材质；独立只读视觉对照无必须修复项。ICNS/ICO各帧已独立解码，16–256尺寸预览可辨。Python47、完整Rust100 passed/1 ignored、Swift6/6、Mac26.3.1 arm64实际构建/签名/移位中英资源通过。旧应用无活动连接后正常结束进程，重建并启动；CUA实际About面板和Finder均显示新图标。Dock直接观察超时，以运行时系统About与Finder结果为证，不冒记Dock截图通过。原生资源接入经独立只读审查无必须问题；Windows实际PE/WPF/安装器检查待CI。完整结果见[图标验收](../evidence/2026-10-30-app-icon.md)。
+定稿与本机验收：用户选定round-3第4个后，正式源assets/app-icon/ym-link.svg保留轮廓M、实心Y、分段金弧，清理生成稿边缘和材质；独立只读视觉对照无必须修复项。ICNS/ICO各帧已独立解码，16–256尺寸预览可辨。Python47、完整Rust100 passed/1 ignored、Swift6/6、Mac26.3.1 arm64实际构建/签名/移位中英资源通过。旧应用无已建立TCP连接后以SIGTERM结束，重建并启动；CUA实际About面板和Finder均显示新图标。Dock直接观察超时，以运行时系统About与Finder结果为证，不冒记Dock截图通过。原生资源接入经独立只读审查无必须问题；Windows实际PE/WPF/安装器检查待CI。完整结果见[图标验收](../../evidence/2026-10-30-app-icon.md)。
+
+
+闭环：实现提交d6cccebd的run41058841767三平台success，gitleaks41058841795也success；Mac/Windows安装器均在真实runner通过，产物已上传。游目YM-314将同一正式SVG用于三语下载页页眉，网站源码11c45a6d、两轮独立只读CR/34回归、桌面及390×844实际Chrome检查、TCCLI/TAT上线与25目标正常TLS回读通过；线上原生Chrome再次确认新标志。GitHub中英文README引用正式源，品牌源与平台包保持一致。详细摘要、系统差异和限制集中记录在图标验收报告。
