@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Documents;
 using System.Windows.Markup;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -343,16 +344,78 @@ internal static class TemplateBindingTests
         FlushLayout(window);
         var content = (FrameworkElement)window.Content;
         var dpi = VisualTreeHelper.GetDpi(content);
-        var bitmap = new RenderTargetBitmap((int)Math.Ceiling(content.ActualWidth * dpi.DpiScaleX), (int)Math.Ceiling(content.ActualHeight * dpi.DpiScaleY), dpi.PixelsPerInchX, dpi.PixelsPerInchY, PixelFormats.Pbgra32);
-        bitmap.Render(content);
-        var stride = checked(bitmap.PixelWidth * 4);
-        var pixels = new byte[checked(stride * bitmap.PixelHeight)];
-        bitmap.CopyPixels(pixels, stride, 0);
-        for (var offset = 3; offset < pixels.Length; offset += 4)
-            Require(pixels[offset] == 255, "The rendered content viewport contains transparent pixels: " + name);
+        var originalResources = content.Resources;
+        var viewport = new Size(content.Width, content.Height);
+        // Preserve inherited presentation values before detaching this test-only tree.
+        foreach (var property in new[]
+        {
+            TextElement.FontFamilyProperty, TextElement.FontSizeProperty, TextElement.FontWeightProperty,
+            TextElement.FontStyleProperty, TextElement.FontStretchProperty, TextElement.ForegroundProperty,
+            TextOptions.TextFormattingModeProperty, TextOptions.TextRenderingModeProperty, TextOptions.TextHintingModeProperty,
+            FrameworkElement.UseLayoutRoundingProperty, FrameworkElement.FlowDirectionProperty, FrameworkElement.LanguageProperty,
+        }) content.SetValue(property, content.GetValue(property));
+        var resources = new ResourceDictionary();
+        resources.MergedDictionaries.Add(window.Resources);
+        resources.MergedDictionaries.Add(originalResources);
+        var file = Path.Combine(directory, name + ".png");
+        try
+        {
+            // A hosted desktop may clip its HWND even when the child was explicitly arranged.
+            // Rasterize the same production tree offscreen at its named content viewport;
+            // this is a WPF layout render, not a screenshot of the operating system window.
+            window.Content = null;
+            content.Resources = resources;
+            content.InvalidateMeasure();
+            content.InvalidateArrange();
+            content.Measure(viewport);
+            content.Arrange(new Rect(new Point(), viewport));
+            content.UpdateLayout();
+            Require(Math.Abs(content.ActualWidth - viewport.Width) < 0.1 && Math.Abs(content.ActualHeight - viewport.Height) < 0.1, "The offscreen WPF viewport changed size.");
+            var bitmap = new RenderTargetBitmap((int)Math.Ceiling(viewport.Width * dpi.DpiScaleX), (int)Math.Ceiling(viewport.Height * dpi.DpiScaleY), dpi.PixelsPerInchX, dpi.PixelsPerInchY, PixelFormats.Pbgra32);
+            bitmap.Render(content);
+            // Keep the rendered evidence even if the pixel assertions below fail.
+            WritePng(bitmap, file);
+            var stride = checked(bitmap.PixelWidth * 4);
+            var pixels = new byte[checked(stride * bitmap.PixelHeight)];
+            bitmap.CopyPixels(pixels, stride, 0);
+            for (var offset = 3; offset < pixels.Length; offset += 4)
+                Require(pixels[offset] == 255, $"Rendered viewport {name} ({bitmap.PixelWidth}x{bitmap.PixelHeight}) has alpha {pixels[offset]} at ({offset / 4 % bitmap.PixelWidth}, {offset / stride}).");
+        }
+        catch
+        {
+            // If rendering itself failed, leave an explicitly labeled diagnostic image.
+            // It contains only the synthetic fixture name, never exception paths or user data.
+            if (!File.Exists(file))
+            {
+                try
+                {
+                    var diagnostic = new DrawingVisual();
+                    using (var drawing = diagnostic.RenderOpen())
+                    {
+                        drawing.DrawRectangle(Brushes.White, null, new Rect(0, 0, 640, 120));
+                        drawing.DrawText(new FormattedText("WPF fixture rendering failed: " + name, System.Globalization.CultureInfo.InvariantCulture, FlowDirection.LeftToRight, new Typeface("Segoe UI"), 16, Brushes.Black, 1), new Point(20, 40));
+                    }
+                    var bitmap = new RenderTargetBitmap(640, 120, 96, 96, PixelFormats.Pbgra32);
+                    bitmap.Render(diagnostic);
+                    WritePng(bitmap, Path.Combine(directory, name + "-render-failure.png"));
+                }
+                catch { /* Preserve the original rendering failure if the output itself is unavailable. */ }
+            }
+            throw;
+        }
+        finally
+        {
+            content.Resources = originalResources;
+            window.Content = content;
+            FlushLayout(window);
+        }
+    }
+
+    private static void WritePng(BitmapSource bitmap, string file)
+    {
         var encoder = new PngBitmapEncoder();
         encoder.Frames.Add(BitmapFrame.Create(bitmap));
-        using var output = File.Create(Path.Combine(directory, name + ".png"));
+        using var output = File.Create(file);
         encoder.Save(output);
     }
 
