@@ -1,6 +1,6 @@
 # YML-013：修复 macOS 空闲界面持续高 CPU 占用
 
-Status: verifying
+Status: blocked
 Workflow: behavior
 Requires-Device: no
 Tests: not-applicable (Rust 协议与后端行为不变；Swift 发布去重回归、完整 harness verify 与本机进程 CPU / 原生界面核验)
@@ -19,8 +19,9 @@ Tests: not-applicable (Rust 协议与后端行为不变；Swift 发布去重回�
 
 - [x] 真实采样定位占用线程及根因，保存脱敏证据。
 - [x] 相同快照不重复发布，真实变化与配对 / 错误语义有 Swift 回归。
-- [x] 完整 harness verify、Swift 测试、app 构建 / 本机启动与 CPU 对比通过。
-- [ ] 用户追加至少两轮 subagent CR、属实问题修复 / 复审、记录、main 推送与 strict 门禁完成。
+- [x] 完整 harness verify、Swift 测试、app 构建与去重版本机启动 / CPU 对比通过。
+- [ ] 最终签名版经用户处理系统钥匙串弹窗后完整启动并复测 CPU（外部解除条件）。
+- [x] 用户追加至少两轮 subagent CR、属实问题修复 / 复审、记录、main 推送与 strict 门禁完成。
 
 ## Verification
 
@@ -48,6 +49,8 @@ Tests: not-applicable (Rust 协议与后端行为不变；Swift 发布去重回�
 
 最终签名后的 app 需要 macOS 钥匙串重新允许读取已有身份：原生窗口仍 starting，sample 证实 Rust keyring get_secret 等待系统 SecurityAgent；启动等待时测到的0.1%不算完整运行的性能证据。自动化工具禁止操作 SecurityAgent，已请求用户手动处理，未读取密码或绕过保护。
 
+实现提交 9da3eda6a264886e3c12e7affb8ae412b13d79ca 已推送 main，harness check --require-pushed 通过。推送前远端同步并行图标提交 a438c0b，原推送因远端前进被拒；仅重放本地未推送提交并合并 STATUS 两行，保留双方记录，无强推。重放后受审代码 diff SHA-256 仍完全一致，原位置 app 的图标资源与最新 main 一致。代码与两轮 CR / 完整门禁已完成；任务只因最终本机系统授权等待而保留 blocked，不提前归档。
+
 ## Next
 
-先提交 / 推送已完成两轮CR的代码与证据并运行 strict 门禁；用户完成钥匙串弹窗后复测最终 app 的完整启动和 CPU，再记录实现提交并归档。
+解除条件：用户在 macOS 系统弹窗允许 YM_Link 读取已有钥匙串身份。随后读取主窗口确认完成启动，再测完整运行的 CPU；补充结果、将任务 done 归档并更新链接。若用户暂不处理，保留当前系统提示与任务，不把等待期低CPU计入验收。

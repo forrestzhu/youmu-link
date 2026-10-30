@@ -23,7 +23,7 @@
 
 | 工作 | 当前结论 / 下一动作 |
 | --- | --- |
-| [YML-013 空闲 CPU](tasks/YML-013-idle-cpu.md) | verifying：本机持续约98%定位为 SwiftUI 布局 / 重复状态发布；只在值变化时发布后，两次30s平均CPU 0.167% / 0.233%，主线程采样恢复等待。Python47 / Rust100（1 ignored）/ Swift9 与 app 构建、原生三页 / 地址窗口通过；原启动位置已更新；最终签名版等待用户手动允许读取既有钥匙串身份，未将启动等待时低CPU作为验收。两轮CR已通过，正做main门禁。数小时运行 / 真实镜像性能不据此代签。 |
+| [YML-013 空闲 CPU](tasks/YML-013-idle-cpu.md) | blocked（仅最终本机授权）：修复 / 两轮独立CR / main推送及strict已完成（9da3eda）。重复发布导致SwiftUI布局高CPU，去重版30s均值0.167% / 0.233%，原位置连续90s约0.422%；Python47 / Rust100（1 ignored）/ Swift9、app构建 / 原生三页通过。最终签名版等待用户手动允许读取既有钥匙串身份，之后再验完整启动与CPU，不将等待期低CPU计入结果；数小时 / 真实镜像性能另验。[报告](evidence/2026-10-30-idle-cpu.md)。 |
 | [YML-012 原标与Link选型](tasks/YML-012-link-logo.md) | verifying：用户已选定右侧加宽留白蓝金链环；正式资源/视觉核对、Mac构建/Swift6通过。本地完整回归受外部同产品实例占用固定端口影响，保留失败并交新提交CI完整核验；系统实显与官网YM-318继续。见[记录](evidence/2026-10-30-linked-app-icon.md)。 |
 | [YML-011 应用图标](tasks/archive/YML-011-app-icon.md) | done：用户选定第4个“镂刻”；正式SVG/PNG/ICNS/ICO、Mac/Windows/安装器及GitHub品牌引用完成。本机Python47/Rust100/Swift6、About/Finder实显及d6ccceb三平台CI/安装器通过；官网三语页眉已上线并通过25目标正常TLS回读。未替换既有公开Release。见[验收](evidence/2026-10-30-app-icon.md)。 |
 | [YML-010 产品界面文案](tasks/archive/YML-010-product-copy.md) | done：AGENTS 补充三条克制文案约束，优先简洁操作、图标与按需帮助；保留无障碍、真实限制及明确适用边界。仅文档修改，harness check 与 diff 自查通过；后续界面改动按此执行。 |
