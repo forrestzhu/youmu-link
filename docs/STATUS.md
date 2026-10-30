@@ -23,7 +23,7 @@
 
 | 工作 | 当前结论 / 下一动作 |
 | --- | --- |
-| [YML-018 Windows UI 对齐](tasks/YML-018-windows-ui-alignment.md) | verifying：按 Mac 对齐侧栏、分段导航、显示器卡片与三页空态，统一原生 WPF 控件；本机完整门禁通过，Windows CI 构建 / 生产 XAML 实窗渲染与截图待核验。Windows 11 人工交互尚未复验，YML-017 性能排查保持暂停。 |
+| [YML-018 Windows UI 对齐](tasks/YML-018-windows-ui-alignment.md) | 实现 /CI通过，用户机验收blocked：按Mac对齐侧栏、原生分段导航、显示器卡片与三页空态，统一WPF控件。f9df8d3 Windows103 /2 ignored、生产XAML双语两尺寸24状态 /12图抽检、真实ABI、Release /安装启动卸载通过；新版包已生成。待Windows11电脑上线补默认宽窗 /实际键盘 /高对比；YML-017性能排查保持暂停。[记录](evidence/2026-10-31-windows-ui-alignment.md)。 |
 | [YML-017 Windows 性能排查](tasks/YML-017-windows-idle-performance.md) | blocked（用户要求暂停，待实际连接VR后通知继续）：安装版激活后两段约61s平均0.87%单核；后继开发版恢复前台30s约67.73%单核（16线程归一化4.23%）。两次热线程栈经过UIA同步派发，观察干扰尚未排除；对照被并行任务关闭进程打断。已停止测量 / 窗口操作，未改产品代码，不宣称根因或真实性能验收通过。[报告](evidence/2026-10-31-windows-idle-performance.md)。 |
 | [YML-016 共享路径显示](tasks/archive/YML-016-share-path-display.md) | done：普通盘符 / UNC 展示修复 `9583921`；用户追加独立 CR 的 1 P2（尾点 / 尾空格目录复制歧义）已修复，6 项边界回归 red→green、复审关闭。本轮完整门禁（Rust103 /2 ignored、Python47 /3 skipped）、WPF / Release / ABI / smoke 通过，最终主窗口已启动、配置校验不变；文件页回读时用户 Esc 停止自动化，本轮最终文件页回读 not-run。原始路径与授权保留，未替换已安装版本或公开 Release。 |
 | [YML-015 GitHub 首页图](tasks/archive/YML-015-readme-hero.md) | done：内置 imagegen 生成暖白 / 蓝金 3D 设备示意图，第二轮增大辅助文字并加深实验说明；中英 README 已接入。850px 明暗背景与独立审阅通过，390px 缩略图细节需打开原图；完整替代文本与原 SVG 保留。实现 dd22349 已推送且 strict 门禁通过，未改应用或官网。 |

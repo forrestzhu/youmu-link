@@ -210,8 +210,8 @@ internal static class TemplateBindingTests
         foreach (var key in localizer.Keys) window.Resources[key] = localizer[key];
         window.Width = size.Width;
         window.Height = size.Height;
-        // These fixtures name the content viewport, excluding the operating system's frame.
-        // Hosted Windows desktops can clamp the HWND to their smaller work area.
+        // Fixture names describe outer window sizes that fit the hosted desktop.
+        // PNG dimensions are the actual client area, excluding the OS frame.
         window.WindowStartupLocation = WindowStartupLocation.Manual;
         window.Left = 0;
         window.Top = 0;
