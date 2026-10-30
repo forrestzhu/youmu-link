@@ -53,7 +53,8 @@ final class DesktopModel: ObservableObject {
     private var didReportReadError = false
     private var clearPairingTask: Task<Void, Never>?
 
-    init() {
+    init(startBackend: Bool = true) {
+        guard startBackend else { return }
         let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("YM_Link", isDirectory: true).path
         let name = Host.current().localizedName ?? "Mac"
@@ -136,19 +137,7 @@ final class DesktopModel: ObservableObject {
             let value = try decoder.decode(Snapshot.self, from: data)
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
-                if pairingInput.apply(value.pairing), let window = pairingInput.windowId {
-                    clearPairingTask?.cancel()
-                    let revision = pairingInput.rejectionCount
-                    clearPairingTask = Task { [weak self] in
-                        do { try await Task.sleep(for: .milliseconds(520)) } catch { return }
-                        self?.pairingInput.clearRejected(window: window, revision: revision)
-                    }
-                } else if value.pairing == nil { clearPairingTask?.cancel() }
-                snapshot = value
-                if let message = errorCursor.consume(value) {
-                    error = backendMessage(message)
-                }
-                didReportReadError = false
+                applySnapshot(value)
             }
         } catch {
             DispatchQueue.main.async { [weak self] in
@@ -156,6 +145,31 @@ final class DesktopModel: ObservableObject {
                 self.error = l("backend_response_failed")
                 didReportReadError = true
             }
+        }
+    }
+
+    func applySnapshot(_ value: Snapshot) {
+        // A successful read also recovers from a previous decode failure.
+        didReportReadError = false
+        guard value != snapshot else { return }
+        // Mutating a @Published value directly emits even when apply is a no-op.
+        var input = pairingInput
+        let rejected = input.apply(value.pairing)
+        if input != pairingInput { pairingInput = input }
+        if rejected, let window = input.windowId {
+            clearPairingTask?.cancel()
+            let revision = pairingInput.rejectionCount
+            clearPairingTask = Task { [weak self] in
+                do { try await Task.sleep(for: .milliseconds(520)) } catch { return }
+                guard let self else { return }
+                var input = self.pairingInput
+                input.clearRejected(window: window, revision: revision)
+                if input != self.pairingInput { self.pairingInput = input }
+            }
+        } else if value.pairing == nil { clearPairingTask?.cancel() }
+        snapshot = value
+        if let message = errorCursor.consume(value) {
+            error = backendMessage(message)
         }
     }
 

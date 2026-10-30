@@ -1,7 +1,111 @@
+import Combine
 import XCTest
 @testable import YM_Link
 
 final class ModelsTests: XCTestCase {
+    @MainActor
+    func testUnchangedSnapshotsDoNotPublishUIUpdates() {
+        let model = DesktopModel(startBackend: false)
+        var snapshots = 0
+        var inputs = 0
+        let snapshotSubscription = model.$snapshot.dropFirst().sink { _ in snapshots += 1 }
+        let inputSubscription = model.$pairingInput.dropFirst().sink { _ in inputs += 1 }
+        defer { snapshotSubscription.cancel(); inputSubscription.cancel() }
+        for _ in 0..<20 { model.applySnapshot(.empty) }
+        XCTAssertEqual(snapshots, 0, "idle polling must not invalidate the view graph")
+        XCTAssertEqual(inputs, 0, "absent pairing must not repeatedly reset published input")
+
+        var changed = Snapshot.empty
+        changed.status = "connected"
+        model.applySnapshot(changed)
+        model.applySnapshot(changed)
+        XCTAssertEqual(snapshots, 1)
+        XCTAssertEqual(inputs, 0, "unrelated state changes must not publish pairing input")
+        changed.errorId = 1
+        changed.error = "connection timed out"
+        model.applySnapshot(changed)
+        XCTAssertNotNil(model.error)
+        model.error = nil
+        model.applySnapshot(changed)
+        XCTAssertNil(model.error, "an unchanged snapshot must not repeat a dismissed error")
+        changed.errorId = 2
+        model.applySnapshot(changed)
+        XCTAssertNotNil(model.error, "a new error event with the same text must still arrive")
+        XCTAssertEqual(snapshots, 3)
+    }
+
+    @MainActor
+    func testChangedPairingAndTransferSnapshotsStillPublish() {
+        let model = DesktopModel(startBackend: false)
+        var updates = 0
+        let subscription = model.$snapshot.dropFirst().sink { _ in updates += 1 }
+        defer { subscription.cancel() }
+        var value = Snapshot.empty
+        value.pairing = Pairing(peerName: "Synthetic PC", code: nil, expiresIn: 120, mode: "enter", windowId: "window-1", attempt: 1, stage: "ready", error: nil, errorRevision: 0, retryAfterMs: 0)
+        model.applySnapshot(value)
+        model.editPairing("04")
+        var inputUpdates = 0
+        let inputSubscription = model.$pairingInput.dropFirst().sink { _ in inputUpdates += 1 }
+        defer { inputSubscription.cancel() }
+        value.pairing?.expiresIn = 119
+        model.applySnapshot(value)
+        XCTAssertEqual(model.pairingInput.text, "04")
+        XCTAssertEqual(inputUpdates, 0, "a countdown tick must not republish unchanged input")
+        value.pairing?.stage = "connecting"
+        model.applySnapshot(value)
+        value.pairing?.attempt = 2
+        value.pairing?.stage = "ready"
+        model.applySnapshot(value)
+        value.transfers = [Transfer(id: "transfer", name: "Synthetic.mp4", transferred: 0, total: 128, status: "running")]
+        model.applySnapshot(value)
+        value.transfers[0].transferred = 64
+        model.applySnapshot(value)
+        model.applySnapshot(value)
+        XCTAssertEqual(model.snapshot.transfers.first?.fraction, 0.5)
+        XCTAssertEqual(updates, 6)
+        value.pairing = nil
+        model.applySnapshot(value)
+        XCTAssertEqual(model.pairingInput.text, "")
+        XCTAssertEqual(inputUpdates, 1)
+    }
+
+    @MainActor
+    func testRepeatedRejectionDoesNotRestartFeedbackOrClearANewWindow() async throws {
+        let model = DesktopModel(startBackend: false)
+        var value = Snapshot.empty
+        value.pairing = Pairing(peerName: "Synthetic PC", code: nil, expiresIn: 120, mode: "enter", windowId: "window-1", attempt: 1, stage: "ready", error: nil, errorRevision: 0, retryAfterMs: 0)
+        model.applySnapshot(value)
+        model.editPairing("042")
+        value.pairing?.stage = "incorrect"
+        value.pairing?.error = "incorrect"
+        value.pairing?.errorRevision = 1
+        model.applySnapshot(value)
+        model.applySnapshot(value)
+        XCTAssertEqual(model.pairingInput.rejectionCount, 1)
+        XCTAssertTrue(model.pairingInput.feedback)
+        value.pairing?.stage = "ready"
+        value.pairing?.attempt = 2
+        model.applySnapshot(value)
+        try await Task.sleep(for: .milliseconds(650))
+        XCTAssertFalse(model.pairingInput.feedback)
+        XCTAssertEqual(model.pairingInput.text, "")
+        model.editPairing("12")
+        model.applySnapshot(value)
+        XCTAssertEqual(model.pairingInput.text, "12")
+        value.pairing?.stage = "incorrect"
+        value.pairing?.errorRevision = 2
+        model.applySnapshot(value)
+        value.pairing?.windowId = "window-2"
+        value.pairing?.stage = "ready"
+        value.pairing?.error = nil
+        value.pairing?.errorRevision = 0
+        model.applySnapshot(value)
+        model.editPairing("9")
+        try await Task.sleep(for: .milliseconds(650))
+        XCTAssertEqual(model.pairingInput.text, "9")
+        XCTAssertFalse(model.pairingInput.feedback)
+    }
+
     func testExplicitLanguageIgnoresHostPreferenceAndLocaleFolderCase() throws {
         let resources = try XCTUnwrap(Localizer.resourceBundle(relativeTo: Bundle(for: Self.self)))
         XCTAssertEqual(Localizer.string("start_mirror", language: "ZH-HANS", in: resources, preferredLanguages: ["en"]), "开始镜像")

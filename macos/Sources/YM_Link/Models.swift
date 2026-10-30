@@ -1,6 +1,6 @@
 import Foundation
 
-struct Snapshot: Decodable {
+struct Snapshot: Decodable, Equatable {
     var deviceName: String
     var status: String
     var listenPort: UInt16
@@ -30,7 +30,7 @@ struct SnapshotErrorCursor {
     }
 }
 
-struct Peer: Decodable, Identifiable {
+struct Peer: Decodable, Equatable, Identifiable {
     var id: String
     var address: String
     var name: String
@@ -39,7 +39,7 @@ struct Peer: Decodable, Identifiable {
     var trusted: Bool
 }
 
-struct Pairing: Decodable {
+struct Pairing: Decodable, Equatable {
     var peerName: String
     var code: String?
     var expiresIn: UInt64
@@ -65,7 +65,7 @@ struct Pairing: Decodable {
 }
 
 /// Logical-window input survives TCP retries; each ready attempt submits once.
-struct PairingInput {
+struct PairingInput: Equatable {
     private(set) var text = ""
     private(set) var feedback = false
     private(set) var errorVisible = false
@@ -96,14 +96,14 @@ struct PairingInput {
     }
 }
 
-struct Display: Decodable, Identifiable {
+struct Display: Decodable, Equatable, Identifiable {
     var id: UInt32
     var name: String
     var width: UInt32
     var height: UInt32
 }
 
-struct MirrorState: Decodable {
+struct MirrorState: Decodable, Equatable {
     var status: String
     var permission: String
     var displayId: UInt32?
@@ -123,13 +123,13 @@ struct MirrorState: Decodable {
     )
 }
 
-struct Share: Decodable, Identifiable {
+struct Share: Decodable, Equatable, Identifiable {
     var id: String
     var name: String
     var path: String
 }
 
-struct Transfer: Decodable, Identifiable {
+struct Transfer: Decodable, Equatable, Identifiable {
     var id: String
     var name: String
     var transferred: UInt64
