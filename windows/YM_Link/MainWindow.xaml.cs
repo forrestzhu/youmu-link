@@ -371,6 +371,8 @@ internal sealed class ShareItem(Share data, Localizer localizer) : Row<Share>(da
     // Keep the canonical path in Data; only the visible text uses ordinary Windows notation.
     public string Path => Data.Path switch
     {
+        // Ordinary Win32 parsing trims these suffixes and can resolve to a different directory.
+        var path when path.Split('\\').Any(part => part.EndsWith('.') || part.EndsWith(' ')) => path,
         var path when path.StartsWith(@"\\?\UNC\", StringComparison.OrdinalIgnoreCase) => @"\\" + path[8..],
         var path when path.Length >= 7 && path.StartsWith(@"\\?\", StringComparison.Ordinal)
             && char.IsAsciiLetter(path[4]) && path[5] == ':' && path[6] == '\\' => path[4..],
