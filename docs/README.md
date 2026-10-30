@@ -18,7 +18,7 @@
 | 开发流程与 harness | [harness/README](harness/README.md) |
 | harness 改进提案 | [harness/IMPROVEMENT](harness/IMPROVEMENT.md) |
 | 打包与安装器 | [DISTRIBUTION](engineering/DISTRIBUTION.md) |
-| 应用图标与正式矢量 | [资源与再生](../assets/app-icon/README.md)、[原生 / CI 验收](evidence/2026-10-30-app-icon.md) |
+| 应用图标与正式矢量 | [资源与再生](../assets/app-icon/README.md)、[链环版验收](evidence/2026-10-30-linked-app-icon.md)、[镂刻版历史验收](evidence/2026-10-30-app-icon.md) |
 | 任务记录 | [tasks/](tasks/)（归档在 `tasks/archive/`） |
 | 当前 macOS 实现任务 | [YML-002](tasks/YML-002-macos-native.md) |
 | 当前 Windows 实现任务 | [YML-003](tasks/YML-003-windows-native.md)、[实施计划](plans/2026-10-27-windows-native.md) |

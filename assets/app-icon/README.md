@@ -1,6 +1,6 @@
 # YM_Link app icon
 
-The approved “carved” variant keeps the Youmu family palette and cinema horizon: an open navy M surrounds a solid Y on an ivory tile. Selected by the user on 2026-10-30 in YML-011; the editable vector is the source of truth.
+The approved linked variant preserves the original Youmu solid M, negative-space Y and gold cinema horizon. Navy and gold chain links cross the lower Y, with a generous ivory clearance around them. Selected by the user on 2026-10-30 in YML-012, replacing the earlier carved variant; the editable vector is the source of truth.
 
 - `ym-link.svg`: canonical 1024 × 1024 vector, with a transparent margin around the application tile.
 - `ym-link-1024.png`: rendered master.
