@@ -23,6 +23,7 @@
 
 | 工作 | 当前结论 / 下一动作 |
 | --- | --- |
+| [YML-017 Windows 性能排查](tasks/YML-017-windows-idle-performance.md) | blocked（用户要求暂停，待实际连接VR后通知继续）：安装版激活后两段约61s平均0.87%单核；后继开发版恢复前台30s约67.73%单核（16线程归一化4.23%）。两次热线程栈经过UIA同步派发，观察干扰尚未排除；对照被并行任务关闭进程打断。已停止测量 / 窗口操作，未改产品代码，不宣称根因或真实性能验收通过。[报告](evidence/2026-10-31-windows-idle-performance.md)。 |
 | [YML-016 共享路径显示](tasks/archive/YML-016-share-path-display.md) | done：普通盘符 / UNC 展示修复 `9583921`；用户追加独立 CR 的 1 P2（尾点 / 尾空格目录复制歧义）已修复，6 项边界回归 red→green、复审关闭。本轮完整门禁（Rust103 /2 ignored、Python47 /3 skipped）、WPF / Release / ABI / smoke 通过，最终主窗口已启动、配置校验不变；文件页回读时用户 Esc 停止自动化，本轮最终文件页回读 not-run。原始路径与授权保留，未替换已安装版本或公开 Release。 |
 | [YML-015 GitHub 首页图](tasks/archive/YML-015-readme-hero.md) | done：内置 imagegen 生成暖白 / 蓝金 3D 设备示意图，第二轮增大辅助文字并加深实验说明；中英 README 已接入。850px 明暗背景与独立审阅通过，390px 缩略图细节需打开原图；完整替代文本与原 SVG 保留。实现 dd22349 已推送且 strict 门禁通过，未改应用或官网。 |
 | [YML-014 Windows 安装包](tasks/archive/YML-014-windows-performance-package.md) | done（安装包准备）：10-31 本机最新 main Release / WPF / 真实 ABI / 启动 smoke、许可与 ZIP 校验通过；已取得并校验 run41085401188 的 Windows x64 EXE（源码5e85961，与当前main产品 / 依赖 / 资源 / 打包脚本一致，仅文档不同），CI 安装 / 启动 / 卸载通过，完整 SHA 与许可保留。待用户自行安装后实测空闲 CPU / 内存及交互后回落；未以 Mac 修复或 CI 代签 Windows 性能。 |
