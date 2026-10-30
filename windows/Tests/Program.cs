@@ -13,6 +13,25 @@ static void Check(bool ok, string message)
 
 var en = new Localizer("en");
 var zh = new Localizer("zh-Hans");
+foreach (var (raw, expected) in new[]
+{
+    (@"\\?\C:\Films", @"C:\Films"),
+    (@"\\?\z:\", @"z:\"),
+    (@"\\?\C:\影片 资料\" + new string('a', 280), @"C:\影片 资料\" + new string('a', 280)),
+    (@"\\?\UNC\server\media\影片", @"\\server\media\影片"),
+    (@"\\?\unc\server\media", @"\\server\media"),
+    (@"C:\Films", @"C:\Films"),
+    (@"\\server\media", @"\\server\media"),
+    (@"\\?\Volume{00000000-0000-0000-0000-000000000000}\", @"\\?\Volume{00000000-0000-0000-0000-000000000000}\"),
+    (@"\\.\C:\Films", @"\\.\C:\Films"),
+    (@"\\?\C:relative", @"\\?\C:relative"),
+    ("", ""),
+})
+{
+    var row = new ShareItem(new Share { Id = "share-test", Name = "Films", Path = raw }, en);
+    Check(row.Path == expected, "Shared folder display must use a readable Windows path.");
+    Check(row.Data.Path == raw && row.Id == "share-test", "Path display must preserve the original share and authorization ID.");
+}
 Check(en.Keys.Order().SequenceEqual(zh.Keys.Order()), "Localization keys must match.");
 Check(en.Keys.All(key => !string.IsNullOrWhiteSpace(en[key]) && !string.IsNullOrWhiteSpace(zh[key])), "Empty localization.");
 Check(new Localizer("unsupported")["connect"] == en["connect"], "Unknown culture must fall back to English.");

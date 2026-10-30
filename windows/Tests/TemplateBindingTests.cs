@@ -57,7 +57,7 @@ internal static class TemplateBindingTests
                 var template = (DataTemplate)resources["TestRow"];
                 foreach (var key in localizer.Keys) resources[key] = localizer[key];
                 object row = name == "ShareList"
-                    ? new ShareItem(new Share { Id = "test", Name = "Films", Path = "Test folder" }, localizer)
+                    ? new ShareItem(new Share { Id = "test", Name = "Films", Path = @"\\?\C:\Films" }, localizer)
                     : new TransferItem(new Transfer { Id = "test", Name = "Film", Transferred = 25, Total = 100, Status = "transferring" }, localizer);
                 var host = new ContentControl { Content = row, ContentTemplate = template, Resources = resources };
                 host.ApplyTemplate();
@@ -65,12 +65,12 @@ internal static class TemplateBindingTests
                 host.Arrange(new Rect(0, 0, 700, 500));
                 host.UpdateLayout();
                 Dispatcher.CurrentDispatcher.Invoke(DispatcherPriority.ApplicationIdle, new Action(() => { }));
-                if (name == "ShareList" && Find<TextBox>(host)?.Text != "Test folder") throw new InvalidOperationException("Share path was not rendered.");
+                if (name == "ShareList" && Find<TextBox>(host)?.Text != @"C:\Films") throw new InvalidOperationException("Readable share path was not rendered.");
                 if (name == "TransferList" && Find<ProgressBar>(host)?.Value != 0.25) throw new InvalidOperationException("Transfer progress was not rendered.");
-                if (row is ShareItem share) share.Update(share.Data with { Path = "Updated folder" }, localizer);
+                if (row is ShareItem share) share.Update(share.Data with { Path = @"\\?\UNC\server\media" }, localizer);
                 if (row is TransferItem transfer) transfer.Update(transfer.Data with { Transferred = 75 }, localizer);
                 Dispatcher.CurrentDispatcher.Invoke(DispatcherPriority.ApplicationIdle, new Action(() => { }));
-                if (name == "ShareList" && Find<TextBox>(host)?.Text != "Updated folder") throw new InvalidOperationException("Share path snapshot update was not rendered.");
+                if (name == "ShareList" && Find<TextBox>(host)?.Text != @"\\server\media") throw new InvalidOperationException("Readable share path snapshot update was not rendered.");
                 if (name == "TransferList" && Find<ProgressBar>(host)?.Value != 0.75) throw new InvalidOperationException("Transfer progress snapshot update was not rendered.");
                 host.Content = null;
             }

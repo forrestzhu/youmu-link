@@ -368,7 +368,14 @@ internal sealed class ShareItem(Share data, Localizer localizer) : Row<Share>(da
 {
     public string Id => Data.Id;
     public string Name => Data.Name;
-    public string Path => Data.Path;
+    // Keep the canonical path in Data; only the visible text uses ordinary Windows notation.
+    public string Path => Data.Path switch
+    {
+        var path when path.StartsWith(@"\\?\UNC\", StringComparison.OrdinalIgnoreCase) => @"\\" + path[8..],
+        var path when path.Length >= 7 && path.StartsWith(@"\\?\", StringComparison.Ordinal)
+            && char.IsAsciiLetter(path[4]) && path[5] == ':' && path[6] == '\\' => path[4..],
+        _ => Data.Path,
+    };
 }
 internal sealed class TransferItem(Transfer data, Localizer localizer) : Row<Transfer>(data, localizer)
 {
