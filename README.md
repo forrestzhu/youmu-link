@@ -4,29 +4,29 @@
 
 The Windows and macOS desktop companion for **Youmu VR Player** on Meta Quest 3 and 3S. Bring your computer's videos into your headset over your local network.
 
-[**Download & setup**](https://youmu.forrestzhu.com/ym-link/) · [简体中文](docs/README.zh-CN.md) · [Youmu VR Player](https://youmu.forrestzhu.com/en/)
+[**Download & setup**](docs/engineering/DISTRIBUTION.md) · [简体中文](docs/README.zh-CN.md) · [Youmu VR Player](https://youmu.forrestzhu.com/en/)
 
 ![YM_Link connects a Windows or Mac computer to Youmu on Quest over an encrypted local network. Share selected folders, browse videos and explore screen mirroring.](docs/assets/ym-link-overview.svg)
 
-### Bring your library with you
+## Bring your library with you
 
 Share the folders you choose. Browse computer videos in Youmu, stream them without copying first, or transfer them to your headset for later.
 
-### A bigger screen for your desktop
+## A bigger screen for your desktop
 
 Mirror a selected display with optional system audio. Screen mirroring is experimental; real capture, Quest playback and audio synchronization are still being validated.
 
-### Pair once. Keep it local.
+## Pair once. Keep it local.
 
 Find your computer on the same network, enter a four-digit pairing code and reconnect with saved trust. Connections are encrypted; YM_Link needs no account or cloud relay.
 
-### Get started
+## Get started
 
 1. Install YM_Link on your computer and open Youmu on your Quest 3 or 3S.
 2. Connect both devices to the same local network, open **YM_Link** in Youmu and pair with the four-digit code.
 3. Add a shared folder on your computer, then browse it in your headset.
 
-**Development preview.** Current desktop builds target Windows x64 and Apple Silicon Macs (macOS 14+). Builds are unsigned / not notarized. Intel Mac, Windows ARM64 and older target OS versions have not been validated. See the [download page](https://youmu.forrestzhu.com/ym-link/) for availability and installation notes, and [validation status](docs/STATUS.md) for tested behavior. Youmu's access requirements apply to external media sources.
+**Development preview.** Current desktop builds target Windows x64 and Apple Silicon Macs (macOS 14+). Builds are unsigned / not notarized. Intel Mac, Windows ARM64 and older target OS versions have not been validated. Use the [download guide](docs/engineering/DISTRIBUTION.md) for current builds and installation notes. A dedicated website download page is being prepared. See [validation status](docs/STATUS.md) for tested behavior; Quest video playback also needs further hardware validation. Youmu's access requirements apply to external media sources.
 
 ---
 
