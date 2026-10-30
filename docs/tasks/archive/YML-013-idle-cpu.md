@@ -1,6 +1,6 @@
 # YML-013：修复 macOS 空闲界面持续高 CPU 占用
 
-Status: blocked
+Status: done
 Workflow: behavior
 Requires-Device: no
 Tests: not-applicable (Rust 协议与后端行为不变；Swift 发布去重回归、完整 harness verify 与本机进程 CPU / 原生界面核验)
@@ -20,7 +20,7 @@ Tests: not-applicable (Rust 协议与后端行为不变；Swift 发布去重回�
 - [x] 真实采样定位占用线程及根因，保存脱敏证据。
 - [x] 相同快照不重复发布，真实变化与配对 / 错误语义有 Swift 回归。
 - [x] 完整 harness verify、Swift 测试、app 构建与去重版本机启动 / CPU 对比通过。
-- [ ] 最终签名版经用户处理系统钥匙串弹窗后完整启动并复测 CPU（外部解除条件）。
+- [x] 最终签名版经用户处理系统钥匙串弹窗后完整启动并复测 CPU。
 - [x] 用户追加至少两轮 subagent CR、属实问题修复 / 复审、记录、main 推送与 strict 门禁完成。
 
 ## Verification
@@ -45,12 +45,16 @@ Tests: not-applicable (Rust 协议与后端行为不变；Swift 发布去重回�
 
 最终收敛版本 Swift9/9 与 app 重建通过。最终完整 verify 曾遇既定 UDP 发现端口 AddrInUse；即时检查无仍占用，端口释放后单次完整重跑通过 Python47 / Rust100 passed、1 ignored、rustfmt / 仓库检查，保留首次失败。最终 app 构建 SHA-256 为 7ed31b267c60e1c5afc14368fb1acede9a3f1969d121f811aef765683387cdf4；在原启动位置更新可执行文件并保留既有资源，重新签名后本机 SHA-256 为 bbe1bd3030c85ee9826ba34cb9ad05a0c9d85522d44fb08207c606ac99c92682，签名严格校验通过并已启动。
 
-详细采样与两轮 CR 见[性能报告](../evidence/2026-10-30-idle-cpu.md)。
+详细采样与两轮 CR 见[性能报告](../../evidence/2026-10-30-idle-cpu.md)。
 
 最终签名后的 app 需要 macOS 钥匙串重新允许读取已有身份：原生窗口仍 starting，sample 证实 Rust keyring get_secret 等待系统 SecurityAgent；启动等待时测到的0.1%不算完整运行的性能证据。自动化工具禁止操作 SecurityAgent，已请求用户手动处理，未读取密码或绕过保护。
 
-实现提交 9da3eda6a264886e3c12e7affb8ae412b13d79ca 已推送 main，harness check --require-pushed 通过。推送前远端同步并行图标提交 a438c0b，原推送因远端前进被拒；仅重放本地未推送提交并合并 STATUS 两行，保留双方记录，无强推。重放后受审代码 diff SHA-256 仍完全一致，原位置 app 的图标资源与最新 main 一致。代码与两轮 CR / 完整门禁已完成；任务只因最终本机系统授权等待而保留 blocked，不提前归档。
+实现提交 9da3eda6a264886e3c12e7affb8ae412b13d79ca 已推送 main，harness check --require-pushed 通过。推送前远端同步并行图标提交 a438c0b，原推送因远端前进被拒；仅重放本地未推送提交并合并 STATUS 两行，保留双方记录，无强推。重放后受审代码 diff SHA-256 仍完全一致，原位置 app 的图标资源与最新 main 一致。代码与两轮 CR / 完整门禁已完成；上轮仅因最终本机系统授权等待而保留 blocked，未提前归档；本轮用户已解除该外部条件。
+
+用户已在系统弹窗允许，外部阻塞解除。同一最终签名版进程无需重启即完成身份读取；原生窗口显示已有可信设备、实际显示器与“正在搜索”，UDP47610已绑定。完整运行后连续两段30.01s累计CPU分别0.05s / 0.04s，均值0.167% / 0.133%，总60.02s平均约0.150%。5秒sample主线程4348/4348样本处于runloop等待，未再停在钥匙串或持续布局；两个Rust线程正常等待。三页面切换及返回均通过，再静置30.01s累计CPU0.04s、均值0.133%；三段共90.03s累计CPU0.13s、平均约0.144%。签名严格校验与最终本机SHA保持一致。
+
+归档链接由只读 closure_audit 复核，保留两轮CR与历史失败，代码指纹不变。本轮仅补充实际运行证据与文档，按纯文档流程执行 harness check。
 
 ## Next
 
-解除条件：用户在 macOS 系统弹窗允许 YM_Link 读取已有钥匙串身份。随后读取主窗口确认完成启动，再测完整运行的 CPU；补充结果、将任务 done 归档并更新链接。若用户暂不处理，保留当前系统提示与任务，不把等待期低CPU计入验收。
+本次空闲高CPU修复完成并归档；数小时运行、真实镜像与传输性能继续按相应任务实际验收，本次不代签。
