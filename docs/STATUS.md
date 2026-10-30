@@ -22,6 +22,7 @@
 ## 当前工作与待验收
 
 | 工作 | 当前结论 / 下一动作 |
+| [YML-009 首页与安装包](tasks/YML-009-distribution-home.md) | verifying：英文功能首页 / 中文页 / 连接图、工程文档分离；CI 新增 Windows x64 安装程序和 Mac arm64 DMG，保留 ZIP / 许可 / 校验和。本机 DMG 验证与打包回归通过，云端安装 smoke 待跑；官网页面由游目 YM-308 跟踪，公开发布方式待用户确认。 |
 | --- | --- |
 | [YML-008 四位配对](tasks/archive/YML-008-four-digit-pairing.md) | **原生实现与组件验证通过**：四位v4、原位错码清空、自动提交与信任保持；Android1147的22E2E /171语言 /192视觉通过。正常断开误报及SwiftPM复用旧后端均已修，完整99 Rust /38 Python /6 Swift、真实重链与各增量双轮独立CR通过。6d613d0新app双方向原生配对 /Known重连 /共享目录各1/1，结束无误报，临时配对清理至0；[证据](evidence/2026-10-29-four-digit-native-relink.md)。真实录屏 /声音 /XR与Windows↔Quest LAN另验。 |
 | [YML-007 配对与重复候选](tasks/archive/YML-007-pairing-discovery-regression.md) | done（桌面归并与原生配对）：同IP端口变化改为替换匿名行，认证清理历史行并保留可信身份；4项新回归、完整37 Python /78 Rust /1 ignored、Swift4与本机app构建启动通过。初轮端口占用 /超时保留；同一实现CI三平台单次重跑全success（首轮Mac容量取消保留）；Quest2339→原生Mac1/1真实组件配对 /Known重连通过，临时身份已清理；XR /实际录屏声音另验。[报告](evidence/2026-10-28-pairing-discovery-regression.md)。 |

@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="440" viewBox="0 0 1200 440" role="img" aria-labelledby="title desc">
+  <title id="title">From your computer to your private cinema</title>
+  <desc id="desc">YM_Link on Windows or Mac connects to Youmu on Meta Quest 3 and 3S over an encrypted local network. Share selected folders, browse and transfer videos. Screen mirroring is experimental.</desc>
+  <rect width="1200" height="440" rx="16" fill="#17283e"/>
+  <g font-family="Arial, sans-serif">
+    <text x="58" y="62" fill="#f7f5ef" font-size="27" font-weight="600">Your library, a little closer.</text>
+    <text x="58" y="93" fill="#c1cdda" font-size="16">YM_Link + Youmu VR Player</text>
+    <rect x="60" y="136" width="290" height="169" rx="10" fill="#253e56" stroke="#889fb5" stroke-width="2"/>
+    <rect x="77" y="153" width="256" height="135" rx="3" fill="#f7f5ef"/>
+    <path d="M99 182h50l12 13h146v68H99z" fill="#d8c895"/>
+    <path d="M192 212v32l28-16z" fill="#253e56"/>
+    <path d="M205 306v24m-58 0h116" stroke="#889fb5" stroke-width="6" stroke-linecap="round"/>
+    <text x="205" y="372" text-anchor="middle" fill="#f7f5ef" font-size="20">Windows / macOS</text>
+    <text x="205" y="400" text-anchor="middle" fill="#c1cdda" font-size="15">Share only the folders you choose</text>
+    <path d="M395 224h334m-14-9 14 9-14 9" stroke="#d8c895" stroke-width="2" fill="none"/>
+    <text x="562" y="195" text-anchor="middle" fill="#f7f5ef" font-size="18">Encrypted local connection</text>
+    <text x="562" y="260" text-anchor="middle" fill="#c1cdda" font-size="15">Four-digit pairing · No cloud relay</text>
+    <path d="M808 180c0-23 19-42 42-42h170c23 0 42 19 42 42v78c0 23-19 42-42 42h-41l-23-20h-42l-23 20h-41c-23 0-42-19-42-42z" fill="#f7f5ef"/>
+    <rect x="831" y="171" width="208" height="92" rx="28" fill="#253e56"/>
+    <circle cx="883" cy="216" r="21" fill="#889fb5"/><circle cx="987" cy="216" r="21" fill="#889fb5"/>
+    <text x="935" y="345" text-anchor="middle" fill="#f7f5ef" font-size="20">Youmu on Quest 3 / 3S</text>
+    <text x="935" y="374" text-anchor="middle" fill="#c1cdda" font-size="15">Browse · Stream · Transfer</text>
+    <text x="935" y="400" text-anchor="middle" fill="#d8c895" font-size="15">Screen mirroring: experimental</text>
+  </g>
+</svg>

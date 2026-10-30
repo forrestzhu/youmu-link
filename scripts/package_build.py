@@ -87,6 +87,7 @@ def package_build(platform, revision):
             digest.update(chunk)
     archive.with_suffix(".zip.sha256").write_text(f"{digest.hexdigest()}  {archive.name}\n", encoding="utf-8", newline="\n")
     print(f"Packaged {archive.relative_to(ROOT).as_posix()} and SHA-256 checksum.")
+    return archive
 
 
 def main():
