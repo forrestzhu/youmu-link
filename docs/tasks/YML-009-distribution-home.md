@@ -1,6 +1,6 @@
 # YML-009：英文功能首页、多平台安装包与官网下载衔接
 
-Status: blocked
+Status: doing
 Workflow: maintenance
 Requires-Device: no
 Tests: not-applicable (不修改 Rust / 协议；打包工具由 Python 回归及原生平台 CI 安装 / 挂载 smoke 覆盖)
@@ -9,7 +9,7 @@ Tests: not-applicable (不修改 Rust / 协议；打包工具由 Python 回归�
 
 将 GitHub 首页改为英文优先、面向功能和下载，附连接示意图及独立中文页；构建 / 测试细节移入开发指南。现有 CI 增加 Windows x64 安装程序与 macOS arm64 DMG，保留 ZIP、许可与 SHA-256。官网侧由 [YM-308](https://github.com/forrestzhu/youmu/blob/main/docs/tasks/YM-308-ym-link-download.md) 跟踪。
 
-用户要求官网首页透出 YM_Link 下载入口。公开 Release 发布方式已向用户询问，未获答复前只生成制品，不自动发布。无应用 / 协议 / Android 功能修改，不将打包视为设备体验验收。
+用户要求官网首页透出 YM_Link 下载入口。2026-10-30 已明确选择“手动发布开发预览”，授权本次公开 prerelease；后续 main CI 不自动发布。用户追加贡献指南与安全政策英文优先，保留独立中文页面。无应用 / 协议 / Android 功能修改，不将打包视为设备体验验收。
 
 ## Acceptance
 
@@ -28,4 +28,4 @@ Python 打包回归；macOS 实际 DMG 构建 / 挂载 / 签名 / 资源验证�
 
 ## Next
 
-解除条件：确认公开 Release 方式，并恢复官网已有授权部署访问；两项均已询问用户。官网尚未上线，不标 done。桌面功能与安装器已提交，三平台实际 CI 和独立下载核验全部通过，详见[完整记录](../evidence/2026-10-30-distribution-home.md)。
+用户已确认手动发布开发预览，并授权通过 UU 远程检查 Windows 上的现有部署访问。当前发布已验证制品，官网上线由 YM-308 持续推进；尚未取得实际上线与匿名下载回读前不标 done。桌面功能与安装器已提交，三平台实际 CI 和独立下载核验全部通过，详见[完整记录](../evidence/2026-10-30-distribution-home.md)。
