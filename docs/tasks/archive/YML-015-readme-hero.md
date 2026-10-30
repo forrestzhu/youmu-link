@@ -1,6 +1,6 @@
 # YML-015：GitHub 首页示意图视觉升级
 
-Status: verifying
+Status: done
 Workflow: maintenance
 Requires-Device: no
 Tests: not-applicable (仅 README 图像与文档引用更新，无应用或协议行为变化；执行图像视觉检查、独立审阅与 harness check)
@@ -14,7 +14,7 @@ Tests: not-applicable (仅 README 图像与文档引用更新，无应用或协�
 - [x] 生成并检查新的横向图像，电脑与头显关系清楚，正文缩放可读。
 - [x] 图中文字与产品事实一致，保留实验镜像限制，未虚构性能或验收结果。
 - [x] 中英 README 引用项目内新资源并保留有效替代文本；记录生成提示词与工具。
-- [ ] 独立审阅、harness check、自查 diff、main commit / push 与 require-pushed 门禁完成。
+- [x] 独立审阅、harness check、自查 diff、main commit / push 与 require-pushed 门禁完成。
 
 ## Verification
 
@@ -34,6 +34,8 @@ Tests: not-applicable (仅 README 图像与文档引用更新，无应用或协�
 
 首次 main 推送因远端并行增加 Windows 性能测试包记录而被拒；fetch 后将本地尚未推送的图像提交重放至 1654d97，保留远端记录。远端已分配 YML-014，本任务同步顺延为 YML-015，不改写已推送历史、不强推。
 
+图像与 README 实现提交 dd223490b3957652568975d9e7a61e2e6b8d1a84 已推送 main；同步后 harness check（83 text files）及 check --require-pushed 实际通过，HEAD 与真实 origin/main 相等。新版[原始 PNG](../../assets/ym-link-overview-v2.png)与[两轮提示词](../../assets/ym-link-overview-v2.prompt.txt)均在仓库内，中英 README 已引用，不依赖生成器私有目录。本次收尾仅将任务归档并更新 STATUS。
+
 ## Next
 
-执行 harness check，提交并推送 main 后执行 require-pushed；通过后归档并更新 STATUS。
+本次首页图更新完成；手机缩略图查看辅助细节时打开原图，应用与真实硬件验收继续按原任务进行。
