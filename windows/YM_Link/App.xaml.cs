@@ -16,10 +16,12 @@ public partial class App : Application
         base.OnStartup(e);
         if (SystemParameters.HighContrast)
         {
-            foreach (var key in new[] { "WindowSurface", "SidebarSurface", "SoftSurface", "ErrorSurface" }) Resources[key] = SystemColors.WindowBrush;
-            foreach (var key in new[] { "TextInk", "SecondaryInk", "ErrorInk", "Hairline" }) Resources[key] = SystemColors.WindowTextBrush;
-            Resources["Accent"] = SystemColors.HighlightBrush;
+            foreach (var key in new[] { "WindowSurface", "SidebarSurface", "SoftSurface", "ControlSurface", "HoverSurface", "SelectedSurface", "AccentSoft", "ErrorSurface" }) Resources[key] = SystemColors.WindowBrush;
+            foreach (var key in new[] { "TextInk", "SecondaryInk", "ErrorInk", "SuccessInk", "Hairline", "ControlBorder" }) Resources[key] = SystemColors.WindowTextBrush;
+            foreach (var key in new[] { "Accent", "AccentHover", "AccentPressed" }) Resources[key] = SystemColors.HighlightBrush;
             Resources["AccentInk"] = SystemColors.HighlightTextBrush;
+            foreach (var key in new[] { "SelectionSurface", "HighlightSurface" }) Resources[key] = SystemColors.HighlightBrush;
+            foreach (var key in new[] { "SelectionInk", "HighlightInk" }) Resources[key] = SystemColors.HighlightTextBrush;
         }
         var localizer = new Localizer(UserSettings.ReadLanguage());
         SetLanguageResources(localizer);

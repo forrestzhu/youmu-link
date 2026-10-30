@@ -13,5 +13,6 @@
   </PropertyGroup>
   <ItemGroup>
     <EmbeddedResource Include="Resources/*.json" />
+    <Resource Include="../../assets/app-icon/ym-link-1024.png" Link="Resources/ym-link.png" />
   </ItemGroup>
 </Project>
