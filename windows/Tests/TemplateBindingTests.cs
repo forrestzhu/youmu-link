@@ -236,7 +236,7 @@ internal static class TemplateBindingTests
         Need<FrameworkElement>(window, "NoDisplays").Visibility = Visibility.Collapsed;
         Need<ListBox>(window, "ShareList").ItemsSource = new[]
         {
-            new ShareItem(new Share { Id = "fixture-share", Name = "Cinema archive", Path = @"\\?\C:\Cinema archive\Documentaries and family films\" + string.Concat(Enumerable.Repeat("A long synthetic folder name for wrapping ", 5)) + @"\Films" }, localizer),
+            new ShareItem(new Share { Id = "fixture-share", Name = "Cinema archive", Path = @"\\?\C:\Cinema archive\Documentaries and family films\" + string.Concat(Enumerable.Repeat("A long synthetic folder name for wrapping ", 5)).TrimEnd() + @"\Films" }, localizer),
         };
         Need<FrameworkElement>(window, "NoShares").Visibility = Visibility.Collapsed;
         Need<ItemsControl>(window, "TransferList").ItemsSource = new[]
