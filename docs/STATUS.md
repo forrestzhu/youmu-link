@@ -23,6 +23,7 @@
 
 | 工作 | 当前结论 / 下一动作 |
 | --- | --- |
+| [YML-012 原标与Link选型](tasks/YML-012-link-logo.md) | verifying：按用户示意提供5个“原实心YM+下部链环”候选；用户偏好蓝金双色第4款，已加宽链环外围米白留白并提供前后对照。待视觉确认，尚未替换生产资源。 |
 | [YML-011 应用图标](tasks/archive/YML-011-app-icon.md) | done：用户选定第4个“镂刻”；正式SVG/PNG/ICNS/ICO、Mac/Windows/安装器及GitHub品牌引用完成。本机Python47/Rust100/Swift6、About/Finder实显及d6ccceb三平台CI/安装器通过；官网三语页眉已上线并通过25目标正常TLS回读。未替换既有公开Release。见[验收](evidence/2026-10-30-app-icon.md)。 |
 | [YML-010 产品界面文案](tasks/archive/YML-010-product-copy.md) | done：AGENTS 补充三条克制文案约束，优先简洁操作、图标与按需帮助；保留无障碍、真实限制及明确适用边界。仅文档修改，harness check 与 diff 自查通过；后续界面改动按此执行。 |
 | [YML-009 首页与安装包](tasks/archive/YML-009-distribution-home.md) | done：README / CONTRIBUTING / SECURITY英文优先并保留中文；Windows安装器 / Mac DMG及三平台真实CI、手动[公开预览](https://github.com/forrestzhu/youmu-link/releases/tag/v0.1.0-preview.20261030.1)已交付。[官网品牌下载](https://youmu.forrestzhu.com/ym-link/)已上线、首页可达，YM标识 / 平台图标、两轮CR / 24路由正常TLS字节核验 / Chrome实际DMG下载通过。[记录](evidence/2026-10-30-distribution-home.md)。main不自动发版。 |
