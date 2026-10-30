@@ -27,7 +27,7 @@ internal static class TemplateBindingTests
         thread.Start();
         if (!thread.Join(TimeSpan.FromSeconds(60))) throw new TimeoutException("WPF template regression timed out.");
         failure?.Throw();
-        Console.WriteLine("PASS: production WPF row bindings and bilingual workspace layouts, workspace selection, control templates, dropdown selection and recovery states.");
+        Console.WriteLine("PASS: production WPF row bindings and bilingual content viewport layouts, workspace selection, control templates, dropdown selection and recovery states.");
     }
 
     private static XDocument ReadXaml(string name)
@@ -116,7 +116,7 @@ internal static class TemplateBindingTests
                 window.Show();
                 FlushLayout(window);
                 var tabs = Need<FrameworkElement>(window, "WorkspaceTabs");
-                MainWindow.ApplyHeaderLayout(size.Width, tabs, Need<FrameworkElement>(window, "PageHeading"));
+                MainWindow.ApplyHeaderLayout(((FrameworkElement)window.Content).ActualWidth, tabs, Need<FrameworkElement>(window, "PageHeading"));
                 MainWindow.ApplyDisplayLayout(Need<ListBox>(window, "DisplayChoice"));
                 FlushLayout(window);
                 VerifyKeyboardContracts(window);
@@ -210,6 +210,11 @@ internal static class TemplateBindingTests
         foreach (var key in localizer.Keys) window.Resources[key] = localizer[key];
         window.Width = size.Width;
         window.Height = size.Height;
+        // These fixtures name the content viewport, excluding the operating system's frame.
+        // Hosted Windows desktops can clamp the HWND to their smaller work area.
+        var content = (FrameworkElement)window.Content;
+        content.Width = size.Width;
+        content.Height = size.Height;
         window.WindowStartupLocation = WindowStartupLocation.Manual;
         window.Left = 0;
         window.Top = 0;
@@ -258,7 +263,7 @@ internal static class TemplateBindingTests
         var choices = navigation.Children.OfType<RadioButton>().ToArray();
         choices[index].IsChecked = true;
         MainWindow.ApplyWorkspaceSelection(window);
-        MainWindow.ApplyHeaderLayout(window.ActualWidth, Need<FrameworkElement>(window, "WorkspaceTabs"), Need<FrameworkElement>(window, "PageHeading"));
+        MainWindow.ApplyHeaderLayout(((FrameworkElement)window.Content).ActualWidth, Need<FrameworkElement>(window, "WorkspaceTabs"), Need<FrameworkElement>(window, "PageHeading"));
         FlushLayout(window);
         var key = (string)choices[index].Tag;
         Require(choices.Count(choice => choice.IsChecked == true) == 1, "Workspace choices must remain mutually exclusive.");
@@ -319,6 +324,15 @@ internal static class TemplateBindingTests
         window.UpdateLayout();
         Dispatcher.CurrentDispatcher.Invoke(DispatcherPriority.ApplicationIdle, new Action(() => { }));
         window.UpdateLayout();
+        var content = (FrameworkElement)window.Content;
+        var viewport = new Size(content.Width, content.Height);
+        // Arrange after the HWND layout pass so its clamped client bounds cannot shrink the
+        // named fixture viewport. Keep the tree connected to the shown native WPF window.
+        content.Measure(viewport);
+        content.Arrange(new Rect(new Point(), viewport));
+        Require(Math.Abs(content.ActualWidth - viewport.Width) < 0.1 && Math.Abs(content.ActualHeight - viewport.Height) < 0.1, "The WPF content viewport was clamped by the host desktop.");
+        var background = (content as Panel)?.Background as SolidColorBrush;
+        Require(background is not null && background.Color.A == 255 && background.Opacity == 1, "The production content root must paint an opaque background.");
     }
 
     private static void SavePreview(Window window, string name)
@@ -331,6 +345,11 @@ internal static class TemplateBindingTests
         var dpi = VisualTreeHelper.GetDpi(content);
         var bitmap = new RenderTargetBitmap((int)Math.Ceiling(content.ActualWidth * dpi.DpiScaleX), (int)Math.Ceiling(content.ActualHeight * dpi.DpiScaleY), dpi.PixelsPerInchX, dpi.PixelsPerInchY, PixelFormats.Pbgra32);
         bitmap.Render(content);
+        var stride = checked(bitmap.PixelWidth * 4);
+        var pixels = new byte[checked(stride * bitmap.PixelHeight)];
+        bitmap.CopyPixels(pixels, stride, 0);
+        for (var offset = 3; offset < pixels.Length; offset += 4)
+            Require(pixels[offset] == 255, "The rendered content viewport contains transparent pixels: " + name);
         var encoder = new PngBitmapEncoder();
         encoder.Frames.Add(BitmapFrame.Create(bitmap));
         using var output = File.Create(Path.Combine(directory, name + ".png"));
