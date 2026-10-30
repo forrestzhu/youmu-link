@@ -54,15 +54,17 @@ async fn run() -> Result<()> {
     let mut session = SecureSession::handshake(socket, true, &identity, hello).await?;
     let mut trust = TrustStore::memory();
     if session.needs_pairing(&trust).await? {
-        eprintln!("Enter the four-digit code displayed by YM_Link, then press Return:");
-        let code = tokio::task::spawn_blocking(|| -> std::io::Result<String> {
-            let mut line = String::new();
-            std::io::stdin().read_line(&mut line)?;
-            Ok(line.trim().to_owned())
-        })
-        .await??;
         session
-            .authorize(&mut trust, Pairing::Enter { code })
+            .authorize_enter(&mut trust, async {
+                eprintln!("Enter the four-digit code displayed by YM_Link, then press Return:");
+                Ok(tokio::task::spawn_blocking(|| -> std::io::Result<String> {
+                    let mut line = String::new();
+                    std::io::stdin().read_line(&mut line)?;
+                    Ok(line.trim().to_owned())
+                })
+                .await
+                .map_err(std::io::Error::other)??)
+            })
             .await?;
     } else {
         session
