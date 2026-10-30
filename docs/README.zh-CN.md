@@ -8,7 +8,7 @@ YM_Link 是 Youmu VR Player（游目）的 Windows / macOS 桌面伴侣，与 Me
 
 [**下载开发预览**](https://youmu.forrestzhu.com/zh/ym-link/#download) · [安装说明](engineering/DISTRIBUTION.md) · [English](../README.md) · [游目官网](https://youmu.forrestzhu.com/)
 
-![电脑与 Quest 通过加密局域网连接，授权目录后在游目中浏览影片；屏幕镜像仍为实验功能。](assets/ym-link-overview.svg)
+![Windows / macOS 与 Quest 3 / 3S 上的游目通过加密局域网连接，四位配对，无云端中继；只共享所选目录，在头显浏览、播放或传输影片。屏幕镜像仍为实验功能。](assets/ym-link-overview-v2.png)
 
 - **电脑片库，头显直接看。** 只共享你选择的目录，在游目内浏览、直接播放，或传输到头显稍后观看。
 - **把桌面放上大屏。** 选择显示器进行镜像，可附带系统音频。镜像仍属实验功能，真实采集、Quest 播放与音画同步继续验证中。

@@ -8,7 +8,7 @@ The Windows and macOS desktop companion for **Youmu VR Player** on Meta Quest 3 
 
 [**Download preview**](https://youmu.forrestzhu.com/ym-link/#download) · [Setup](docs/engineering/DISTRIBUTION.md) · [简体中文](docs/README.zh-CN.md) · [Youmu VR Player](https://youmu.forrestzhu.com/en/)
 
-![YM_Link connects a Windows or Mac computer to Youmu on Quest over an encrypted local network. Share selected folders, browse videos and explore screen mirroring.](docs/assets/ym-link-overview.svg)
+![YM_Link connects Windows or macOS to Youmu on Quest 3 / 3S over an encrypted local network. Pair with four digits, share selected folders, and browse, stream or transfer videos without a cloud relay. Screen mirroring is experimental.](docs/assets/ym-link-overview-v2.png)
 
 ## Bring your library with you
 

@@ -1,0 +1,45 @@
+Use case: infographic-diagram
+Asset type: a polished, production-ready wide hero infographic for the GitHub README of YM_Link, the Windows/macOS desktop companion for Youmu VR Player.
+Primary request: redesign the reference diagram with much better taste, art direction, tactile product illustration, precise typography and generous negative space. The attached image is a SEMANTIC REFERENCE ONLY: keep its accurate computer-to-Quest relationship, but redesign all styling and layout. Create one finished wide image, approximately 2400 x 1000 (2.4:1 landscape).
+
+Scene/backdrop: a seamless warm ivory/off-white studio backdrop (#f3f0e9). Subtle paper-like material and soft contact shadows, with almost flat clean negative space. No room scene or desk environment.
+Style/medium: sophisticated editorial 3D product illustration, meticulously art-directed like a premium industrial-design editorial. Calm, refined, credible, not cartoon clipart. Porcelain and matte anodized navy materials; restrained brushed champagne gold detail.
+Color palette: navy (#17283e), warm ivory, muted slate blue, a very small amount of champagne gold (#c9ac73). Crisp navy text.
+Composition:
+- Airy, disciplined wide layout. Main headline aligned upper left at x roughly 7%, below a small restrained YM_Link wordmark. Readable large headline, all text horizontal and cleanly typeset.
+- Left third: an elegant generic desktop monitor in a slightly elevated front three-quarter view, slim dark navy chassis, simple stand. Its screen shows a beautiful, minimal media library represented by 3 large abstract landscape thumbnails in warm desaturated blue and sand, no fake UI controls or illegible tiny text. A subtle folder silhouette can integrate into the screen, but no large floating icons.
+- Right third: a beautifully modeled recognisable Quest 3 style standalone VR headset in matching three-quarter product view, off-white shell, dark facial interface, short natural white head strap behind it, correct THREE dark vertical camera/sensor pills on the OUTER FRONT. Never depict the outer front as two human eyes or inner optical lenses. Show one headset only. No controllers.
+- Center: a very thin restrained champagne-gold gently curved link from computer toward headset, with a small refined outlined padlock at its midpoint and one subtle direction arrow. Keep the center uncluttered. Clear reading of a private local connection.
+- Strong baseline alignment for device labels under the objects. Connection label in the center above the link; pairing line below it.
+- A quiet footer along the lower margin retains the selection and experimental limitation.
+- Text and objects do not overlap. No panels, pills, cards, decorative badges, fake HUDs or random symbols.
+Text (verbatim; render exactly these 9 blocks with excellent typography, no other text):
+"YM_Link" [small wordmark, upper left]
+"Your library, a little closer." [largest headline, upper left]
+"Windows / macOS" [left device label]
+"Share only the folders you choose" [smaller sublabel below left device label]
+"Encrypted local connection" [center connection label]
+"4-digit pairing · No cloud relay" [center sublabel]
+"Youmu on Quest 3 / 3S" [right device label]
+"Browse · Stream · Transfer" [smaller sublabel below right device label]
+"Screen mirroring is experimental." [small but readable footer under right section]
+Typography: elegant contemporary humanist sans serif; optical spacing and consistent alignment. Main headline about 95px at 2400 width, labels about 44px, supporting text about 34px. Clear strong navy contrast. Typography is part of the designed graphic, absolutely no stray letters, numbering, watermarks or text.
+Constraints: this is a conceptual product illustration, not an app screenshot. Show no invented performance numbers, no cloud, no cable plugging the devices together, no unsupported product features, no logos on the hardware. Preserve Windows/macOS and Quest 3/3S accurately in text.
+Avoid: generic SaaS illustrations, giant gradients, glowing neon, purple, busy film ribbons, particles, glossy toy plastic, orange/teal cinematic grading, oversize icons, tiny text, distorted headset hardware, flat clipart, template PowerPoint diagram aesthetics.
+
+---
+Readability iteration (built-in imagegen edit of the generated first pass):
+Use case: precise-object-edit
+Asset type: final GitHub README hero infographic.
+Edit target: the attached warm ivory YM_Link product diagram. Preserve its exact 1942 x 809 wide aspect ratio, all device artwork and silhouettes, warm ivory paper background, navy/gold palette, shadows, headline, brand wordmark, connection line, padlock, camera angle, positions and main labels. The overall composition is approved.
+
+Make only one typography readability improvement:
+Increase the three supporting captions by roughly 15% while keeping them in their existing locations:
+"Share only the folders you choose"
+"4-digit pairing · No cloud relay"
+"Browse · Stream · Transfer"
+Increase the final experimental footer by roughly 40%, and change its light gold color to a high contrast muted dark slate navy (#475569):
+"Screen mirroring is experimental."
+Leave adequate breathing room below the footer and do not clip it. Keep one line and keep it under the right device label. It must stay legible when the complete image displays at 850px wide in GitHub.
+Keep exact spelling of all text, including "YM_Link", "Your library, a little closer.", "Windows / macOS", "Encrypted local connection", and "Youmu on Quest 3 / 3S".
+Do not change anything else. No new labels, icons, borders, gradients, objects or watermark.
