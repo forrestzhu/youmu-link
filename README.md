@@ -4,7 +4,7 @@
 
 The Windows and macOS desktop companion for **Youmu VR Player** on Meta Quest 3 and 3S. Bring your computer's videos into your headset over your local network.
 
-[**Download & setup**](docs/engineering/DISTRIBUTION.md) · [简体中文](docs/README.zh-CN.md) · [Youmu VR Player](https://youmu.forrestzhu.com/en/)
+[**Download preview**](https://github.com/forrestzhu/youmu-link/releases/tag/v0.1.0-preview.20261030.1) · [Setup](docs/engineering/DISTRIBUTION.md) · [简体中文](docs/README.zh-CN.md) · [Youmu VR Player](https://youmu.forrestzhu.com/en/)
 
 ![YM_Link connects a Windows or Mac computer to Youmu on Quest over an encrypted local network. Share selected folders, browse videos and explore screen mirroring.](docs/assets/ym-link-overview.svg)
 
@@ -22,7 +22,7 @@ Find your computer on the same network, enter a four-digit pairing code and reco
 
 ## Get started
 
-1. Install YM_Link on your computer and open Youmu on your Quest 3 or 3S.
+1. Install YM_Link on your computer and open a compatible Youmu build with **YM_Link protocol v4** on your Quest 3 or 3S. Compatibility with the current Meta Store build has not been verified.
 2. Connect both devices to the same local network, open **YM_Link** in Youmu and pair with the four-digit code.
 3. Add a shared folder on your computer, then browse it in your headset.
 
