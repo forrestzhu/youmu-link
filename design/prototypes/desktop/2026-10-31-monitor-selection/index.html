@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>YM_Link · 显示器选择</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: "Segoe UI", "Microsoft YaHei UI", sans-serif;
+      color: #18191c;
+      background: #f7f7f9;
+      --ym-accent: #0067c0;
+      --ym-selected: #eaf3fc;
+      --ym-hairline: #dddfe3;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    ::selection { color: #fff; background: var(--ym-accent); }
+    main { max-width: 960px; padding: 44px 36px 48px; margin: auto; }
+    h1, h2 { margin: 0; font-size: 16px; line-height: 1.5; font-weight: 600; }
+    fieldset { min-width: 0; padding: 0; border: 0; margin: 0; }
+    legend { padding: 0; margin-bottom: 22px; }
+    .monitors { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; max-width: 640px; }
+    .monitor-choice { position: relative; min-width: 0; }
+    .monitor-radio, .audio-input {
+      position: absolute; width: 1px; height: 1px; padding: 0;
+      overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+    }
+    .monitor-tile {
+      position: relative; display: flex; flex-direction: column;
+      min-height: 224px; padding: 16px; border: 2px solid var(--ym-hairline);
+      border-radius: 14px; background: #fff; cursor: pointer;
+      transition: background-color 120ms ease-out, border-color 120ms ease-out;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .monitor-tile:hover { background: #f0f1f3; border-color: #b7bec7; }
+    /* Selection owns the same border and fill in both idle and hover states. */
+    .monitor-radio:checked + .monitor-tile,
+    .monitor-radio:checked + .monitor-tile:hover {
+      background: var(--ym-selected); border-color: var(--ym-accent);
+    }
+    .monitor-illustration {
+      display: flex; align-items: center; justify-content: center;
+      height: 132px; color: #626972;
+    }
+    .monitor-icon { width: 80px; height: 66px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+    .monitor-radio:checked + .monitor-tile .monitor-illustration { color: var(--ym-accent); }
+    .monitor-details { display: grid; gap: 3px; margin-top: auto; }
+    .monitor-name { width: fit-content; font-size: 17px; line-height: 1.4; font-weight: 600; }
+    .monitor-resolution { color: #5e6670; font-size: 14px; line-height: 1.5; font-variant-numeric: tabular-nums; }
+    .monitor-radio:checked + .monitor-tile .monitor-resolution { color: #49647e; }
+    .selected-mark {
+      position: absolute; top: 18px; right: 18px; width: 21px; height: 21px;
+      fill: none; stroke: var(--ym-accent); stroke-width: 2.5;
+      stroke-linecap: round; stroke-linejoin: round; visibility: hidden;
+    }
+    .monitor-radio:checked + .monitor-tile .selected-mark { visibility: visible; }
+    /* A keyboard-only cue stays inside the card, away from its perimeter. */
+    .monitor-radio:focus-visible + .monitor-tile .monitor-name {
+      outline: 2px solid var(--ym-accent); outline-offset: 4px; border-radius: 2px;
+    }
+    .settings {
+      display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px;
+      max-width: 640px; margin-top: 28px; padding-top: 27px; border-top: 1px solid var(--ym-hairline);
+    }
+    .settings h2, .quality-label { display: block; margin-bottom: 12px; font-size: 14px; font-weight: 600; }
+    .audio-control { position: relative; display: inline-flex; min-height: 40px; align-items: center; gap: 12px; cursor: pointer; font-size: 15px; }
+    .audio-track {
+      display: inline-flex; align-items: center; width: 42px; height: 24px;
+      padding: 3px; border: 1px solid #727982; border-radius: 20px; background: #fff;
+    }
+    .audio-track::after { content: ""; width: 16px; height: 16px; border-radius: 50%; background: #727982; }
+    .audio-input:checked + .audio-track { border-color: var(--ym-accent); background: var(--ym-accent); }
+    .audio-input:checked + .audio-track::after { transform: translateX(18px); background: #fff; }
+    .audio-input:focus-visible + .audio-track { outline: 2px solid var(--ym-accent); outline-offset: 3px; }
+    .quality-select {
+      width: 100%; max-width: 250px; height: 40px; padding: 0 12px; border: 1px solid #c7cbd2;
+      border-radius: 7px; color: #24262a; background: #fff; font: inherit; font-size: 15px;
+    }
+    .quality-select:hover { border-color: #8d949e; }
+    .quality-select:focus-visible { outline: 2px solid var(--ym-accent); outline-offset: 2px; }
+    .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+    @media (max-width: 520px) {
+      main { padding: 28px 20px 36px; }
+      .monitors { grid-template-columns: 1fr; gap: 14px; }
+      .monitor-tile { min-height: 204px; }
+      .monitor-illustration { height: 112px; }
+      .settings { grid-template-columns: 1fr; gap: 24px; }
+    }
+    @media (prefers-reduced-motion: reduce) { .monitor-tile { transition: none; } }
+    @media (forced-colors: active) {
+      .monitor-tile { border-color: ButtonText; background: Canvas; }
+      .monitor-radio:checked + .monitor-tile,
+      .monitor-radio:checked + .monitor-tile:hover { border-color: Highlight; background: Canvas; }
+      .monitor-radio:focus-visible + .monitor-tile .monitor-name { outline-color: Highlight; }
+      .monitor-radio:checked + .monitor-tile .monitor-illustration,
+      .monitor-radio:checked + .monitor-tile .monitor-resolution { color: CanvasText; }
+      .selected-mark { stroke: Highlight; }
+      .audio-track { border-color: ButtonText; }
+      .audio-input:checked + .audio-track { background: Highlight; }
+      .audio-input:checked + .audio-track::after { background: HighlightText; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <fieldset>
+      <legend><h1>选择显示器</h1></legend>
+      <div class="monitors">
+        <div class="monitor-choice">
+          <input class="monitor-radio" id="monitor-main" type="radio" name="monitor" value="HWV6446" checked>
+          <label class="monitor-tile" for="monitor-main">
+            <svg class="selected-mark" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>
+            <span class="monitor-illustration" aria-hidden="true">
+              <svg class="monitor-icon" viewBox="0 0 80 66"><rect x="5" y="4" width="70" height="45"/><path d="M40 49v13M26 62h28"/></svg>
+            </span>
+            <span class="monitor-details"><span class="monitor-name">HWV6446</span><span class="monitor-resolution">3840 × 2160</span></span>
+          </label>
+        </div>
+        <div class="monitor-choice">
+          <input class="monitor-radio" id="monitor-secondary" type="radio" name="monitor" value="RTK1600">
+          <label class="monitor-tile" for="monitor-secondary">
+            <svg class="selected-mark" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>
+            <span class="monitor-illustration" aria-hidden="true">
+              <svg class="monitor-icon" viewBox="0 0 80 66"><rect x="5" y="4" width="70" height="45"/><path d="M40 49v13M26 62h28"/></svg>
+            </span>
+            <span class="monitor-details"><span class="monitor-name">RTK1600</span><span class="monitor-resolution">1600 × 2560</span></span>
+          </label>
+        </div>
+      </div>
+    </fieldset>
+    <div class="settings">
+      <section aria-labelledby="audio-heading">
+        <h2 id="audio-heading">系统音频</h2>
+        <label class="audio-control">
+          <input class="audio-input" type="checkbox" checked>
+          <span class="audio-track" aria-hidden="true"></span><span>共享音频</span>
+        </label>
+      </section>
+      <div>
+        <label class="quality-label" for="quality">画质</label>
+        <select class="quality-select" id="quality"><option>流畅</option><option selected>平衡</option><option>清晰</option></select>
+      </div>
+    </div>
+    <p class="sr-only" id="selection-status" aria-live="polite"></p>
+  </main>
+  <script>
+    document.querySelectorAll('input[name="monitor"]').forEach(input => {
+      input.addEventListener('change', () => {
+        document.getElementById('selection-status').textContent = `已选择 ${input.value}`;
+      });
+    });
+  </script>
+</body>
+</html>

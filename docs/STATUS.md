@@ -25,6 +25,7 @@ YM-332已按用户要求先推第一轮修复，再完成新独立第二轮CR。
 
 | 工作 | 当前结论 / 下一动作 |
 | --- | --- |
+| [YML-025 显示器选择 HTML 原型](tasks/archive/YML-025-monitor-selection-demo.md) | done（原型）：整卡淡蓝选中、单层蓝边，选中 hover 不叠线；点击 / 原生 radio 方向键、900px 双列及 373 / 320px 单列浏览器检查通过。未改 WPF / 安装版，待用户评审后再决定落地。仓库 check / Python47通过，完整 verify 的 discovery 端口回退测试被运行中应用占 UDP47610 阻断，保留失败，不代签原生修复。 |
 | [YML-024 本机虚假设备与新安装包](tasks/YML-024-self-discovery-filter.md) | verifying：本机多网卡修复8fdf714及动态新增/32的CR修复7ae881c均已推送；新增回归green、复审关闭。同产品源码a830d75的run41181994786三平台全success，Windows117 /2 ignored /0 filtered、Release /ABI /启动及两轮安装卸载通过；52,113,676 bytes新安装器及SHA /ZIP已取回至dist/packages/ci-a830d75/并核验，待用户沿用原目录覆盖安装与设备列表实显。未替换现有安装版，本机占端口失败保留，未发布公开Release。 |
 | [YML-023 加密连接前识别](tasks/YML-023-encrypted-identification.md) | verifying：Hello-only不接管active；追加取消 /撤销 /pin及双向单边信任、匿名新IP /端口刷新恢复回归均RED→GREEN，两轮新独立CR属实问题已关闭。1717413三平台CI /gitleaks全success，本机runtime33项及Rust Release通过。安装版仍为97dacbd，保留修复后的界面DLL和.NET8.0.33；游目[YM-332](https://github.com/forrestzhu/youmu/blob/main/docs/tasks/YM-332-link-device-identification.md)原生已接入并推送，完整主机 /新包E2E继续执行，实际Quest3S↔Windows LAN待验。 |
 | [YML-022 VR 连接闪退](tasks/YML-022-windows-connection-crash.md) | verifying：系统记录与编译BAML回归复现Button→DockPanel；EventSetter修复55eef04已推送，回归 /独立CR /Release /ABI smoke与本机安装版实际启动通过。保留原组件备份与.NET8.0.33，后继Rust更新见YML-023。首轮Rust bind OS10055，串行完整门禁107 passed /2 ignored通过；待真实VR重连。Quest3S已通过ADB在线，名称 /系统由YM-331 Demo推进至YM-332原生开发，UDP继续匿名。 |
