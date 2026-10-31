@@ -1,6 +1,7 @@
 # YML-025：显示器卡片选中与悬停 HTML 原型
 
-Status: done
+Status: superseded
+Superseded-By: [YML-028](YML-028-monitor-card-sections.md)
 Workflow: maintenance
 Requires-Device: no
 Tests: not-applicable (仅独立 HTML 视觉原型，不改 Rust、协议或原生应用；浏览器检查鼠标、原生 radio 键盘及窄屏；完整 harness verify 记录既有回归)
@@ -23,6 +24,8 @@ Tests: not-applicable (仅独立 HTML 视觉原型，不改 Rust、协议或原�
 ## Evidence
 
 2026-10-31：开工 main 干净，fetch 后 ff-only 已是最新。独立只读检查指出 WPF 选中边框与共享焦点 adorner 可形成双轮廓，hover 自身仅改背景，用户描述的直接触发因素尚未原生复现。此轮只交付讨论用 HTML；设计采用单层卡片边框，键盘焦点在卡片内部名称上显示。
+
+后续用户明确指出整卡同色是问题而非期望，需要图标与名称分区 / 分隔线；本任务的整卡淡蓝方向是对原反馈的误读，已由YML-028取代，历史测试事实保留。
 
 - 浏览器实际打开与截图检查：900×540 双列、373px 与 320px 单列，无水平溢出。点击 RTK1600 后真实 `:hover` 为 true，计算样式为淡蓝 `rgb(234,243,252)`、单层 2px 蓝边，outline / box-shadow 均为 none；HWV6446 为白底。ArrowLeft 实际切回 HWV6446，焦点 / 内部名称 outline / live status 同步更新。最终恢复默认预览尺寸，保留可交互标签页。
 - 独立只读审查覆盖现有 WPF 选中 / hover / 焦点样式来源，仅作原型方向依据，不宣称已修复原生问题。原型使用原生 radio / checkbox / select，无库、无外部资源与网络请求。

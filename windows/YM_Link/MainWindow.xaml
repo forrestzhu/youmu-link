@@ -113,9 +113,12 @@
                       </Setter>
                     </Style>
                   </ListBox.Resources>
-                  <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}"><Setter Property="Padding" Value="11"/><Setter Property="BorderThickness" Value="2"/><Setter Property="Margin" Value="0,0,16,16"/><Setter Property="FocusVisualStyle" Value="{StaticResource DisplayCardFocus}"/><Setter Property="AutomationProperties.Name" Value="{Binding Label}"/></Style></ListBox.ItemContainerStyle>
-                  <ListBox.ItemTemplate><DataTemplate><StackPanel>
-                      <Grid Height="106">
+                  <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}"><Setter Property="Padding" Value="0"/><Setter Property="BorderThickness" Value="2"/><Setter Property="VerticalContentAlignment" Value="Stretch"/><Setter Property="Margin" Value="0,0,16,16"/><Setter Property="FocusVisualStyle" Value="{StaticResource DisplayCardFocus}"/><Setter Property="AutomationProperties.Name" Value="{Binding Label}"/></Style></ListBox.ItemContainerStyle>
+                  <ListBox.ItemTemplate><DataTemplate><Grid>
+                    <Grid.RowDefinitions><RowDefinition Height="118"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                    <Border CornerRadius="8,8,0,0">
+                      <Border.Style><Style TargetType="Border"><Setter Property="Background" Value="{DynamicResource WindowSurface}"/><Style.Triggers><DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True"><Setter Property="Background" Value="{DynamicResource HoverSurface}"/></DataTrigger><DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True"><Setter Property="Background" Value="{DynamicResource AccentSoft}"/></DataTrigger></Style.Triggers></Style></Border.Style>
+                      <Grid>
                         <Path Width="58" Height="46" Stretch="Uniform" Data="M 3,3 L 69,3 L 69,45 L 3,45 Z M 36,45 L 36,57 M 23,57 L 49,57" StrokeThickness="1.5" StrokeLineJoin="Round">
                           <Path.Style><Style TargetType="Path"><Setter Property="Stroke" Value="{DynamicResource SecondaryInk}"/><Style.Triggers><DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True"><Setter Property="Stroke" Value="{DynamicResource Accent}"/></DataTrigger></Style.Triggers></Style></Path.Style>
                         </Path>
@@ -123,9 +126,11 @@
                           <Path.Style><Style TargetType="Path"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></Path.Style>
                         </Path>
                       </Grid>
-                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="13" Margin="0,12,0,3"/>
-                    <TextBlock Text="{Binding Resolution}" Style="{StaticResource Secondary}"/>
-                  </StackPanel></DataTemplate></ListBox.ItemTemplate>
+                    </Border>
+                    <Border Grid.Row="1" Background="{DynamicResource ControlSurface}" BorderBrush="{DynamicResource Hairline}" BorderThickness="0,1,0,0" CornerRadius="0,0,8,8" Padding="11">
+                      <StackPanel><TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="13" Margin="0,0,0,3"/><TextBlock Text="{Binding Resolution}" Style="{StaticResource Secondary}"/></StackPanel>
+                    </Border>
+                  </Grid></DataTemplate></ListBox.ItemTemplate>
                 </ListBox>
                 <StackPanel x:Name="NoDisplays" Margin="0,30,0,38"><TextBlock x:Name="DisplaySummary" TextAlignment="Center" FontWeight="SemiBold" FontSize="16"/><TextBlock x:Name="DisplayHint" TextAlignment="Center" Style="{StaticResource Secondary}" Margin="0,8,0,0"/></StackPanel>
                 <Border BorderBrush="{DynamicResource Hairline}" BorderThickness="0,1,0,0" Margin="0,6,0,0" Padding="0,22,0,0">

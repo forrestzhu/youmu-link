@@ -1,6 +1,7 @@
 # YML-026：显示器卡片原生选中与焦点样式
 
-Status: done
+Status: superseded
+Superseded-By: [YML-028](YML-028-monitor-card-sections.md)
 Workflow: maintenance
 Requires-Device: no
 Tests: windows/Tests/YM_Link.Tests.csproj (既有生产 BAML、选中绑定与双语两尺寸渲染)；cargo 沿用 harness verify，未改 Rust / 协议；真实窗口验证 hover / 键盘焦点
@@ -23,6 +24,8 @@ Tests: windows/Tests/YM_Link.Tests.csproj (既有生产 BAML、选中绑定与�
 ## Evidence
 
 2026-10-31 开工 main 干净，fetch / ff-only 已是最新。现有 `dotnet run --project windows/Tests/YM_Link.Tests.csproj` 通过并导出 baseline。CUA 恢复最小化的旧安装版，实际截图复现选中卡片外围双蓝线，未选卡片仍有蓝色内层；应用无连接设备、无镜像。独立只读分析确认共享 `ControlFocus` 的负 margin 外框与卡片选中边框叠加；只为显示器覆盖焦点样式，避免影响其余列表。
+
+后续用户指出本轮整卡同色是反向实现，需要图标预览与名称之间的分区 / 分隔线。整卡淡蓝视觉由YML-028取代；本任务及YML-027的构建 / 测试 / CR绿色只证明当时实现的工程结果，不证明误读的产品方向正确。
 
 - 修改后 Debug WPF 回归通过：生产 BAML 事件连接器 / 列表行、显示器选中、双语两尺寸 Window.Show 渲染 / 布局、下拉选择 / 恢复状态。`dist/evidence/monitor-selection-{before,after}/` 保留本机忽略入库的样本；主代理及独立审查均抽检中文宽版和英文窄版 mirror 样本，整卡白底 / 淡蓝与单蓝边符合 demo。
 - `python3 scripts/build_windows.py` 退出 0：Rust Release、Release WPF / 本地化 / 真实 DLL ABI 生命周期 / 并发快照命令与 dispose、自包含 win-x64 publish、EXE 图标验证均通过。产物 `dist/YM_Link/YM_Link.exe`（170496 bytes），未覆盖已安装版本，未启动开发版、未生成安装器或发布 Release。

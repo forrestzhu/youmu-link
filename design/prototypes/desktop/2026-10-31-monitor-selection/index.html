@@ -30,27 +30,31 @@
     }
     .monitor-tile {
       position: relative; display: flex; flex-direction: column;
-      min-height: 224px; padding: 16px; border: 2px solid var(--ym-hairline);
+      min-height: 224px; border: 2px solid var(--ym-hairline);
       border-radius: 14px; background: #fff; cursor: pointer;
-      transition: background-color 120ms ease-out, border-color 120ms ease-out;
+      transition: border-color 120ms ease-out;
       -webkit-tap-highlight-color: transparent;
     }
-    .monitor-tile:hover { background: #f0f1f3; border-color: #b7bec7; }
-    /* Selection owns the same border and fill in both idle and hover states. */
+    .monitor-tile:hover { border-color: #b7bec7; }
+    /* Selection keeps one perimeter; only the preview receives its fill. */
     .monitor-radio:checked + .monitor-tile,
     .monitor-radio:checked + .monitor-tile:hover {
-      background: var(--ym-selected); border-color: var(--ym-accent);
+      border-color: var(--ym-accent);
     }
     .monitor-illustration {
       display: flex; align-items: center; justify-content: center;
-      height: 132px; color: #626972;
+      flex-shrink: 0; height: 132px; padding: 16px; border-radius: 12px 12px 0 0;
+      color: #626972; background: #f7f7f8; transition: background-color 120ms ease-out;
     }
+    .monitor-tile:hover .monitor-illustration { background: #f0f1f3; }
     .monitor-icon { width: 80px; height: 66px; fill: none; stroke: currentColor; stroke-width: 1.8; }
-    .monitor-radio:checked + .monitor-tile .monitor-illustration { color: var(--ym-accent); }
-    .monitor-details { display: grid; gap: 3px; margin-top: auto; }
+    .monitor-radio:checked + .monitor-tile .monitor-illustration { color: var(--ym-accent); background: var(--ym-selected); }
+    .monitor-details {
+      display: grid; flex: 1; align-content: center; gap: 3px; padding: 16px;
+      border-top: 1px solid var(--ym-hairline); border-radius: 0 0 12px 12px; background: #fff;
+    }
     .monitor-name { width: fit-content; font-size: 17px; line-height: 1.4; font-weight: 600; }
     .monitor-resolution { color: #5e6670; font-size: 14px; line-height: 1.5; font-variant-numeric: tabular-nums; }
-    .monitor-radio:checked + .monitor-tile .monitor-resolution { color: #49647e; }
     .selected-mark {
       position: absolute; top: 18px; right: 18px; width: 21px; height: 21px;
       fill: none; stroke: var(--ym-accent); stroke-width: 2.5;
@@ -89,14 +93,16 @@
       .monitor-illustration { height: 112px; }
       .settings { grid-template-columns: 1fr; gap: 24px; }
     }
-    @media (prefers-reduced-motion: reduce) { .monitor-tile { transition: none; } }
+    @media (prefers-reduced-motion: reduce) { .monitor-tile, .monitor-illustration { transition: none; } }
     @media (forced-colors: active) {
-      .monitor-tile { border-color: ButtonText; background: Canvas; }
+      .monitor-tile, .monitor-tile:hover { border-color: ButtonText; background: Canvas; }
       .monitor-radio:checked + .monitor-tile,
       .monitor-radio:checked + .monitor-tile:hover { border-color: Highlight; background: Canvas; }
+      .monitor-illustration, .monitor-tile:hover .monitor-illustration,
+      .monitor-radio:checked + .monitor-tile .monitor-illustration { color: CanvasText; background: Canvas; }
+      .monitor-details { border-color: ButtonText; background: Canvas; }
       .monitor-radio:focus-visible + .monitor-tile .monitor-name { outline-color: Highlight; }
-      .monitor-radio:checked + .monitor-tile .monitor-illustration,
-      .monitor-radio:checked + .monitor-tile .monitor-resolution { color: CanvasText; }
+      .monitor-resolution { color: CanvasText; }
       .selected-mark { stroke: Highlight; }
       .audio-track { border-color: ButtonText; }
       .audio-input:checked + .audio-track { background: Highlight; }
