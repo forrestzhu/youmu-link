@@ -1,6 +1,6 @@
 # YML-030：设备行统一配对与连接状态展示
 
-Status: verifying
+Status: done
 Workflow: behavior
 Requires-Device: no
 Tests: windows/Tests PeerItem 状态优先级 / 操作按钮、生产 WPF 设备行双语展示与更新；Rust 无行为改动，沿用 harness verify
@@ -20,8 +20,8 @@ Tests: windows/Tests PeerItem 状态优先级 / 操作按钮、生产 WPF 设备
 
 - [x] 用户截图对应的已信任 / 未连接行仅显示一次“已配对”，不会同时显示“已断开”。
 - [x] 中英状态与连接按钮、状态更新、未信任 / 错误边界有回归，先 RED 后 GREEN。
-- [ ] WPF 实际窗口样本、Release 构建、适用完整门禁与独立审查有实际结果。
-- [ ] 自查 diff、任务 / STATUS、commit / push main 与严格远端检查完成。
+- [x] WPF 实际窗口样本、Release 构建、适用完整门禁与独立审查有实际结果。
+- [x] 自查 diff、任务 / STATUS、commit / push main 与严格远端检查完成。
 
 ## Verification
 
@@ -37,7 +37,10 @@ Tests: windows/Tests PeerItem 状态优先级 / 操作按钮、生产 WPF 设备
 - `python3 scripts/build_windows.py` 退出0：Rust Release、完整WPF回归、真实DLL排队 / drain /销毁、win-x64自包含publish与图标核验通过。开发版在ignored `dist/YM_Link`，本轮未覆盖安装版；本机Windows11 Pro x64 build26200。生产编译BAML与事件连接器通过；实际显示窗口使用生产XAML与合成数据，完整开发EXE的后端启动smoke因现有单实例未运行，不将窗口夹具代签LAN。
 - `RUST_TEST_THREADS=1 python3 scripts/harness.py verify` 退出1：Python47 /3 skipped、仓库check /rustfmt通过；Rust core23和discovery其余8项通过，`beacon_ports_fall_back_in_order` 因原安装版PID14204占UDP47610而OS10048失败，后续cargo目标not-run。不关闭用户进程，不过滤用例冒作完整通过；等待同源CI完整回归。
 - 新独立subagent只读CR受审a16d6f7上本轮完整实现差异，0项待修问题；复核状态 / 信任分离、按钮操作、Row.Update通知、中英 / 高对比动态资源及动效生命周期。未以审查代替测试结果。
+- 实现提交 `899870c69189e0a37f5d07887da77260ef82d0e4` 已推送，`check --require-pushed` 退出0。[CI41193929703](https://github.com/forrestzhu/youmu-link/actions/runs/41193929703)首轮Linux /macOS success；Windows Rust117 passed /2 ignored /0 filtered、WPF /真实ABI /Release /完整启动smoke与28张样本上传通过，安装器卸载清理报“exe未移除”导致job失败，保留该失败。[gitleaks41193929734](https://github.com/forrestzhu/youmu-link/actions/runs/41193929734)success。仅重跑失败Windows job，不改实现或包装脚本。
+- 对卸载失败追加独立只读核查：smoke在创建MainWindow前走专用分支，不实例化设备行 /波纹；现有错误既可能是卸载器缺失未执行，也可能是卸载返回0后10秒exe仍存在，当前日志不足以判定根因。不得归因为动画 /Defender /单纯等待不足；若重现需另留卸载日志、unins清单、注册表UninstallString及残留进程 /文件证据。
+- 同提交仅失败Windows job重跑后，[CI41193929703](https://github.com/forrestzhu/youmu-link/actions/runs/41193929703)最终completed /success，三job全success。逐条回读日志确认Linux Rust104、Windows117 /2 ignored、macOS110 /1 ignored，均0 failed /0 filtered；Windows新状态 /动效WPF回归、真实ABI /Release /完整启动smoke、两轮完整安装 /卸载及制品上传通过，macOS Swift9及既有包检查通过。首轮卸载失败与本机占端口失败保留，不宣称其根因已修复。最终归档只改文档，生产源码与本次成功CI受验提交一致。
 
 ## Next
 
-完成 Release / 完整门禁与独立 CR，提交推送及严格远端检查。
+修复、构建、独立CR及同源三平台CI已完成。开发版为 `dist/YM_Link/YM_Link.exe`；当前安装版未覆盖，用户可从托盘退出旧版后打开开发版查看配对状态 /绿色波纹。真实Quest连接与原生安装版LAN继续由YML-023验收，本任务不代签。
