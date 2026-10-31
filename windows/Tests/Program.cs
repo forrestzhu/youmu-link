@@ -13,6 +13,17 @@ static void Check(bool ok, string message)
 
 var en = new Localizer("en");
 var zh = new Localizer("zh-Hans");
+foreach (var localizer in new[] { en, zh })
+{
+    foreach (var model in new[] { "HWV6446", "RTK1600" })
+    {
+        var row = new DisplayItem(new Display { Id = 7, Name = model, Width = 1600, Height = 2560 }, localizer);
+        Check(row.Name == model && row.Label == model + " · 1600 × 2560", "Display models survive localization and card labels.");
+        Check(row.Data.Id == 7, "Display names must not replace the capture selection ID.");
+    }
+}
+Check(en.DisplayName(new Display { Id = 7, Name = "Display 7" }) == "Display 7"
+    && zh.DisplayName(new Display { Id = 7, Name = "Display 7" }) == "显示器 7", "Missing monitor models retain localized display numbers.");
 foreach (var (raw, expected) in new[]
 {
     (@"\\?\C:\Films", @"C:\Films"),

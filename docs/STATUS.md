@@ -23,6 +23,7 @@
 
 | 工作 | 当前结论 / 下一动作 |
 | --- | --- |
+| [YML-020 Windows 显示器名称](tasks/YML-020-windows-display-names.md) | verifying：已修复后端固定 Display n，按各 GDI 源的活动 monitor 提取 PnP 型号；本机实际窗口 / Release C ABI 已显示 HWV6446（3840×2160）及 RTK1600（1600×2560）。四项新 Rust 回归、WPF / ABI / Release 与完整门禁（Rust107 /2 ignored、Python47 /3 skipped）通过，独立审查无阻断；首轮并行检查端口占用保留记录。待同源 CI 安装器；未改已有安装或恢复性能排查。 |
 | [YML-019 最新 Windows 安装包](tasks/archive/YML-019-latest-windows-package.md) | done：已取回 f9df8d3 同源 CI 的 Windows x64 EXE / ZIP，与当前 main 产品 / 依赖 / 打包代码一致；本机及独立代理完整 SHA-256、ZIP CRC / 元数据 / 279 份依赖许可 / 安装器图标通过。安装器52,118,106 bytes、未签名，位于忽略入库的 `dist/packages/ci-f9df8d3/`；同源CI安装 / 启动 / 卸载通过，当前用户已有安装，本轮未覆盖安装或恢复性能排查。 |
 | [YML-018 Windows UI 对齐](tasks/YML-018-windows-ui-alignment.md) | 实现 /CI通过，用户机验收blocked：按Mac对齐侧栏、原生分段导航、显示器卡片与三页空态，统一WPF控件。f9df8d3 Windows103 /2 ignored、生产XAML双语两尺寸24状态 /12图抽检、真实ABI、Release /安装启动卸载通过；新版包已生成。待Windows11电脑上线补默认宽窗 /实际键盘 /高对比；YML-017性能排查保持暂停。[记录](evidence/2026-10-31-windows-ui-alignment.md)。 |
 | [YML-017 Windows 性能排查](tasks/YML-017-windows-idle-performance.md) | blocked（用户要求暂停，待实际连接VR后通知继续）：安装版激活后两段约61s平均0.87%单核；后继开发版恢复前台30s约67.73%单核（16线程归一化4.23%）。两次热线程栈经过UIA同步派发，观察干扰尚未排除；对照被并行任务关闭进程打断。已停止测量 / 窗口操作，未改产品代码，不宣称根因或真实性能验收通过。[报告](evidence/2026-10-31-windows-idle-performance.md)。 |

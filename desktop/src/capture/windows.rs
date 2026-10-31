@@ -9,7 +9,7 @@ use std::sync::{mpsc, Arc};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 use tokio::sync::mpsc::Sender;
-use windows::core::{factory, Interface, VARIANT};
+use windows::core::{factory, Interface, PCWSTR, VARIANT};
 use windows::Foundation::{EventRegistrationToken, TypedEventHandler};
 use windows::Graphics::Capture::{
     Direct3D11CaptureFrame, Direct3D11CaptureFramePool, GraphicsCaptureItem,
@@ -24,7 +24,8 @@ use windows::Win32::Graphics::Direct3D::D3D_DRIVER_TYPE_HARDWARE;
 use windows::Win32::Graphics::Direct3D11::*;
 use windows::Win32::Graphics::Dxgi::IDXGIDevice;
 use windows::Win32::Graphics::Gdi::{
-    EnumDisplayMonitors, GetMonitorInfoW, HDC, HMONITOR, MONITORINFOEXW,
+    EnumDisplayDevicesW, EnumDisplayMonitors, GetMonitorInfoW, DISPLAY_DEVICEW,
+    DISPLAY_DEVICE_ACTIVE, HDC, HMONITOR, MONITORINFOEXW,
 };
 use windows::Win32::Media::Audio::*;
 use windows::Win32::Media::MediaFoundation::*;
@@ -81,6 +82,55 @@ pub fn permission_granted() -> bool {
     unsafe { (factory.vtable().IsSupported)(factory.as_raw(), &mut supported).is_ok() && supported }
 }
 
+fn monitor_model(device: &DISPLAY_DEVICEW) -> Option<String> {
+    if device.StateFlags & DISPLAY_DEVICE_ACTIVE == 0 {
+        return None;
+    }
+    let end = device.DeviceID.iter().position(|&c| c == 0)?;
+    let interface = String::from_utf16(&device.DeviceID[..end]).ok()?;
+    let mut parts = interface.strip_prefix(r"\\?\")?.split('#');
+    if !parts.next()?.eq_ignore_ascii_case("DISPLAY") {
+        return None;
+    }
+    let model = parts.next()?;
+    // Expose only the PnP model, never the interface's unique instance / path.
+    if model.len() != 7
+        || !model.as_bytes()[..3].iter().all(u8::is_ascii_alphabetic)
+        || !model.as_bytes()[3..].iter().all(u8::is_ascii_hexdigit)
+        || parts.next()?.is_empty()
+    {
+        return None;
+    }
+    Some(model.to_ascii_uppercase())
+}
+
+fn monitor_name(source: &[u16; 32], id: u32) -> String {
+    const EDD_GET_DEVICE_INTERFACE_NAME: u32 = 1;
+    for index in 0..u32::MAX {
+        let mut device = DISPLAY_DEVICEW {
+            cb: size_of::<DISPLAY_DEVICEW>() as u32,
+            ..Default::default()
+        };
+        // source is the NUL-terminated GDI name from this monitor's MONITORINFOEXW.
+        if !unsafe {
+            EnumDisplayDevicesW(
+                PCWSTR(source.as_ptr()),
+                index,
+                &mut device,
+                EDD_GET_DEVICE_INTERFACE_NAME,
+            )
+        }
+        .as_bool()
+        {
+            break;
+        }
+        if let Some(model) = monitor_model(&device) {
+            return model;
+        }
+    }
+    format!("Display {id}")
+}
+
 fn monitors() -> Result<Vec<(Display, HMONITOR)>, String> {
     unsafe extern "system" fn monitor(
         handle: HMONITOR,
@@ -101,7 +151,7 @@ fn monitors() -> Result<Vec<(Display, HMONITOR)>, String> {
                     result.push((
                         Display {
                             id,
-                            name: format!("Display {id}"),
+                            name: monitor_name(&info.szDevice, id),
                             width: (rect.right - rect.left) as u32,
                             height: (rect.bottom - rect.top) as u32,
                         },
@@ -1489,6 +1539,72 @@ impl Drop for Capture {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn monitor_device(interface: &str) -> DISPLAY_DEVICEW {
+        let mut device = DISPLAY_DEVICEW::default();
+        device.StateFlags = windows::Win32::Graphics::Gdi::DISPLAY_DEVICE_ACTIVE;
+        for (target, value) in device.DeviceID.iter_mut().zip(interface.encode_utf16()) {
+            *target = value;
+        }
+        device
+    }
+
+    #[test]
+    fn monitor_model_keeps_only_the_pnp_model() {
+        for (interface, expected) in [
+            (r"\\?\DISPLAY#HWV6446#SYNTHETIC-INSTANCE#{GUID}", "HWV6446"),
+            (r"\\?\DISPLAY#RTK1600#SYNTHETIC-INSTANCE#{GUID}", "RTK1600"),
+            (r"\\?\display#abc00af#SYNTHETIC-INSTANCE#{GUID}", "ABC00AF"),
+        ] {
+            assert_eq!(
+                monitor_model(&monitor_device(interface)).as_deref(),
+                Some(expected)
+            );
+        }
+    }
+
+    #[test]
+    fn monitor_model_rejects_inactive_or_unrecognized_devices() {
+        let mut inactive = monitor_device(r"\\?\DISPLAY#HWV6446#SYNTHETIC-INSTANCE#{GUID}");
+        inactive.StateFlags = Default::default();
+        assert_eq!(monitor_model(&inactive), None);
+        for interface in [
+            "",
+            r"\\?\OTHER#HWV6446#SYNTHETIC-INSTANCE#{GUID}",
+            r"\\?\DISPLAY#HWV6446",
+            r"\\?\DISPLAY#HWV6446##{GUID}",
+            r"\\?\DISPLAY#HWV6446-PRIVATE#SYNTHETIC-INSTANCE#{GUID}",
+            r"\\?\DISPLAY#HWV64ZZ#SYNTHETIC-INSTANCE#{GUID}",
+            r"\\?\DISPLAY#H1V6446#SYNTHETIC-INSTANCE#{GUID}",
+        ] {
+            assert_eq!(monitor_model(&monitor_device(interface)), None);
+        }
+        let mut invalid_utf16 = monitor_device("invalid");
+        invalid_utf16.DeviceID[0] = 0xd800;
+        assert_eq!(monitor_model(&invalid_utf16), None);
+    }
+
+    #[test]
+    fn monitor_model_stops_at_the_utf16_terminator() {
+        let mut device = monitor_device(r"\\?\DISPLAY#HWV6446#SYNTHETIC-INSTANCE#{GUID}");
+        let end = device.DeviceID.iter().position(|&c| c == 0).unwrap();
+        device.DeviceID[end + 1] = 0xd800;
+        assert_eq!(monitor_model(&device).as_deref(), Some("HWV6446"));
+        device.DeviceID.fill(b'X' as u16);
+        assert_eq!(monitor_model(&device), None);
+    }
+
+    #[test]
+    fn missing_monitor_keeps_the_localizable_display_number() {
+        let mut source = [0; 32];
+        for (target, value) in source
+            .iter_mut()
+            .zip("YML_NONEXISTENT_SOURCE".encode_utf16())
+        {
+            *target = value;
+        }
+        assert_eq!(monitor_name(&source, 7), "Display 7");
+    }
 
     // Test-only Main-profile SPS reader: ITU-T H.264 7.3.2.1 and E.1.1.
     // Inspect the encoded bitstream, rather than trusting the requested MF type.
