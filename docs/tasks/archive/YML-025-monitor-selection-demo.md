@@ -31,4 +31,4 @@ Tests: not-applicable (仅独立 HTML 视觉原型，不改 Rust、协议或原�
 
 ## Next
 
-HTML 原型已完成并在浏览器确认，交用户审阅；原生落地等待用户看过 demo 后的后续要求。
+HTML 原型已完成并在浏览器确认，用户随后明确授权基于 demo 开发；原生实现见 [YML-026](YML-026-monitor-selection-native.md)。
