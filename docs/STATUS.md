@@ -25,7 +25,7 @@
 
 | 工作 | 当前结论 / 下一动作 |
 | --- | --- |
-| [YML-031 Windows 首次文件读取](tasks/YML-031-file-version-read.md) | verifying：冷首读元数据更新误判Changed已修复，完整守卫保留。R1 两项问题修复 /推e7141ca后再R2，现无待修问题；10项files（只读5GiB /64位seek）、实际MP4读取与三平台CI通过。安装版完整更新，747文件 /配置 /startup通过，当前已打开；Quest目录版68110d1a的22E2E /180语言亦通过。实际用户视频解码保留待验，不再要求重复人工复现。 |
+| [YML-031 Windows 首次文件读取](tasks/YML-031-file-version-read.md) | verifying：冷首读误判Changed修复 /双轮CR /10项files /实际MP4读取 /三平台CI通过，安装版完整更新及startup通过；Quest目录版22E2E /180语言亦通过。用户追加自行装机测试，已同步main73cb59a并备妥该提交成功CI的Windows x64安装器（52,115,219bytes，完整校验通过）；当前安装版保持运行。实际用户视频解码保留待验，不再要求重复人工复现。 |
 | [YML-030 设备配对状态](tasks/archive/YML-030-peer-status.md) | done：Windows设备行仅显示一处状态，可信未连接为“已配对”与绿色点 /轻微波纹，按钮保留真实连接操作。中英原生窗口 /动效时钟 /Release /真实ABI及新独立CR通过；899870c的CI41193929703三平台与gitleaks全success，Windows完整Rust117 /2 ignored与安装卸载复验通过。首轮卸载失败及本机占UDP47610失败保留；新版在dist/YM_Link，未替换当前安装版。 |
 | [YML-029 Windows 托盘与退出](tasks/archive/YML-029-windows-tray.md) | done：X / Alt+F4 收起托盘，右键打开 / 退出、左键双击恢复，中英菜单同步；显式退出保留后台drain / 防重入。关闭RED→GREEN，不可见原生托盘 / 释放、Release / WPF / ABI和新独立CR通过。355871e的run41188794396三平台 / gitleaks全success，Windows117 /2 ignored /0 filtered与新托盘测试、发布启动 / 安装卸载smoke通过。开发版在 `dist/YM_Link`，未操作用户旧窗口；本机占端口失败保留，实际托盘交互用户自验。 |
 | [YML-028 显示器预览 / 名称分区](tasks/archive/YML-028-monitor-card-sections.md) | done（修正）：上一轮把整卡淡蓝误当需求；现已改为上方预览灰 / 选中淡蓝、下方名称白底、中间全宽细线，保留单层蓝边。原生 / HTML同步，Release WPF / ABI /24张原生样本、独立输出 / 图标 / 路径隐私检查及新独立CR通过。用户正运行旧开发版，修正版另存 `dist/YM_Link-monitor-sections`，未操作或覆盖；完整门禁仍因旧版占UDP47610而失败，实际窗口由用户检查。 |

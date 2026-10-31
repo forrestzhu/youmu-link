@@ -50,6 +50,10 @@ Quest 3S /Android 14 API34 incremental 4069240020600610 的新目录版由另一
 
 后续已完成：另一会话同源68110d1a /private1952真机22/22与180语言pass，原始报告 /日志 /双包前后摘要 /当前指纹与清理经独立核对；E2E-020新增目录名称断言通过。该用例使用固定合成Rust peer和Windows LAN relay，不等同本安装版 /用户5GB媒体播放。机器凭据由原始runner按原字节复制至Quest仓库，SHA `872fc4cae19e88611ee174c87b8990977ec94ce4b92813315819fa977448241b`，未手写或跳过门禁，详见YM-334。确认其他预览已退出后，CLI重新打开已更新安装版，实际主进程 /TCP /UDP监听存活；保持启动，全程未使用Computer Use。
 
+用户后续要求先拉最新代码再提供安装包自测：再次 fetch /ff-only，main 为73cb59a；相对e7141ca只有本任务 /STATUS文档变化，产品 /依赖 /打包输入保持。同源[CI41200710172](https://github.com/forrestzhu/youmu-link/actions/runs/41200710172)三平台与gitleaks success。已取回该提交的Windows x64安装包，artifact13042941126的外包SHA `39665bb9c0d87792ab1b1f5ea776a23420b0983e41cf7c67257e06d540e35bfd`与API digest一致；双内包SHA /CRC /BUILD-INFO /747文件 /8.0.32运行时校验通过。安装器 `YM_Link-0.1.0-windows-x64-73cb59a30856-setup.exe`，52,115,219bytes，SHA `a183d3a04581e65e0ac0675aa11709b77849e113e46c30ab59600919321dce84`，留ignored `dist/packages/ci-73cb59a-verified/`。本轮仅准备安装文件供用户自行测试，未再次替换 /关闭当前安装版，也未发布公开Release。
+
+本轮 latest_installer_audit 独立只读复核：外层4成员与落地文件逐字节相同、内外CRC /双sidecar /747文件 /BUILD-INFO均通过，无阻断；仅核验，未安装或操作当前应用。新包Rust DLL SHA `d2f99f7615daf803dfb235a576a51ac66382e1ebb99e909cbcf17097d2b82172`，与e7141ca安装版的不同CI产物分别记录，不混用摘要。
+
 ## Next
 
 两轮 CR、同源 CI、完整安装更新 /startup与当前Quest22E2E /180语言已通过；保留用户媒体实际解码待验边界，保持 verifying，不再请求重复人工复现。
