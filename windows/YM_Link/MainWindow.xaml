@@ -22,11 +22,41 @@
                 <StackPanel>
                   <DockPanel>
                     <Path DockPanel.Dock="Left" Width="21" Height="17" Stretch="Uniform" Margin="0,2,9,0" VerticalAlignment="Top" Data="M 3,3 Q 12,-1 21,3 L 23,12 Q 23,17 18,17 L 14,13 L 10,13 L 6,17 Q 1,17 1,12 Z" Stroke="{DynamicResource SecondaryInk}" StrokeThickness="1.4"/>
-                    <StackPanel><TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold"/><TextBlock Text="{Binding Address}" Style="{StaticResource Secondary}" Margin="0,4,0,0"/><TextBlock Text="{Binding TrustText}" Style="{StaticResource Secondary}" Margin="0,3,0,0"/></StackPanel>
+                    <StackPanel><TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold"/><TextBlock Text="{Binding Address}" Style="{StaticResource Secondary}" Margin="0,4,0,0"/></StackPanel>
                   </DockPanel>
                   <DockPanel Margin="0,10,0,0">
                     <Button DockPanel.Dock="Right" Content="{Binding ActionText}" Tag="{Binding Id}" Click="PeerAction" FontSize="12" MinHeight="28" Padding="9,3" Margin="8,0,0,0"/>
-                    <TextBlock Text="{Binding StatusText}" Style="{StaticResource Secondary}" VerticalAlignment="Center"/>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                      <Grid x:Name="PairedIndicator" Width="16" Height="16" Margin="0,0,5,0" IsHitTestVisible="False">
+                        <Grid.Style><Style TargetType="Grid"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding ShowsPairedStatus}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></Grid.Style>
+                        <Ellipse x:Name="PairedRipple" Width="8" Height="8" Stroke="{DynamicResource SuccessInk}" StrokeThickness="1" Opacity="0" RenderTransformOrigin="0.5,0.5" IsEnabled="{DynamicResource {x:Static SystemParameters.ClientAreaAnimationKey}}">
+                          <Ellipse.RenderTransform><ScaleTransform/></Ellipse.RenderTransform>
+                          <Ellipse.Style>
+                            <Style TargetType="Ellipse">
+                              <Style.Triggers>
+                                <DataTrigger Binding="{Binding WindowState, RelativeSource={RelativeSource AncestorType=Window}}" Value="Minimized"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger>
+                                <MultiTrigger>
+                                  <MultiTrigger.Conditions><Condition Property="IsVisible" Value="True"/><Condition Property="IsEnabled" Value="True"/></MultiTrigger.Conditions>
+                                  <MultiTrigger.EnterActions>
+                                    <BeginStoryboard Name="PairedPulse" HandoffBehavior="SnapshotAndReplace">
+                                      <Storyboard RepeatBehavior="Forever">
+                                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)" From="0.8" To="2" Duration="0:0:2"/>
+                                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)" From="0.8" To="2" Duration="0:0:2"/>
+                                        <DoubleAnimation Storyboard.TargetProperty="Opacity" From="0.45" To="0" Duration="0:0:2"/>
+                                      </Storyboard>
+                                    </BeginStoryboard>
+                                  </MultiTrigger.EnterActions>
+                                  <MultiTrigger.ExitActions><RemoveStoryboard BeginStoryboardName="PairedPulse"/></MultiTrigger.ExitActions>
+                                </MultiTrigger>
+                                <EventTrigger RoutedEvent="Unloaded"><RemoveStoryboard BeginStoryboardName="PairedPulse"/></EventTrigger>
+                              </Style.Triggers>
+                            </Style>
+                          </Ellipse.Style>
+                        </Ellipse>
+                        <Ellipse Width="6" Height="6" Fill="{DynamicResource SuccessInk}"/>
+                      </Grid>
+                      <TextBlock Text="{Binding StatusText}" Style="{StaticResource Secondary}" VerticalAlignment="Center"/>
+                    </StackPanel>
                   </DockPanel>
                 </StackPanel>
               </DataTemplate></ListBox.ItemTemplate>

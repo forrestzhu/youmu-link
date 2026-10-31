@@ -25,6 +25,7 @@ YM-332已按用户要求先推第一轮修复，再完成第二轮CR及属实问
 
 | 工作 | 当前结论 / 下一动作 |
 | --- | --- |
+| [YML-030 设备配对状态](tasks/YML-030-peer-status.md) | verifying：Windows设备行合并为单一状态，可信未连接显示“已配对”与绿色点 / 轻微波纹，保留真实连接按钮；中英原生窗口 / 隐藏与最小化 / 系统动画关闭时钟回归、Release /真实ABI与新独立CR通过。开发版在dist/YM_Link，未替换安装版；本机完整门禁仍因安装版占UDP47610失败，待同源CI完整回归。 |
 | [YML-029 Windows 托盘与退出](tasks/archive/YML-029-windows-tray.md) | done：X / Alt+F4 收起托盘，右键打开 / 退出、左键双击恢复，中英菜单同步；显式退出保留后台drain / 防重入。关闭RED→GREEN，不可见原生托盘 / 释放、Release / WPF / ABI和新独立CR通过。355871e的run41188794396三平台 / gitleaks全success，Windows117 /2 ignored /0 filtered与新托盘测试、发布启动 / 安装卸载smoke通过。开发版在 `dist/YM_Link`，未操作用户旧窗口；本机占端口失败保留，实际托盘交互用户自验。 |
 | [YML-028 显示器预览 / 名称分区](tasks/archive/YML-028-monitor-card-sections.md) | done（修正）：上一轮把整卡淡蓝误当需求；现已改为上方预览灰 / 选中淡蓝、下方名称白底、中间全宽细线，保留单层蓝边。原生 / HTML同步，Release WPF / ABI /24张原生样本、独立输出 / 图标 / 路径隐私检查及新独立CR通过。用户正运行旧开发版，修正版另存 `dist/YM_Link-monitor-sections`，未操作或覆盖；完整门禁仍因旧版占UDP47610而失败，实际窗口由用户检查。 |
 | [YML-027 显示器卡片追加验证 / CR](tasks/archive/YML-027-monitor-selection-cr.md) | done：用户追加的新独立CR无待修问题，本机新Release / WPF / BAML / ABI /24张原生样本检查通过。f51e700的run41184493604三平台与gitleaks全success；Linux Rust104、Windows117 /2 ignored、macOS110 /1 ignored均0 filtered，Swift9、原生启动smoke / 安装卸载 / DMG与ZIP通过。未操作用户窗口或覆盖安装版，保留历史本机失败和旧CI cancelled。 |

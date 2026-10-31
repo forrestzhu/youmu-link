@@ -13,6 +13,28 @@ static void Check(bool ok, string message)
 
 var en = new Localizer("en");
 var zh = new Localizer("zh-Hans");
+foreach (var (status, trusted, english, chinese, canDisconnect) in new[]
+{
+    ("disconnected", true, "Paired", "已配对", false),
+    ("discovered", true, "Paired", "已配对", false),
+    ("disconnected", false, "Disconnected", "已断开", false),
+    ("discovered", false, "Discovered", "已发现", false),
+    ("connecting", true, "Connecting", "连接中", true),
+    ("pairing", true, "Pairing", "配对中", true),
+    ("connected", true, "Connected", "已连接", true),
+    ("paired", true, "Paired", "已配对", true),
+    ("error", true, "Error", "发生错误", false),
+    ("unexpected", true, "Status unavailable", "状态待确认", false),
+})
+{
+    foreach (var (localizer, expected) in new[] { (en, english), (zh, chinese) })
+    {
+        var row = new PeerItem(new Peer { Status = status, Trusted = trusted }, localizer);
+        Check(row.StatusText == expected, $"Peer status {status}, trusted={trusted}: expected {expected}, got {row.StatusText}.");
+        Check(row.ShowsPairedStatus == (english == "Paired"), "The green indicator must follow the displayed paired state.");
+        Check(row.CanDisconnect == canDisconnect && row.ActionText == localizer[canDisconnect ? "disconnect" : "connect"], "Peer status presentation must preserve the actual connection action.");
+    }
+}
 foreach (var localizer in new[] { en, zh })
 {
     foreach (var model in new[] { "HWV6446", "RTK1600" })

@@ -448,8 +448,8 @@ internal sealed class PeerItem(Peer data, Localizer localizer) : Row<Peer>(data,
     public string Id => Data.Id;
     public string Name => Data.Name.Length == 0 ? Localizer["nearby_device"] : Data.Name;
     public string Address => Data.Address;
-    public string StatusText => Localizer.Status(Data.Status);
-    public string TrustText => Data.Trusted ? Localizer["trusted_label"] : "";
+    public bool ShowsPairedStatus => Data.Status == "paired" || (Data.Trusted && Data.Status is "disconnected" or "discovered");
+    public string StatusText => Localizer.Status(ShowsPairedStatus ? "paired" : Data.Status);
     public bool CanDisconnect => Data.Status is "connected" or "paired" or "connecting" or "pairing";
     public string ActionText => Localizer[CanDisconnect ? "disconnect" : "connect"];
 }

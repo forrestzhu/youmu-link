@@ -207,6 +207,7 @@ internal static class TemplateBindingTests
                 MainWindow.ApplyWorkspaceSelection(window);
                 window.Show();
                 FlushLayout(window);
+                VerifyPeerStatus(window, localizer, prefix);
                 var tabs = Need<FrameworkElement>(window, "WorkspaceTabs");
                 MainWindow.ApplyHeaderLayout(((FrameworkElement)window.Content).ActualWidth, tabs, Need<FrameworkElement>(window, "PageHeading"));
                 MainWindow.ApplyDisplayLayout(Need<ListBox>(window, "DisplayChoice"));
@@ -284,6 +285,81 @@ internal static class TemplateBindingTests
             }
             finally { window.Close(); }
         }
+    }
+
+    private static void VerifyPeerStatus(Window window, Localizer localizer, string prefix)
+    {
+        var list = Need<ListBox>(window, "PeerList");
+        var row = (PeerItem)list.Items[0];
+        var original = row.Data;
+        foreach (var (status, trusted, key, action) in new[]
+        {
+            ("disconnected", true, "status_paired", "connect"),
+            ("connected", true, "status_connected", "disconnect"),
+            ("discovered", true, "status_paired", "connect"),
+            ("disconnected", false, "status_disconnected", "connect"),
+        })
+        {
+            row.Update(original with { Status = status, Trusted = trusted }, localizer);
+            FlushLayout(window);
+            var texts = new List<string>();
+            FrameworkElement? indicator = null;
+            System.Windows.Shapes.Ellipse? ripple = null;
+            var remaining = new Queue<DependencyObject>();
+            remaining.Enqueue(list);
+            while (remaining.TryDequeue(out var element))
+            {
+                if (element is TextBlock { IsVisible: true } text && text.Text.Length > 0) texts.Add(text.Text);
+                if (element is FrameworkElement { Name: "PairedIndicator" } paired) indicator = paired;
+                if (element is System.Windows.Shapes.Ellipse { Name: "PairedRipple" } wave) ripple = wave;
+                for (var index = 0; index < VisualTreeHelper.GetChildrenCount(element); index++)
+                    remaining.Enqueue(VisualTreeHelper.GetChild(element, index));
+            }
+            Require(texts.Count(text => text == localizer[key]) == 1, "Device row must show its current state exactly once.");
+            Require(texts.Count == 4, "Device row must show only name, address, one status and one action.");
+            var pairedStatus = key == "status_paired";
+            Require(indicator is not null && indicator.IsVisible == pairedStatus, "The green dot must only accompany the paired status.");
+            Require(ripple is not null, "The paired state needs its ripple indicator.");
+            RequireRipple(ripple!, pairedStatus && SystemParameters.ClientAreaAnimation);
+            if (pairedStatus)
+            {
+                ripple!.IsEnabled = false;
+                FlushLayout(window);
+                RequireRipple(ripple, false);
+                ripple.ClearValue(UIElement.IsEnabledProperty);
+                ripple.SetResourceReference(UIElement.IsEnabledProperty, SystemParameters.ClientAreaAnimationKey);
+                window.Hide();
+                FlushLayout(window);
+                RequireRipple(ripple, false);
+                window.Show();
+                FlushLayout(window);
+                RequireRipple(ripple, SystemParameters.ClientAreaAnimation);
+                window.WindowState = WindowState.Minimized;
+                FlushLayout(window);
+                RequireRipple(ripple, false);
+                window.WindowState = WindowState.Normal;
+                FlushLayout(window);
+                RequireRipple(ripple, SystemParameters.ClientAreaAnimation);
+            }
+            Require(Find<Button>(list)?.Content?.ToString() == localizer[action], "A paired idle device must retain Connect while an active device retains Disconnect.");
+            if (status == "disconnected" && trusted) SavePreview(window, prefix + "-paired");
+        }
+        row.Update(original, localizer);
+        FlushLayout(window);
+    }
+
+    private static void RequireRipple(System.Windows.Shapes.Ellipse ripple, bool animated)
+    {
+        // Storyboard control requests take effect on the next WPF timing tick.
+        bool Matches() => ripple.HasAnimatedProperties == animated && ((ScaleTransform)ripple.RenderTransform).HasAnimatedProperties == animated;
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(1);
+        var frame = new DispatcherFrame();
+        var timer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(10) };
+        timer.Tick += (_, _) => { if (Matches() || DateTime.UtcNow >= deadline) frame.Continue = false; };
+        timer.Start();
+        try { Dispatcher.PushFrame(frame); }
+        finally { timer.Stop(); }
+        Require(Matches(), $"Ripple animation clocks must be {(animated ? "active" : "removed")} for the current visibility and motion preference.");
     }
 
     private static Window LoadPreview(Localizer localizer, Size size)
