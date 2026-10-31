@@ -16,7 +16,7 @@ Tests: not-applicable (不改 Rust 或协议；新增 WPF 生产编译 BAML 行�
 ## Acceptance
 
 - [x] 自动回归复现与系统记录相同的 XAML 崩溃，修复后编译设备 / 共享 / 传输行加载通过。
-- [ ] 完整门禁、Windows Release 构建 / ABI / smoke 与实际窗口启动通过，独立审查无阻断。
+- [x] 完整门禁、Windows Release 构建 / ABI / smoke 与实际窗口启动通过，独立审查无阻断。
 - [ ] 真实 VR 重新连接不闪退；设备型号、系统版本与结果记入 evidence，不以合成行代签 LAN。
 - [ ] 说明并处理 VR 设备名称 / 系统类型显示的实际原因与适用边界。
 
@@ -34,7 +34,11 @@ Tests: not-applicable (不改 Rust 或协议；新增 WPF 生产编译 BAML 行�
 
 `python3 scripts/build_windows.py --smoke-test` 退出 0：Release 原生编译 BAML /中英布局、真实 DLL 生命周期 /并发 drain、x64 自包含发布、窗口图标与真实 Rust startup / snapshot / shutdown smoke 通过。独立只读审查基线 d21faa9→当前候选，未发现阻断；确认 EventSetter 的 sender、DataContext、Trusted 守卫与 ContextMenu PlacementTarget 语义保留，无既有 MenuItem 样式被覆盖。实际窗口与真实 VR 重连另记录，当前不以自动回归代签。
 
-Quest 只读核对：匿名 LinkPeer 不含 name /platform，配对 LinkClient 已有 hello.name，但配对页 `pairingHost ?: pairingName` 优先显示地址，且状态缺 pairingPlatform；已认证 /已配对视图已有名称和系统。用户要求先基于现有 UI 交付 HTML Demo，设计阶段在游目仓库 YM-331 跟踪；不在本次 Windows 崩溃补丁扩展协议。
+Quest 只读核对：匿名 LinkPeer 不含 name /platform，配对 LinkClient 已有 hello.name，但配对页 `pairingHost ?: pairingName` 优先显示地址，且状态缺 pairingPlatform；已认证 /已配对视图已有名称和系统。用户要求先基于现有 UI 交付 HTML Demo，设计阶段在游目仓库 [YM-331](https://github.com/forrestzhu/youmu/blob/main/docs/tasks/YM-331-link-discovery-identity-demo.md) 跟踪；不在本次 Windows 崩溃补丁扩展协议。
+
+修复提交 `55eef040a34ee465beae2d4499d8be11ff5b2eda` 已推送，`harness check --require-pushed` 通过。为使用户现有快捷方式可直接复验，在确认安装版未运行后，将原 YM_Link.dll 与 BUILD-INFO 备份至 ignored `dist/backups/yml022-55eef04/`，仅替换修复的 managed DLL；保留既有 .NET 8.0.33 自包含运行时与同源 Rust backend，不将本地构建的 .NET 8.0.12 运行时降级复制到安装版。新 DLL SHA-256 回读 `0eff614dcd60e3b243d3f9c96157468f2128233ce4860ab157f7453a84aa670f` 与本地产物一致，PATCH-INFO 记录基础 /修复提交与摘要；原 BUILD-INFO 保留基础包事实。
+
+本机 Windows 11 专业版 x64 10.0.26200：13:39:54 重新打开安装版后，CUA 实际窗口与无障碍树回读就绪，显示两台真实显示器型号 /分辨率、TCP /发现端口和搜索状态；启动后未见新增该应用 .NET crash 事件，真实 VR 点击仍待确认。当前 ADB 已连接 Quest 3S（Android 14，build incremental 4069240020600610），未主动重启用户头显应用或安装新 APK，不将设备在线当作 LAN 已验收。13:44 的 CI 快照为 Linux /Mac /gitleaks success，Windows Rust success、原生 /打包仍运行中，最终结果后续更新。
 
 ## Next
 
