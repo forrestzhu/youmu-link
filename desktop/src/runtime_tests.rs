@@ -431,6 +431,126 @@ async fn known_wait_cancellation_and_changed_pins_cannot_admit_a_late_connection
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn automatic_known_mismatch_pauses_redial_until_manual_pairing_succeeds() {
+    let (shared, mut writer, _incoming, _read, server, _commands) = isolated_file_server().await;
+    writer.send(&Message::Bye { v: VERSION }).await.unwrap();
+    server.await.unwrap().unwrap();
+    *shared.active.lock().unwrap() = None;
+    shared.edit(|state| state.listen_port = 32000);
+    let peer = Identity::generate().unwrap();
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let hello = Hello::new(&peer, "Trust lost on Quest", "quest", address.port());
+    shared
+        .trust
+        .lock()
+        .await
+        .remember_endpoint(&hello, &peer.public_key(), Some(address.to_string()))
+        .unwrap();
+    shared.edit(|state| {
+        publish_authenticated_peer(
+            state,
+            Peer {
+                id: peer.device_id(),
+                name: hello.name.clone(),
+                platform: "quest".into(),
+                address: address.to_string(),
+                status: "disconnected".into(),
+                trusted: true,
+            },
+        )
+    });
+    let wait_dial = || async {
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while shared.dialing.load(Ordering::Acquire) {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .unwrap();
+    };
+    dial(shared.clone(), address, Some(peer.device_id()), false);
+    let (stream, _) = tokio::time::timeout(Duration::from_secs(1), listener.accept())
+        .await
+        .unwrap()
+        .unwrap();
+    let mut session = SecureSession::handshake(stream, false, &peer, hello.clone())
+        .await
+        .unwrap();
+    assert!(session.needs_pairing(&TrustStore::memory()).await.unwrap());
+    assert!(
+        session.request_pairing(None).await.is_err(),
+        "automatic retry cannot open a pairing window"
+    );
+    wait_dial().await;
+    for _ in 0..2 {
+        dial(shared.clone(), address, Some(peer.device_id()), false);
+        assert!(
+            tokio::time::timeout(Duration::from_millis(150), listener.accept())
+                .await
+                .is_err(),
+            "a peer needing explicit pairing must not receive another automatic TCP dial"
+        );
+    }
+    assert!(shared.state.lock().unwrap().pairing.is_none());
+
+    // An explicit connection still permits the normal four-digit exchange.
+    dial(shared.clone(), address, Some(peer.device_id()), true);
+    let (stream, _) = tokio::time::timeout(Duration::from_secs(1), listener.accept())
+        .await
+        .unwrap()
+        .unwrap();
+    let mut session = SecureSession::handshake(stream, false, &peer, hello.clone())
+        .await
+        .unwrap();
+    let mut remote_trust = TrustStore::memory();
+    assert!(session.needs_pairing(&remote_trust).await.unwrap());
+    session.request_pairing(None).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(1), async {
+        while shared.state.lock().unwrap().pairing.is_none() {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    let code = shared
+        .state
+        .lock()
+        .unwrap()
+        .pairing
+        .as_ref()
+        .unwrap()
+        .code
+        .clone()
+        .unwrap();
+    session
+        .authorize(&mut remote_trust, Pairing::Enter { code })
+        .await
+        .unwrap();
+    let (_reader, mut sender) = session.into_split().unwrap();
+    sender.send(&Message::Bye { v: VERSION }).await.unwrap();
+    wait_dial().await;
+
+    // Successful authorization re-enables automatic Known recovery.
+    dial(shared.clone(), address, Some(peer.device_id()), false);
+    let (stream, _) = tokio::time::timeout(Duration::from_secs(1), listener.accept())
+        .await
+        .unwrap()
+        .unwrap();
+    let mut session = SecureSession::handshake(stream, false, &peer, hello)
+        .await
+        .unwrap();
+    assert!(!session.needs_pairing(&remote_trust).await.unwrap());
+    session
+        .authorize(&mut remote_trust, Pairing::ReconnectOnly)
+        .await
+        .unwrap();
+    let (_reader, mut sender) = session.into_split().unwrap();
+    sender.send(&Message::Bye { v: VERSION }).await.unwrap();
+    wait_dial().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn disconnecting_before_noise_prevents_automatic_reconnect_for_both_selectors() {
     use tokio::io::AsyncReadExt;
     let (shared, mut writer, _incoming, _read, server, _commands) = isolated_file_server().await;
@@ -1374,6 +1494,7 @@ async fn isolated_file_server() -> (
         config_path: PathBuf::new(),
         mirror_cancel: Mutex::new(None),
         disconnected: Mutex::new(HashSet::new()),
+        reconnect_paused: Mutex::new(HashSet::new()),
         mirror_generation: AtomicU64::new(1),
         allow_loopback: true,
         share_changes: Mutex::new(()),

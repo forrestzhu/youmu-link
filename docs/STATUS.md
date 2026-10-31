@@ -2,6 +2,8 @@
 
 更新：2026-10-31。仅记录最近实测事实、未关闭问题与下一步；详细证据见任务。
 
+YM-332第一轮独立CR追加的反向单边信任自动重拨循环已真实TCP RED→GREEN（定向1/1、无skip，rustfmt通过）。按用户要求先推送此修复，再继续第二轮CR与完整验证；安装版仍为97dacbd，新修订完整verify /真实LAN待验。详情见[YML-023](tasks/YML-023-encrypted-identification.md)。
+
 用户授权的历史邮箱修正已完成：20 个既有提交的 author / committer 均统一为目标邮箱，20 个文件树不变，16 个提交号变化；旧记录中的提交号见[旧 → 新映射](evidence/2026-10-27-history-email-rewrite.md)。
 
 ## 当前制品与服务
@@ -16,14 +18,15 @@
 | Windows 原生应用 | 10-30 同步 `efe6f56` 后，Windows 11 Pro x64 build 26200 的完整 Rust 103 passed / 2 ignored、Python 36 passed / 2 skipped、WPF 模型 / 本地化 / 行模板 / ABI、Release 自包含目录与 smoke、系统 H.264 合成编码通过。实际窗口中英 / 显示器 / 四位前导零 / 取消、单机加密 Shares 查询与正常断开无误报通过；修复 CLI 配对协商前等待 stdin 的测试桩缺陷，临时信任清至 0。真实 Windows↔Quest LAN / 采集、Windows 10 / ARM64、安装器 / 签名 not-run。[报告](evidence/2026-10-30-windows-regression.md)、[YML-003](tasks/YML-003-windows-native.md)。 |
 | 镜像 | Rust ScreenCaptureKit + VideoToolbox 硬件 H.264、系统 PCM 与加密分片、双端控制、持续背压降分辨率实现就位。首次开始必须本机确认；独立故障信号跨暂停 / 恢复保存，采集或初始化失败不能自动重启，对端不请求系统权限。真实硬件合成帧编码单测通过；真实采集 / 弱网切档、权限恢复、Quest 解码 / 音画同步 / 延迟仍 not-run。 |
 | Windows 镜像 | Rust WGC / D3D11、CPU NV12 转换与系统 Media Foundation 软件 H.264、WASAPI loopback，复用 v3 AVCC / PCM 输出与双端控制。合成 HD 编码及实际 SPS 色彩标记检查通过；修复 WinRT 工厂缓存跨 apartment 销毁造成的反复启动崩溃。真实屏幕 / 系统音频采集及性能 not-run，不推断硬件编码性能。 |
-| harness / CI | a438c0b 的 run41082260025三平台全success（蓝金链环）；Linux/Windows/Mac完整测试、Windows EXE/WPF/安装卸载、Mac图标/DMG/移位资源通过，最新CI制品与校验和已上传、保留7天。此前62cf58c公开制品的独立下载核验保留；用户追加授权后已手动发布 [开发预览](https://github.com/forrestzhu/youmu-link/releases/tag/v0.1.0-preview.20261030.1)，8个公开资产 digest / 大小及匿名下载回读通过，无 main 自动发版。见[分发记录](evidence/2026-10-30-distribution-home.md)。 |
+| harness / CI | 97dacbd的[run41175348703](https://github.com/forrestzhu/youmu-link/actions/runs/41175348703)三平台及[gitleaks](https://github.com/forrestzhu/youmu-link/actions/runs/41175348707)全success；Linux /Windows /Mac完整测试、Windows WPF /ABI /Release /smoke /安装器 /ZIP、Mac Swift /签名 /DMG /ZIP及制品上传通过。本机串行完整门禁Python47 /3 skipped、Rust109 passed /2 ignored通过。此前公开制品的独立下载核验保留；用户追加授权后已手动发布 [开发预览](https://github.com/forrestzhu/youmu-link/releases/tag/v0.1.0-preview.20261030.1)，8个公开资产 digest / 大小及匿名下载回读通过，无 main 自动发版。见[分发记录](evidence/2026-10-30-distribution-home.md)。 |
 | gitleaks 防泄漏 CI | `.github/workflows/gitleaks.yml` 于 push(main) / PR / 手动触发，SHA 锁定 gitleaks-action v3.0.0；push/PR 增量扫新提交、dispatch 全量历史（run 40624080000 扫 31 commits 通过），本地 26 commits 全量基线无泄漏，见 [YML-005](tasks/archive/YML-005-ci-gitleaks.md)。 |
 
 ## 当前工作与待验收
 
 | 工作 | 当前结论 / 下一动作 |
 | --- | --- |
-| [YML-022 VR 连接闪退](tasks/YML-022-windows-connection-crash.md) | verifying：系统记录与编译BAML回归复现Button→DockPanel；EventSetter修复55eef04已推送，回归 /独立CR /Release /ABI smoke与本机安装版实际启动通过。保留原组件备份，仅更新界面DLL，既有.NET8.0.33保留。首轮Rust bind OS10055，串行完整门禁107 passed /2 ignored通过；待真实VR重连。Quest3S当前ADB已在线，名称 /系统按用户要求先交游目YM-331 HTML Demo待审阅，未改匿名广播。 |
+| [YML-023 加密连接前识别](tasks/YML-023-encrypted-identification.md) | verifying：97dacbd将Known交换前置到active接管之前，并通过既有caps追加可选identify；Hello-only探测、活动会话保持、取消 /撤销 /pin反馈red→green，独立复审与三平台CI通过。安装版Rust DLL已备份并更新为该Release，SHA记录在任务，保留修复后的界面DLL和.NET8.0.33，已重新启动。游目[YM-332](https://github.com/forrestzhu/youmu/blob/main/docs/tasks/YM-332-link-device-identification.md)正在原生开发；真实Quest3S↔Windows名称 /平台识别、连接 /取消与已有会话保持仍not-run。 |
+| [YML-022 VR 连接闪退](tasks/YML-022-windows-connection-crash.md) | verifying：系统记录与编译BAML回归复现Button→DockPanel；EventSetter修复55eef04已推送，回归 /独立CR /Release /ABI smoke与本机安装版实际启动通过。保留原组件备份与.NET8.0.33，后继Rust更新见YML-023。首轮Rust bind OS10055，串行完整门禁107 passed /2 ignored通过；待真实VR重连。Quest3S已通过ADB在线，名称 /系统由YM-331 Demo推进至YM-332原生开发，UDP继续匿名。 |
 | [YML-021 安装后启动与桌面图标](tasks/archive/YML-021-installer-launch-shortcut.md) | done：完成页立即打开与桌面快捷方式选项均默认勾选 / 可取消，静默安装不自启。57a9e0d 三平台 CI success，两轮真实安装（默认 /取消桌面任务）的完整载荷 / .lnk 目标 / 进程检查 / 原生启动 / 卸载清理通过；52,083,482 bytes 安装器已下载至 `dist/packages/ci-57a9e0d/`，SHA-256 / CRC / 元数据 / 许可 / 图标通过。保留 YML-020 修复，未签名；用户安装及交互完成页 /升级记忆 not-run，未覆盖既有安装。 |
 | [YML-020 Windows 显示器名称](tasks/archive/YML-020-windows-display-names.md) | done：已修复后端固定 Display n，按各 GDI 源的活动 monitor 提取 PnP 型号；本机实际窗口 / Release C ABI 已显示 HWV6446（3840×2160）及 RTK1600（1600×2560）。四项新回归、本机完整门禁（Rust107 /2 ignored、Python47 /3 skipped）、独立审查及 ffe9ce5 /57a9e0d 两次三平台 CI 通过；最终安装包合并 YML-021 已取回核验。首轮并行检查端口占用保留记录，未恢复性能排查。 |
 | [YML-019 Windows 安装包取回](tasks/archive/YML-019-latest-windows-package.md) | done（历史交付）：已取回 f9df8d3 同源 CI 的 Windows x64 EXE / ZIP，与当时 main 产品 / 依赖 / 打包代码一致；本机及独立代理完整 SHA-256、ZIP CRC / 元数据 / 279 份依赖许可 / 安装器图标通过。安装器52,118,106 bytes、未签名，位于忽略入库的 `dist/packages/ci-f9df8d3/`；后继显示器修复和安装体验由 YML-020 /021 更新。 |
@@ -49,7 +52,7 @@
 
 ## 下一步
 
-Windows 最新本机回归已完成；当前无 ADB 设备，继续以可连接的 v4 Quest 验收真实 LAN、文件播放与录屏 / 音频，不以本机协议桩和合成编码代签。
+Windows最新桌面回归 /三平台CI与安装版更新已完成，Quest3S已通过ADB在线；继续游目YM-332原生开发，再以最新双端实际运行包验收连接前识别、真实连接 /取消及已有会话保持。真实LAN、文件播放与录屏 /音频仍按对应任务验收，不以设备在线、本机协议桩、CI或合成编码代签。
 
 YML-008四位实现、新app双方向原生组件与正常结束无误报均已通过，系统钥匙串阻塞已解除；6d613d0三平台CI及新增实际重链回归均已通过，最终记录按main严格门禁交付。真实录屏 /声音 /XR与Windows↔Quest LAN继续按对应任务验收，不能用组件或CI代签。
 

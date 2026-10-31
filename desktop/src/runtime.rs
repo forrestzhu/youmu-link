@@ -179,6 +179,7 @@ struct Shared {
     config_path: PathBuf,
     mirror_cancel: Mutex<Option<watch::Sender<Option<MirrorEnd>>>>,
     disconnected: Mutex<HashSet<String>>,
+    reconnect_paused: Mutex<HashSet<String>>,
     mirror_generation: AtomicU64,
     allow_loopback: bool,
     share_changes: Mutex<()>,
@@ -438,6 +439,7 @@ async fn run(
         config_path,
         mirror_cancel: Mutex::new(None),
         disconnected: Mutex::new(HashSet::new()),
+        reconnect_paused: Mutex::new(HashSet::new()),
         mirror_generation: AtomicU64::new(1),
         allow_loopback,
         share_changes: Mutex::new(()),
@@ -481,7 +483,7 @@ async fn run(
                 if shared.active.lock().expect("lock poisoned").is_none() && !shared.dialing.load(Ordering::Acquire) {
                     let state=shared.state.lock().expect("lock poisoned");
                     let has_trust=state.peers.iter().any(|p|p.trusted);
-                    let candidates:Vec<_>=state.peers.iter().filter(|p| state.pairing.is_none() && !p.address.is_empty() && !shared.disconnected.lock().expect("lock poisoned").contains(&p.id) && (p.trusted || (has_trust && p.status=="discovered"))).cloned().collect();
+                    let candidates:Vec<_>=state.peers.iter().filter(|p| state.pairing.is_none() && !p.address.is_empty() && !shared.disconnected.lock().expect("lock poisoned").contains(&p.id) && !shared.reconnect_paused.lock().expect("lock poisoned").contains(&p.id) && (p.trusted || (has_trust && p.status=="discovered"))).cloned().collect();
                     drop(state);
                     if !candidates.is_empty() {
                         let peer = &candidates[reconnect_cursor % candidates.len()];
@@ -540,6 +542,17 @@ fn publish_authenticated_peer(s: &mut Snapshot, peer: Peer) {
 }
 
 fn dial(shared: Arc<Shared>, address: SocketAddr, expected: Option<String>, manual: bool) {
+    if !manual
+        && expected.as_ref().is_some_and(|id| {
+            shared
+                .reconnect_paused
+                .lock()
+                .expect("lock poisoned")
+                .contains(id)
+        })
+    {
+        return;
+    }
     if shared.dialing.swap(true, Ordering::AcqRel) {
         return;
     }
@@ -688,16 +701,19 @@ async fn connection_guarded(
     } else {
         known.await
     };
-    if let Err(error) = result {
-        if initiator && manual {
-            shared.dial_error(
-                address,
-                error.to_string(),
-                dial_guard.as_ref().map(|(epoch, _)| *epoch),
-            );
+    let needs_pairing = match result {
+        Ok(needed) => needed,
+        Err(error) => {
+            if initiator && manual {
+                shared.dial_error(
+                    address,
+                    error.to_string(),
+                    dial_guard.as_ref().map(|(epoch, _)| *epoch),
+                );
+            }
+            return;
         }
-        return;
-    }
+    };
     {
         let trust = shared.trust.lock().await;
         // Another connection may have changed a route pin while Known waited.
@@ -728,6 +744,30 @@ async fn connection_guarded(
         {
             return;
         }
+    }
+    if initiator && !manual && needs_pairing {
+        shared
+            .reconnect_paused
+            .lock()
+            .expect("lock poisoned")
+            .insert(remote.device_id.clone());
+        // A lost trust record needs an explicit pairing action. Do not keep
+        // making the headset enter and leave its connection screen every tick.
+        let active = shared.active.lock().expect("lock poisoned");
+        if active.is_none() {
+            shared.edit(|state| {
+                state.status = "ready".into();
+                if let Some(peer) = state
+                    .peers
+                    .iter_mut()
+                    .find(|peer| peer.id == remote.device_id)
+                {
+                    peer.status = "disconnected".into();
+                }
+                state.set_error(session::Error::PairingRequired.to_string());
+            });
+        }
+        return;
     }
     let (outbox, receiver) = mpsc::channel(32);
     let (media, media_receiver) = mpsc::channel(8);
@@ -1004,6 +1044,11 @@ async fn authorize_and_serve(
     }) {
         return Err(session::Error::Cancelled);
     }
+    shared
+        .reconnect_paused
+        .lock()
+        .expect("lock poisoned")
+        .remove(&remote.device_id);
     tokio::select! {
         _ = cancelled.changed() => Ok(()),
         result = serve(shared, session, receiver, media_receiver, generation) => result,
@@ -1795,6 +1840,11 @@ async fn handle_command(
                 .map_err(|e| e.to_string())?;
             shared
                 .disconnected
+                .lock()
+                .expect("lock poisoned")
+                .remove(&peer_id);
+            shared
+                .reconnect_paused
                 .lock()
                 .expect("lock poisoned")
                 .remove(&peer_id);
