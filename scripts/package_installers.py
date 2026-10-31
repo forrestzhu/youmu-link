@@ -71,6 +71,28 @@ def find_iscc(explicit=None):
     raise ValueError("Inno Setup 6 ISCC.exe is required; use --iscc to select the compiler")
 
 
+def verify_windows_install_state(installed, *, present, desktop_icon):
+    """Inspect real Shell links and process state on the disposable Windows host."""
+    target = str(installed / "YM_Link.exe").replace("'", "''")
+    boolean = lambda value: "$true" if value else "$false"
+    script = f"""
+$ErrorActionPreference = 'Stop'
+$target = '{target}'
+$desktop = Join-Path ([Environment]::GetFolderPath('DesktopDirectory')) 'YM_Link.lnk'
+$menu = Join-Path ([Environment]::GetFolderPath('Programs')) 'Youmu\\YM_Link.lnk'
+$shell = New-Object -ComObject WScript.Shell
+foreach ($entry in @(@($desktop, {boolean(desktop_icon)}), @($menu, {boolean(present)}))) {{
+    if ((Test-Path -LiteralPath $entry[0]) -ne $entry[1]) {{ throw 'Installer shortcut presence mismatch' }}
+    if ($entry[1] -and $shell.CreateShortcut($entry[0]).TargetPath -ne $target) {{ throw 'Installer shortcut target mismatch' }}
+}}
+$key = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Youmu.YM_Link.Preview.x64_is1'
+if ((Test-Path -LiteralPath $key) -ne {boolean(present)}) {{ throw 'Installer registration presence mismatch' }}
+$running = @(Get-CimInstance Win32_Process -Filter "Name='YM_Link.exe'" | Where-Object {{ $_.ExecutablePath -eq $target }})
+if ($running.Count) {{ throw 'Silent installation unexpectedly launched the application' }}
+"""
+    run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script], timeout=30)
+
+
 def smoke_windows(installer, payload, temporary):
     # Protect a developer's existing install from a test that uses the same AppId.
     import winreg
@@ -83,21 +105,26 @@ def smoke_windows(installer, payload, temporary):
         pass
     installed = temporary / "Install Root"
     options = ["/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/RESTARTEXITCODE=3010"]
-    try:
-        run([str(installer), "/SP-", *options, "/NOCLOSEAPPLICATIONS", "/LANG=english", f"/DIR={installed}"])
-        verify_payload(payload, installed)
-        run([str(installed / "YM_Link.exe"), "--smoke-test"], timeout=30)
-    finally:
-        uninstaller = installed / "unins000.exe"
-        if uninstaller.is_file():
-            run([str(uninstaller), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"], timeout=120)
-    for _ in range(100):
-        if not (installed / "YM_Link.exe").exists():
-            break
-        time.sleep(0.1)
-    else:
-        raise ValueError("installer smoke test did not remove the installed executable")
-    print("Verified Windows install, complete payload, native startup/shutdown and uninstall.")
+    # Refuse unrelated pre-existing shortcuts as well as a registered install.
+    verify_windows_install_state(installed, present=False, desktop_icon=False)
+    for tasks, desktop_icon in (([], True), (["/TASKS="], False)):
+        try:
+            run([str(installer), "/SP-", *options, "/NOCLOSEAPPLICATIONS", "/LANG=english", f"/DIR={installed}", *tasks])
+            verify_payload(payload, installed)
+            verify_windows_install_state(installed, present=True, desktop_icon=desktop_icon)
+            run([str(installed / "YM_Link.exe"), "--smoke-test"], timeout=30)
+        finally:
+            uninstaller = installed / "unins000.exe"
+            if uninstaller.is_file():
+                run([str(uninstaller), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"], timeout=120)
+        for _ in range(100):
+            if not (installed / "YM_Link.exe").exists():
+                break
+            time.sleep(0.1)
+        else:
+            raise ValueError("installer smoke test did not remove the installed executable")
+        verify_windows_install_state(installed, present=False, desktop_icon=False)
+    print("Verified Windows install, complete payload, optional desktop and Start menu shortcuts, silent no-launch, native startup/shutdown and uninstall cleanup.")
 
 
 def build_windows(archive, payload, temporary, *, iscc=None, smoke_test=False):

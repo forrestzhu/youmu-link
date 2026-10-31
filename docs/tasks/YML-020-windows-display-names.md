@@ -38,7 +38,8 @@ Tests: ymlink-desktop::capture::windows::tests (显示器型号解析 / 活动�
 - 临时状态目录的真实 Release C ABI 回读：id=1 / HWV6446 / 3840×2160，id=2 / RTK1600 / 1600×2560。首次诊断过早读取 starting 状态得到空列表；按既有启动约定等待非 starting 后同一 DLL 检查通过，未改启动时序。
 - 启动本轮 `dist/YM_Link/YM_Link.exe` 并用 computer-use 前台核对真实窗口：两个型号及上述分辨率均实际显示，首屏已选项正常；未开始镜像或音频采集。开发目录与当前用户安装分离，不覆盖安装。
 - 独立代理逐行审查实现与 WPF 测试，未发现需修复的确定性问题：GDI 源匹配不依赖全局顺序、活动过滤、失败回退、UTF-16 / 隐私边界及指针生命周期均成立，原有捕获 ID / HMONITOR 映射不变。克隆屏采用同一 GDI 源的首个有效活动型号；克隆 / 热插拔 / 同型号多屏实际验收 not-run，不把这两屏扩展模式代签所有显示拓扑。
+- 源码 `ffe9ce56ec543f7bf738a404d215926a876f3b42` 的[三平台 CI run 41152416780](https://github.com/forrestzhu/youmu-link/actions/runs/41152416780) 全部 success。独立代理回读 Windows job 124391944493 实际日志，107 passed /2 ignored、四项新型号测试、WPF / ABI / Release / smoke及安装 / 完整载荷 / 卸载均通过。Windows artifact 13023797586（124,197,265 bytes），digest `917fe7114a978869f63ec12a36360efb6247cc4ad0df958386604bbcc6a23b3d`，未下载此中间包；用户追加安装完成启动 / 桌面快捷方式后，最终包合并 [YML-021](YML-021-installer-launch-shortcut.md) 交付。
 
 ## Next
 
-提交并推送实现以运行同源 CI 安装验收，取回新版安装器 / SHA-256，核验后归档交付。YML-017 性能任务保持暂停。
+显示器修复及本机 / CI 验证完成，最终安装包合并 YML-021 后继配置，下载 / 校验后归档交付。YML-017 性能任务保持暂停。

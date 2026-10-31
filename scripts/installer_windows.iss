@@ -31,5 +31,12 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Files]
 Source: "{#PayloadDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
+[Tasks]
+Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
+
 [Icons]
 Name: "{userprograms}\Youmu\YM_Link"; Filename: "{app}\YM_Link.exe"
+Name: "{userdesktop}\YM_Link"; Filename: "{app}\YM_Link.exe"; Tasks: desktopicon
+
+[Run]
+Filename: "{app}\YM_Link.exe"; Description: "{cm:LaunchProgram,YM_Link}"; Flags: nowait postinstall skipifsilent
