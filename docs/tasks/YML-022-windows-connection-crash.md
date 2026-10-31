@@ -38,7 +38,7 @@ Quest 只读核对：匿名 LinkPeer 不含 name /platform，配对 LinkClient �
 
 修复提交 `55eef040a34ee465beae2d4499d8be11ff5b2eda` 已推送，`harness check --require-pushed` 通过。为使用户现有快捷方式可直接复验，在确认安装版未运行后，将原 YM_Link.dll 与 BUILD-INFO 备份至 ignored `dist/backups/yml022-55eef04/`，仅替换修复的 managed DLL；保留既有 .NET 8.0.33 自包含运行时与同源 Rust backend，不将本地构建的 .NET 8.0.12 运行时降级复制到安装版。新 DLL SHA-256 回读 `0eff614dcd60e3b243d3f9c96157468f2128233ce4860ab157f7453a84aa670f` 与本地产物一致，PATCH-INFO 记录基础 /修复提交与摘要；原 BUILD-INFO 保留基础包事实。
 
-本机 Windows 11 专业版 x64 10.0.26200：13:39:54 重新打开安装版后，CUA 实际窗口与无障碍树回读就绪，显示两台真实显示器型号 /分辨率、TCP /发现端口和搜索状态；启动后未见新增该应用 .NET crash 事件，真实 VR 点击仍待确认。当前 ADB 已连接 Quest 3S（Android 14，build incremental 4069240020600610），未主动重启用户头显应用或安装新 APK，不将设备在线当作 LAN 已验收。13:44 的 CI 快照为 Linux /Mac /gitleaks success，Windows Rust success、原生 /打包仍运行中，最终结果后续更新。
+本机 Windows 11 专业版 x64 10.0.26200：13:39:54 重新打开安装版后，CUA 实际窗口与无障碍树回读就绪，显示两台真实显示器型号 /分辨率、TCP /发现端口和搜索状态；交付前进程仍存活，按启动时间查询新增该应用 .NET crash 事件为 0，真实 VR 点击仍待确认。当前 ADB 已连接 Quest 3S（Android 14，build incremental 4069240020600610），未主动重启用户头显应用或安装新 APK，不将设备在线当作 LAN 已验收。13:44 快照为 Windows 仍运行中；最终 [CI run 41173463707](https://github.com/forrestzhu/youmu-link/actions/runs/41173463707) 的 Linux /Mac /Windows 均 completed /success，gitleaks 同样 success。
 
 ## Next
 
