@@ -49,6 +49,7 @@ Query  = { v: 1, query: true, tag_hash: octets(16), session_nonce: octets(16) }
    - `session_nonce` ≠ 本机 nonce（自回环抑制）。
    - `tag_hash` 匹配本机 tag（未配对不同 tag 的设备互相不可见）。
    - CBOR 解码通过、无未知字段、定长字段长度正确、总长 ≤512B。
+   - 缓存来源及报文校验通过后、Query冷却允许后，在回复 /发布候选前按当前接口重新校验来源，排除心跳间隔内动态新增的本机地址；枚举失败拒绝。无效报文、nonce /tag不匹配、不可发现公告和冷却中Query不触发接口枚举。此策略不改变线字段。
 4. **候选与限额**：按源 IP 记录 `{addr, listen_port, caps, nonce, last_seen}`；新地址、nonce 或公告 TCP 端口变化 → PeerDiscovered，其余心跳只刷新记录；超过 180000ms 无更新 → PeerExpired。候选表最多 128 条，满时淘汰最久未更新者并发 PeerExpired；Query 冷却表硬上限 256 个来源。发现仅提示可达地址，不能更新信任或证明已认证在线；同 IP 多实例共享一个发现候选槽。
 
 ## 3. 会话与配对层（M2，应用 v4 / transport-v2 已冻结）

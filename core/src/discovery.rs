@@ -396,37 +396,22 @@ async fn listen_loop(
                 Err(_) => continue,
             },
         };
-        let allowed = match shared.subnets.lock() {
-            Ok(guard) => allowed_source(source.ip(), &guard, shared.config.allow_loopback),
-            Err(_) => false,
-        };
-        if !allowed {
-            continue;
-        }
-        let Ok(packet) = beacon::decode_packet(&buffer[..size]) else {
+        let Some(packet) = accepted_packet(
+            &shared,
+            &buffer[..size],
+            source.ip(),
+            &mut cooldowns,
+            interface_subnets,
+        ) else {
             continue;
         };
         match packet {
-            Packet::Query(query) => {
-                if query.session_nonce == shared.nonce
-                    || query.tag_hash != beacon::tag_hash(&shared.config.tag)
-                {
-                    continue;
-                }
-                if !cooldown_allows(&mut cooldowns, source.ip()) {
-                    continue;
-                }
+            Packet::Query(_) => {
                 if let Ok(bytes) = self_beacon(&shared).encode() {
                     let _ = shared.socket.send_to(&bytes, source).await;
                 }
             }
             Packet::Beacon(received) => {
-                if received.session_nonce == shared.nonce
-                    || received.tag_hash != beacon::tag_hash(&shared.config.tag)
-                    || !received.discoverable
-                {
-                    continue;
-                }
                 let snapshot = PeerSnapshot {
                     addr: source.ip(),
                     listen_port: received.listen_port,
@@ -447,6 +432,41 @@ async fn listen_loop(
             }
         }
     }
+}
+
+fn accepted_packet(
+    shared: &Shared,
+    bytes: &[u8],
+    source: IpAddr,
+    cooldowns: &mut HashMap<IpAddr, Instant>,
+    interfaces: impl FnOnce() -> Vec<Subnet>,
+) -> Option<Packet> {
+    let allowed = match shared.subnets.lock() {
+        Ok(guard) => allowed_source(source, &guard, shared.config.allow_loopback),
+        Err(_) => false,
+    };
+    if !allowed {
+        return None;
+    }
+    let packet = beacon::decode_packet(bytes).ok()?;
+    let matches = match &packet {
+        Packet::Query(query) => {
+            query.session_nonce != shared.nonce
+                && query.tag_hash == beacon::tag_hash(&shared.config.tag)
+                && cooldown_allows(cooldowns, source)
+        }
+        Packet::Beacon(received) => {
+            received.session_nonce != shared.nonce
+                && received.tag_hash == beacon::tag_hash(&shared.config.tag)
+                && received.discoverable
+        }
+    };
+    // The heartbeat cache can predate a newly added local address. Recheck
+    // current interfaces only for valid packets, after the query cooldown.
+    if !matches || !allowed_source(source, &interfaces(), shared.config.allow_loopback) {
+        return None;
+    }
+    Some(packet)
 }
 
 fn record_peer(
@@ -620,6 +640,98 @@ mod tests {
             netmask: mask.parse().unwrap(),
             broadcast: None,
         }
+    }
+
+    #[tokio::test]
+    async fn fresh_interfaces_reject_hot_added_local_addresses_before_packet_admission() {
+        let discovery = discovery_without_broadcast().await;
+        let cached = vec![subnet("10.1.0.2", "255.255.0.0")];
+        *discovery.shared.subnets.lock().unwrap() = cached.clone();
+        let mut current = cached;
+        current.push(subnet("10.1.1.4", "255.255.255.255"));
+        let query = Query::new("youmu-link", [7; 16]).encode().unwrap();
+        let beacon = Beacon::new("youmu-link", [7; 16], 32001, &["control"], true)
+            .encode()
+            .unwrap();
+        for bytes in [&query, &beacon] {
+            for (source, admitted) in [("10.1.1.4", false), ("10.1.1.9", true)] {
+                let packet = accepted_packet(
+                    &discovery.shared,
+                    bytes,
+                    source.parse().unwrap(),
+                    &mut HashMap::new(),
+                    || current.clone(),
+                );
+                assert_eq!(packet.is_some(), admitted, "source {source}");
+            }
+            assert!(
+                accepted_packet(
+                    &discovery.shared,
+                    bytes,
+                    "10.1.1.9".parse().unwrap(),
+                    &mut HashMap::new(),
+                    Vec::new,
+                )
+                .is_none(),
+                "unavailable current interfaces must fail closed"
+            );
+        }
+        discovery.stop();
+    }
+
+    #[tokio::test]
+    async fn rejected_packets_and_cooled_queries_do_not_enumerate_interfaces() {
+        let discovery = discovery_without_broadcast().await;
+        *discovery.shared.subnets.lock().unwrap() = vec![subnet("10.1.0.2", "255.255.0.0")];
+        let source: IpAddr = "10.1.1.9".parse().unwrap();
+        let query = Query::new("youmu-link", [7; 16]).encode().unwrap();
+        let mut oversized = query.clone();
+        oversized.resize(beacon::MAX_PACKET + 1, 0);
+        let rejected = vec![
+            vec![0],
+            oversized,
+            Query::new("other-tag", [7; 16]).encode().unwrap(),
+            Query::new("youmu-link", [42; 16]).encode().unwrap(),
+            Beacon::new("other-tag", [7; 16], 32001, &[], true)
+                .encode()
+                .unwrap(),
+            Beacon::new("youmu-link", [42; 16], 32001, &[], true)
+                .encode()
+                .unwrap(),
+            Beacon::new("youmu-link", [7; 16], 32001, &[], false)
+                .encode()
+                .unwrap(),
+        ];
+        for bytes in rejected {
+            assert!(accepted_packet(
+                &discovery.shared,
+                &bytes,
+                source,
+                &mut HashMap::new(),
+                || panic!("rejected packet must not enumerate interfaces"),
+            )
+            .is_none());
+        }
+        for source in ["10.1.0.2", "10.2.1.9", "127.0.0.1", "224.0.0.1"] {
+            assert!(accepted_packet(
+                &discovery.shared,
+                &query,
+                source.parse().unwrap(),
+                &mut HashMap::new(),
+                || panic!("cached source rejection must not enumerate interfaces"),
+            )
+            .is_none());
+        }
+        let mut cooldowns = HashMap::from([(source, Instant::now())]);
+        assert!(accepted_packet(
+            &discovery.shared,
+            &query,
+            source,
+            &mut cooldowns,
+            || panic!("cooled query must not enumerate interfaces"),
+        )
+        .is_none());
+        discovery.stop();
     }
 
     #[test]
