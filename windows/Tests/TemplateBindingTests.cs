@@ -48,6 +48,8 @@ internal static class TemplateBindingTests
         var localizer = new Localizer("en");
         App.SetLanguageResources(localizer);
         var window = new MainWindow(localizer);
+        var synchronizationContext = SynchronizationContext.Current;
+        SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(window.Dispatcher));
         try
         {
             // Never show this window: Loaded starts the real backend.
@@ -61,6 +63,8 @@ internal static class TemplateBindingTests
                 list.UpdateLayout();
                 Require(Find<Button>(list) is not null, name + " compiled row actions did not materialize.");
             }
+            TrayIconTests.Run();
+            VerifyCloseToTray(window);
         }
         finally
         {
@@ -68,9 +72,60 @@ internal static class TemplateBindingTests
             window.Closing -= closing.CreateDelegate<System.ComponentModel.CancelEventHandler>(window);
             window.Close();
             app.Shutdown();
+            SynchronizationContext.SetSynchronizationContext(synchronizationContext);
         }
         Console.WriteLine("PASS: compiled production BAML device/share/transfer rows and event connectors materialize without starting the backend.");
     }
+
+    private static void VerifyCloseToTray(MainWindow window)
+    {
+        var cancellation = PrivateField<CancellationTokenSource>(window, "cancellation");
+        var backend = PrivateField<NativeBackend>(window, "backend");
+        var displays = Need<ListBox>(window, "DisplayChoice");
+        displays.SelectedIndex = 1;
+        var windowClosed = false;
+        window.Closed += (_, _) => windowClosed = true;
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            window.Close();
+            Require(!cancellation.IsCancellationRequested, "X must not cancel backend polling when hiding to the tray.");
+            Require(!PrivateField<bool>(window, "closing"), "X must not begin application cleanup when hiding to the tray.");
+            Require(!windowClosed && !PrivateField<bool>(window, "closed"), "X must cancel window closure while the tray owns the application.");
+            Require(displays.SelectedIndex == 1, "Hiding to the tray must preserve the selected display.");
+            var unavailable = false;
+            try { backend.SnapshotAsync().GetAwaiter().GetResult(); }
+            catch (InvalidOperationException error) when (error.Message == "Backend unavailable.") { unavailable = true; }
+            Require(unavailable, "The unstarted backend must remain available for polling after X.");
+        }
+
+        var exit = typeof(MainWindow).GetMethod("ExitApplication", BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException("The tray needs an explicit application exit action.");
+        exit.Invoke(window, null);
+        exit.Invoke(window, null);
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        var frame = new DispatcherFrame();
+        var timer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(10) };
+        timer.Tick += (_, _) =>
+        {
+            if (PrivateField<bool>(window, "closed") || DateTime.UtcNow >= deadline) frame.Continue = false;
+        };
+        timer.Start();
+        try
+        {
+            if (!PrivateField<bool>(window, "closed")) Dispatcher.PushFrame(frame);
+        }
+        finally { timer.Stop(); }
+        Require(windowClosed && PrivateField<bool>(window, "closed"), "Explicit tray exit must finish asynchronous cleanup and close the window.");
+        var disposed = false;
+        try { backend.SnapshotAsync().GetAwaiter().GetResult(); }
+        catch (ObjectDisposedException) { disposed = true; }
+        Require(disposed, "Explicit tray exit must dispose the backend before closing.");
+        Console.WriteLine("PASS: repeated X preserves backend polling and selection; explicit tray exit drains cleanup once.");
+    }
+
+    private static T PrivateField<T>(MainWindow window, string name) =>
+        (T)(typeof(MainWindow).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(window)
+            ?? throw new InvalidOperationException("Missing production field: " + name));
 
     private static void MaterializeRows()
     {

@@ -9,6 +9,7 @@ namespace YM_Link;
 public partial class App : Application
 {
     private Mutex? instance;
+    private TrayIcon? tray;
     internal static string StateDirectory => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Youmu", "YM_Link");
 
     protected override async void OnStartup(StartupEventArgs e)
@@ -65,19 +66,37 @@ public partial class App : Application
         }
         var window = new MainWindow(localizer);
         MainWindow = window;
+        try
+        {
+            tray = new TrayIcon(localizer, window.RestoreFromTray, window.ExitApplication);
+            tray.Show();
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException
+            or InvalidOperationException or System.Runtime.InteropServices.ExternalException)
+        {
+            tray?.Dispose();
+            tray = null;
+            // Keep a usable exit path when the shell cannot host a tray icon.
+            window.MinimizeToTray = false;
+        }
         window.Show();
     }
 
     protected override void OnExit(ExitEventArgs e)
     {
-        instance?.ReleaseMutex();
-        instance?.Dispose();
-        base.OnExit(e);
+        try { tray?.Dispose(); }
+        finally
+        {
+            instance?.ReleaseMutex();
+            instance?.Dispose();
+            base.OnExit(e);
+        }
     }
 
     internal static void SetLanguageResources(Localizer localizer)
     {
         foreach (var key in localizer.Keys) Current.Resources[key] = localizer[key];
+        if (Current is App app) app.tray?.UpdateLanguage(localizer);
     }
 }
 

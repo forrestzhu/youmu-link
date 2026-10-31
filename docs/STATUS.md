@@ -25,6 +25,7 @@ YM-332已按用户要求先推第一轮修复，再完成第二轮CR及属实问
 
 | 工作 | 当前结论 / 下一动作 |
 | --- | --- |
+| [YML-029 Windows 托盘与退出](tasks/YML-029-windows-tray.md) | verifying：X / Alt+F4 收起托盘，右键打开 / 退出、左键双击恢复；中英菜单随语言更新，显式退出沿用后台drain且防重入。实际编译窗口关闭回归RED→GREEN，不可见原生托盘 / 菜单 / 图标资源、Release / WPF / ABI与新独立CR通过。开发版在 `dist/YM_Link`，未操作用户现有窗口；本机完整门禁仍受旧版占UDP47610限制，待同源完整CI / 发布smoke，实际托盘交互用户自验。 |
 | [YML-028 显示器预览 / 名称分区](tasks/archive/YML-028-monitor-card-sections.md) | done（修正）：上一轮把整卡淡蓝误当需求；现已改为上方预览灰 / 选中淡蓝、下方名称白底、中间全宽细线，保留单层蓝边。原生 / HTML同步，Release WPF / ABI /24张原生样本、独立输出 / 图标 / 路径隐私检查及新独立CR通过。用户正运行旧开发版，修正版另存 `dist/YM_Link-monitor-sections`，未操作或覆盖；完整门禁仍因旧版占UDP47610而失败，实际窗口由用户检查。 |
 | [YML-027 显示器卡片追加验证 / CR](tasks/archive/YML-027-monitor-selection-cr.md) | done：用户追加的新独立CR无待修问题，本机新Release / WPF / BAML / ABI /24张原生样本检查通过。f51e700的run41184493604三平台与gitleaks全success；Linux Rust104、Windows117 /2 ignored、macOS110 /1 ignored均0 filtered，Swift9、原生启动smoke / 安装卸载 / DMG与ZIP通过。未操作用户窗口或覆盖安装版，保留历史本机失败和旧CI cancelled。 |
 | [YML-026 显示器卡片原生落地](tasks/archive/YML-026-monitor-selection-native.md) | superseded by YML-028：整卡同色方向源于误读，用户已明确要求图标 / 名称分区；原生构建、YML-027三平台CI和CR等历史工程结果保留，不作为修正后视觉验收。 |

@@ -1,4 +1,6 @@
 {
+  "tray_open": "打开 YM_Link",
+  "tray_exit": "退出",
   "mirror": "屏幕镜像",
   "shares": "文件共享",
   "transfers": "传输任务",

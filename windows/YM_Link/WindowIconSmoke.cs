@@ -8,6 +8,8 @@ internal static class WindowIconSmoke
 {
     internal static void Verify()
     {
+        // Construct and release the shipped tray resources without showing an icon.
+        using var tray = new TrayIcon(new Localizer("en"), () => { }, () => { });
         // Run inside the published app so WPF reads its real entry assembly's
         // ApplicationIcon, rather than the test runner's executable icon.
         // EnsureHandle creates a native WPF window without showing it or

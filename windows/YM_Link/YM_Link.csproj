@@ -3,6 +3,9 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <!-- WPF owns PerMonitorV2 through app.manifest; WinForms only hosts the tray menu. -->
+    <NoWarn>$(NoWarn);WFAC010</NoWarn>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AssemblyName>YM_Link</AssemblyName>
@@ -12,7 +15,10 @@
     <ApplicationIcon>../../assets/app-icon/YM_Link.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
     <EmbeddedResource Include="Resources/*.json" />
+    <EmbeddedResource Include="../../assets/app-icon/YM_Link.ico" LogicalName="YM_Link.TrayIcon.ico" />
     <Resource Include="../../assets/app-icon/ym-link-1024.png" Link="Resources/ym-link.png" />
   </ItemGroup>
 </Project>

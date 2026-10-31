@@ -1,4 +1,6 @@
 {
+  "tray_open": "Open YM_Link",
+  "tray_exit": "Exit",
   "mirror": "Screen mirroring",
   "shares": "File sharing",
   "transfers": "Transfers",

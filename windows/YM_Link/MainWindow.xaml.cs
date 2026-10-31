@@ -25,9 +25,10 @@ public partial class MainWindow : Window
     private Localizer localizer;
     private Snapshot current = new();
     private Task? polling;
-    private bool ready, closing, closed, rendering, responseError;
+    private bool ready, closing, closed, rendering, responseError, loaded, exitRequested;
     private int pending;
     private string? errorKey, nativeError;
+    internal bool MinimizeToTray { get; set; } = true;
 
     internal MainWindow(Localizer localizer)
     {
@@ -49,6 +50,8 @@ public partial class MainWindow : Window
 
     private async void WindowLoaded(object sender, RoutedEventArgs e)
     {
+        if (loaded || closing) return;
+        loaded = true;
         try
         {
             ready = await backend.StartAsync(App.StateDirectory, Environment.MachineName);
@@ -383,11 +386,31 @@ public partial class MainWindow : Window
         Render();
     }
 
+    internal void RestoreFromTray()
+    {
+        if (closing || closed) return;
+        Show();
+        if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+        Activate();
+    }
+
+    internal void ExitApplication()
+    {
+        if (closing || closed) return;
+        exitRequested = true;
+        Close();
+    }
+
     private async void WindowClosing(object? sender, CancelEventArgs e)
     {
         if (closed) return;
         e.Cancel = true;
         if (closing) return;
+        if (!exitRequested && MinimizeToTray)
+        {
+            Hide();
+            return;
+        }
         closing = true;
         cancellation.Cancel();
         IsEnabled = false;

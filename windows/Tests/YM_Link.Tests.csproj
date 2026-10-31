@@ -3,10 +3,13 @@
     <OutputType>Exe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
     <ProjectReference Include="../YM_Link/YM_Link.csproj" />
     <EmbeddedResource Include="../YM_Link/App.xaml" Link="App.xaml" />
     <EmbeddedResource Include="../YM_Link/MainWindow.xaml" Link="MainWindow.xaml" />
