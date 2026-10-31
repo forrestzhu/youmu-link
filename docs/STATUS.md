@@ -2,6 +2,8 @@
 
 更新：2026-10-31。仅记录最近实测事实、未关闭问题与下一步；详细证据见任务。
 
+[YML-034 托盘菜单重设计](tasks/YML-034-tray-menu-redesign.md) demo 初版已交付：参考 klip Fluent shell 规格的自绘弹窗方向（状态头 + 打开 / 可选镜像开关 / 退出），Chromium 实测六状态 × 中英 × 深浅、右键 / 键盘导航与退出反馈通过，位于 `design/prototypes/desktop/2026-10-31-tray-menu/`；待用户确认菜单项取舍与深浅主题后再建原生 WPF 实现任务。
+
 当前安装版已更新至8789d24成功CI完整载荷，包含配对波纹初始化闪退修复及此前文件首读修复；747文件 /配置保持 /startup与实际主窗口启动通过。闪退的生产BAML相同异常已RED→GREEN，双轮CR属实问题闭环，见[YML-032](tasks/archive/YML-032-taskbar-context-crash.md)；大文件实际解码边界仍见[YML-031](tasks/YML-031-file-version-read.md)。此前Quest无调试器名称 /Windows识别及配对前取消已通过；完整认证 /Known /重启恢复仍未签，原失败保留，见[YML-023](tasks/YML-023-encrypted-identification.md)。
 
 用户授权的历史邮箱修正已完成：20 个既有提交的 author / committer 均统一为目标邮箱，20 个文件树不变，16 个提交号变化；旧记录中的提交号见[旧 → 新映射](evidence/2026-10-27-history-email-rewrite.md)。

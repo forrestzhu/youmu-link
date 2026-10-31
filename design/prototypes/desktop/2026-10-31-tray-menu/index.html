@@ -1,0 +1,511 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>YM_Link · 托盘右键菜单重设计 demo</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --background: #f6f7f9; --foreground: #1b1e24;
+  --muted-foreground: #667085; --border: #d8dbe0;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --background: #16181c; --foreground: #e8eaee; --muted-foreground: #9aa2af; --border: #33373d; }
+}
+* { box-sizing: border-box; }
+body { margin: 0 auto; padding: 18px 16px 28px; max-width: 920px;
+  font-family: "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  font-size: 14px; color: var(--foreground); background: var(--background); }
+/* 控制区所需的最小 host 样式 */
+.nav-pills { display: inline-flex; gap: 4px; padding: 3px; border: 1px solid var(--border); border-radius: 9px; }
+.nav-link { border: 0; background: transparent; color: var(--foreground); font: inherit; font-size: 13px;
+  padding: 4px 12px; border-radius: 6px; cursor: pointer; }
+.nav-link.active { background: var(--foreground); color: var(--background); }
+.form-check { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; }
+.form-check-label, .form-check-input { cursor: pointer; }
+.form-check-input { appearance: none; -webkit-appearance: none; width: 34px; height: 19px; border-radius: 10px;
+  background: color-mix(in srgb, var(--foreground) 22%, transparent); position: relative; transition: background .15s; }
+.form-check-input::after { content: ""; position: absolute; top: 2px; left: 2px; width: 15px; height: 15px;
+  border-radius: 50%; background: #fff; transition: left .15s; }
+.form-check-input:checked { background: var(--foreground); }
+.form-check-input:checked::after { left: 17px; }
+.text-small { font-size: 12px; color: var(--muted-foreground); }
+.cursor-interaction { cursor: pointer; }
+</style>
+</head>
+<body>
+<div id="ym-tray-demo">
+  <style>
+    #ym-tray-demo { --yt-accent:#0067c0; }
+    #ym-tray-demo .yt-stage-wrap { margin-top:10px; }
+    #ym-tray-demo .yt-controls { display:flex; flex-wrap:wrap; gap:8px 18px; align-items:center; }
+    #ym-tray-demo .yt-ctl-label { font-size:12px; color:var(--muted-foreground); margin-right:6px; }
+    #ym-tray-demo .yt-group { display:flex; align-items:center; }
+
+    /* ===== 产品模拟区（Win11 桌面 + 托盘）===== */
+    #ym-tray-demo .yt-stage {
+      position:relative; height:430px; border-radius:12px; overflow:hidden;
+      font-family:"Segoe UI","Microsoft YaHei UI",sans-serif; color-scheme:light;
+      background:
+        radial-gradient(560px 300px at 68% 30%, rgba(0,103,192,.16), transparent 70%),
+        radial-gradient(420px 260px at 30% 72%, rgba(212,162,78,.14), transparent 70%),
+        linear-gradient(160deg,#e9eef4,#f6f8fb);
+      border:1px solid var(--border);
+    }
+    #ym-tray-demo .yt-stage[data-theme="dark"] {
+      color-scheme:dark;
+      background:
+        radial-gradient(560px 300px at 68% 30%, rgba(0,103,192,.28), transparent 70%),
+        radial-gradient(420px 260px at 30% 72%, rgba(212,162,78,.12), transparent 70%),
+        linear-gradient(160deg,#10151c,#0b0e13);
+    }
+
+    /* 任务栏 */
+    #ym-tray-demo .tb {
+      position:absolute; left:0; right:0; bottom:0; height:48px; z-index:10;
+      display:flex; align-items:center; justify-content:space-between; padding:0 4px;
+      font-family:"Segoe UI","Microsoft YaHei UI",sans-serif;
+    }
+    #ym-tray-demo .tb.light { background:rgba(243,243,243,.86); border-top:1px solid rgba(0,0,0,.07); color:#1b1e24; }
+    #ym-tray-demo .tb.dark { background:rgba(30,32,36,.88); border-top:1px solid rgba(255,255,255,.06); color:#f2f3f5; }
+    #ym-tray-demo .tb-center { position:absolute; left:50%; transform:translateX(-50%); display:flex; gap:2px; }
+    #ym-tray-demo .tb-right { margin-left:auto; display:flex; align-items:center; gap:2px; }
+    #ym-tray-demo .tb-ic {
+      width:40px; height:40px; border:0; background:transparent; border-radius:5px;
+      display:inline-flex; align-items:center; justify-content:center; color:inherit;
+    }
+    #ym-tray-demo .tb-ic svg { width:17px; height:17px; }
+    #ym-tray-demo .tb.light .tb-ic:hover { background:rgba(0,0,0,.06); }
+    #ym-tray-demo .tb.dark .tb-ic:hover { background:rgba(255,255,255,.09); }
+    #ym-tray-demo .tb.small-hit { width:32px; }
+    #ym-tray-demo .tb-ym { width:36px; }
+    #ym-tray-demo .tb-ym svg { width:16px; height:16px; color:var(--yt-accent); }
+    #ym-tray-demo .tb-ym.hidden-icon { display:none; }
+    #ym-tray-demo .tb-lang { font-size:11px; padding:0 6px; opacity:.85; }
+    #ym-tray-demo .tb-sys { display:flex; align-items:center; gap:7px; padding:0 8px 0 6px; }
+    #ym-tray-demo .tb-sys svg { width:15px; height:15px; }
+    #ym-tray-demo .tb-clock { display:flex; flex-direction:column; align-items:flex-end; font-size:11px; line-height:1.35; padding:0 6px 0 4px; }
+    #ym-tray-demo .tb-showdesk { width:7px; align-self:stretch; border-left:1px solid rgba(128,128,128,.35); }
+
+    /* ===== 托盘菜单（klip TrayMenuWindow 规格）===== */
+    #ym-tray-demo .ym-menu {
+      position:absolute; width:222px; border-radius:10px; padding:6px 0; z-index:30;
+      font-family:"Segoe UI","Microsoft YaHei UI",sans-serif;
+      box-shadow:0 5px 20px rgba(0,0,0,.30);
+      opacity:0; transform:translateY(5px) scale(.98); transition:opacity .12s ease, transform .12s ease;
+    }
+    #ym-tray-demo .ym-menu.open { opacity:1; transform:translateY(0) scale(1); }
+    #ym-tray-demo .ym-menu.light { background:rgba(249,249,250,.94); border:1px solid #dde0e4; color:#1b1e24; }
+    #ym-tray-demo .ym-menu.dark { background:rgba(37,40,45,.94); border:1px solid #45484e; color:#f2f3f5; }
+    @media (prefers-reduced-motion: reduce) { #ym-tray-demo .ym-menu { transition:none; } }
+
+    #ym-tray-demo .ym-status { padding:8px 14px 7px; }
+    #ym-tray-demo .ym-status .l1 { font-size:12px; display:flex; align-items:center; gap:8px; white-space:nowrap; }
+    #ym-tray-demo .ym-status .l2 { font-size:10.5px; margin-top:3px; padding-left:16px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    #ym-tray-demo .ym-menu.light .ym-status .l2 { color:#949ba7; }
+    #ym-tray-demo .ym-menu.dark .ym-status .l2 { color:#8d95a2; }
+
+    #ym-tray-demo .dot { width:8px; height:8px; border-radius:50%; flex:none; position:relative; }
+    #ym-tray-demo .dot.g { background:#24733b; } #ym-tray-demo .dot.m { background:#949ba7; }
+    #ym-tray-demo .dot.a { background:#0067c0; } #ym-tray-demo .dot.r { background:#c42b1c; }
+    #ym-tray-demo .ym-menu.dark .dot.g { background:#6ccb5f; } #ym-tray-demo .ym-menu.dark .dot.m { background:#8d95a2; }
+    #ym-tray-demo .ym-menu.dark .dot.a { background:#4cc2ff; } #ym-tray-demo .ym-menu.dark .dot.r { background:#ff99a4; }
+    #ym-tray-demo .dot.pulse { animation:ytpulse 1.6s ease-in-out infinite; }
+    @keyframes ytpulse { 0%,100% { opacity:.45; } 50% { opacity:1; } }
+    #ym-tray-demo .dot.ripple::after {
+      content:""; position:absolute; inset:-1px; border-radius:50%;
+      border:1px solid currentColor; color:inherit; animation:ytripple 2s ease-out infinite;
+    }
+    #ym-tray-demo .dot.g.ripple { color:#24733b; } #ym-tray-demo .ym-menu.dark .dot.g.ripple { color:#6ccb5f; }
+    @keyframes ytripple { 0% { transform:scale(1); opacity:.7; } 100% { transform:scale(2.6); opacity:0; } }
+    @media (prefers-reduced-motion: reduce) { #ym-tray-demo .dot.pulse, #ym-tray-demo .dot.ripple::after { animation:none; } }
+
+    #ym-tray-demo .ym-sep { height:1px; margin:5px 10px; }
+    #ym-tray-demo .ym-menu.light .ym-sep { background:#dddfe3; }
+    #ym-tray-demo .ym-menu.dark .ym-sep { background:#45484e; }
+    #ym-tray-demo .ym-row[hidden] { display:none; }
+
+    #ym-tray-demo .ym-row {
+      height:30px; margin:0 6px; border-radius:6px; border:0; background:transparent;
+      display:flex; align-items:center; width:calc(100% - 12px);
+      font-size:12px; font-family:inherit; text-align:left; color:inherit; padding:0 8px 0 14px;
+    }
+    #ym-tray-demo .ym-menu.light .ym-row.on:hover, #ym-tray-demo .ym-menu.light .ym-row.kb { background:#ebedf0; }
+    #ym-tray-demo .ym-menu.dark .ym-row.on:hover, #ym-tray-demo .ym-menu.dark .ym-row.kb { background:#34373c; }
+    #ym-tray-demo .ym-row.disabled { opacity:.45; }
+    #ym-tray-demo .ym-row .sp { flex:1; }
+    #ym-tray-demo .ym-row .hint { font-size:10.5px; margin-left:8px; }
+    #ym-tray-demo .ym-menu.light .ym-row .hint { color:#949ba7; }
+    #ym-tray-demo .ym-menu.dark .ym-row .hint { color:#8d95a2; }
+
+    #ym-tray-demo .ym-switch {
+      flex:none; width:32px; height:18px; border-radius:9px; position:relative; margin-left:8px;
+      transition:background .15s ease;
+    }
+    #ym-tray-demo .ym-switch .knob {
+      position:absolute; top:2.5px; left:2.5px; width:13px; height:13px; border-radius:50%;
+      background:#fff; transition:left .16s ease;
+    }
+    #ym-tray-demo .ym-menu.light .ym-switch.on { background:#737373; }
+    #ym-tray-demo .ym-menu.light .ym-switch.off { background:#b8b8b8; }
+    #ym-tray-demo .ym-menu.dark .ym-switch.on { background:#969696; }
+    #ym-tray-demo .ym-menu.dark .ym-switch.off { background:#555555; }
+    #ym-tray-demo .ym-switch.on .knob { left:16.5px; }
+    #ym-tray-demo .ym-menu.light .ym-switch.off .knob { background:#fff; }
+    @media (prefers-reduced-motion: reduce) { #ym-tray-demo .ym-switch, #ym-tray-demo .ym-switch .knob { transition:none; } }
+
+    /* 通知 toast（Win11 风格） */
+    #ym-tray-demo .ym-toast {
+      position:absolute; right:12px; bottom:60px; width:296px; z-index:40; border-radius:8px;
+      padding:12px 12px 13px 14px; display:flex; gap:11px; align-items:flex-start;
+      font-family:"Segoe UI","Microsoft YaHei UI",sans-serif; box-shadow:0 8px 22px rgba(0,0,0,.25);
+      opacity:0; transform:translateX(14px); transition:opacity .18s ease, transform .18s ease;
+    }
+    #ym-tray-demo .ym-toast.open { opacity:1; transform:translateX(0); }
+    #ym-tray-demo .ym-toast.light { background:#ffffff; border:1px solid #dddfe3; color:#1b1e24; }
+    #ym-tray-demo .ym-toast.dark { background:#2b2d31; border:1px solid #45484e; color:#f2f3f5; }
+    #ym-tray-demo .ym-toast svg { width:16px; height:16px; color:var(--yt-accent); flex:none; margin-top:2px; }
+    #ym-tray-demo .ym-toast .t { font-size:12px; font-weight:500; }
+    #ym-tray-demo .ym-toast .m { font-size:12px; margin-top:2px; opacity:.75; }
+
+    /* 现状对比 */
+    #ym-tray-demo .yt-compare { display:flex; gap:16px; align-items:flex-start; margin-top:14px; flex-wrap:wrap; }
+    #ym-tray-demo .wf-menu {
+      width:196px; background:#fff; border:1px solid #cfcfcf; box-shadow:2px 3px 9px rgba(0,0,0,.18);
+      padding:2px; font-family:"Segoe UI","Microsoft YaHei UI",sans-serif; font-size:12px; color:#1b1e24;
+    }
+    #ym-tray-demo .wf-item { padding:5px 28px 5px 11px; }
+    #ym-tray-demo .wf-item.hot { background:#0078d4; color:#fff; }
+    #ym-tray-demo .wf-sep { height:1px; background:#e3e3e3; margin:3px 2px; }
+    #ym-tray-demo .yt-note { flex:1; min-width:230px; }
+    #ym-tray-demo .yt-note ul { margin:6px 0 0; padding-left:18px; }
+    #ym-tray-demo .yt-note li { margin:3px 0; }
+    #ym-tray-demo .yt-cap { font-size:12px; color:var(--muted-foreground); margin-bottom:5px; }
+    #ym-tray-demo .yt-hint { font-size:12px; color:var(--muted-foreground); margin-top:8px; }
+  </style>
+
+  <div class="yt-controls" role="group" aria-label="演示控制">
+    <div class="yt-group"><span class="yt-ctl-label">状态</span>
+      <div class="nav nav-pills" role="tablist" aria-label="连接状态" id="ytStates">
+        <button class="nav-link" type="button" data-st="starting">启动中</button>
+        <button class="nav-link" type="button" data-st="searching">搜索中</button>
+        <button class="nav-link" type="button" data-st="paired">已配对</button>
+        <button class="nav-link active" type="button" data-st="connected">已连接</button>
+        <button class="nav-link" type="button" data-st="mirror">镜像中</button>
+        <button class="nav-link" type="button" data-st="error">异常</button>
+      </div>
+    </div>
+    <div class="yt-group"><span class="yt-ctl-label">菜单语言</span>
+      <div class="nav nav-pills" role="tablist" aria-label="菜单语言" id="ytLangs">
+        <button class="nav-link active" type="button" data-lang="zh">中文</button>
+        <button class="nav-link" type="button" data-lang="en">EN</button>
+      </div>
+    </div>
+    <div class="yt-group"><span class="yt-ctl-label">Windows 主题</span>
+      <div class="nav nav-pills" role="tablist" aria-label="Windows 主题" id="ytThemes">
+        <button class="nav-link active" type="button" data-th="light">浅色</button>
+        <button class="nav-link" type="button" data-th="dark">深色</button>
+      </div>
+    </div>
+    <label class="form-check form-switch" style="margin:0">
+      <input class="form-check-input" type="checkbox" id="ytMirrorRow">
+      <span class="form-check-label">加一行镜像开关（可选方向）</span>
+    </label>
+  </div>
+
+  <div class="yt-stage-wrap">
+    <div class="yt-stage" id="ytStage" data-theme="light">
+      <div class="tb light" id="ytTaskbar">
+        <div class="tb-center" aria-hidden="true">
+          <span class="tb-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></ role="img"></svg></span>
+          <span class="tb-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/></ role="img"></svg></span>
+          <span class="tb-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></ role="img"></svg></span>
+          <span class="tb-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a15.3 15.3 0 0 1 4 9 15.3 15.3 0 0 1-4 9 15.3 15.3 0 0 1-4-9 15.3 15.3 0 0 1 4-9z"/></ role="img"></svg></span>
+        </div>
+        <div class="tb-right">
+          <button class="tb-ic small-hit cursor-interaction" type="button" aria-label="显示隐藏的图标"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 15 6-6 6 6"/></ role="img"></svg></button>
+          <button class="tb-ic tb-ym cursor-interaction" type="button" id="ytTrayIcon" aria-haspopup="menu" aria-expanded="false" aria-label="YM_Link 托盘图标"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></ role="img"></svg></button>
+          <span class="tb-lang" id="ytLang">中</span>
+          <span class="tb-sys" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><path d="M12 20h.01"/></ role="img"></svg><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></ role="img"></svg><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="7" width="16" height="10" rx="2"/><path d="M22 11v2"/><rect x="6" y="10.5" width="3" height="3" rx="0.5" fill="currentColor" stroke="none"/></ role="img"></svg></span>
+          <div class="tb-clock"><span id="ytTime">--:--</span><span id="ytDate">----</span></div>
+          <span class="tb-showdesk" aria-hidden="true"></span>
+        </div>
+      </div>
+
+      <div class="ym-menu light" id="ytMenu" role="menu" aria-label="YM_Link" hidden>
+        <div class="ym-status" id="ytStatus" role="presentation"></div>
+        <div class="ym-sep" role="presentation"></div>
+        <button class="ym-row on cursor-interaction" type="button" role="menuitem" data-act="open" id="ytOpen">打开 YM_Link</button>
+        <div class="ym-row on cursor-interaction" role="menuitemcheckbox" aria-checked="false" data-act="mirror" id="ytMirrorRowEl" hidden>
+          <span id="ytMirrorLbl">镜像</span><span class="sp"></span>
+          <span class="ym-switch off" id="ytSwitch" aria-hidden="true"><span class="knob"></span></span>
+        </div>
+        <div class="ym-sep" role="presentation"></div>
+        <button class="ym-row on cursor-interaction" type="button" role="menuitem" data-act="exit" id="ytExit">退出</button>
+      </div>
+
+      <div class="ym-toast light" id="ytToast" role="status" aria-live="polite">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+        <div><div class="t">YM_Link</div><div class="m" id="ytToastMsg"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <p class="yt-hint" id="ytHint">在任务栏托盘图标上右键（或单击）打开菜单；↑ ↓ 选择、Enter 确认、Esc 关闭，点击空白处收起。</p>
+
+  <div class="yt-compare">
+    <div>
+      <div class="yt-cap">现状 · WinForms 默认菜单</div>
+      <div class="wf-menu" aria-label="现状菜单示意">
+        <div class="wf-item hot">打开 YM_Link</div>
+        <div class="wf-sep"></div>
+        <div class="wf-item">退出</div>
+      </div>
+    </div>
+    <div class="yt-note">
+      <div class="yt-cap">重设计要点（klip Fluent shell 规格）</div>
+      <ul class="text-small">
+        <li>菜单即状态：连接 / 镜像状态一屏可见，异常附恢复指引</li>
+        <li>圆角卡片 + 阴影，行高 30px、hover 圆角高亮、键盘可导航</li>
+        <li>深浅两套跟随 Windows 主题；中英资源化</li>
+        <li>可选：镜像开关行（klip 同款 32×18 开关，暂停镜像不出主窗口）</li>
+      </ul>
+    </div>
+  </div>
+
+  
+<script>
+  (function () {
+    var root = document.getElementById('ym-tray-demo');
+    var stage = root.querySelector('#ytStage'), taskbar = root.querySelector('#ytTaskbar');
+    var menu = root.querySelector('#ytMenu'), trayIcon = root.querySelector('#ytTrayIcon');
+    var statusEl = root.querySelector('#ytStatus'), toast = root.querySelector('#ytToast');
+    var toastMsg = root.querySelector('#ytToastMsg'), mirrorRowEl = root.querySelector('#ytMirrorRowEl');
+    var switchEl = root.querySelector('#ytSwitch'), mirrorLbl = root.querySelector('#ytMirrorLbl');
+
+    var S = {
+      zh: {
+        open: '打开 YM_Link', exit: '退出', mirror: '镜像',
+        st: {
+          starting: ['正在启动', ''],
+          searching: ['正在搜索 Quest…', ''],
+          paired: ['已配对 · Quest 3S', ''],
+          connected: ['已连接 · Quest 3S', ''],
+          mirrorOn: ['镜像运行中', 'Quest 3S · 60 fps · 12.4 Mbps'],
+          mirrorPaused: ['镜像已暂停', 'Quest 3S'],
+          error: ['状态待确认', '打开主窗口查看详情']
+        },
+        dot: { starting: 'm pulse', searching: 'm pulse', paired: 'g ripple', connected: 'g', mirror: 'g', error: 'r' },
+        toastOpen: '主窗口已恢复（演示）', toastExit: 'YM_Link 已退出 · 演示将自动恢复',
+        hint: '在任务栏托盘图标上右键（或单击）打开菜单；↑ ↓ 选择、Enter 确认、Esc 关闭，点击空白处收起。'
+      },
+      en: {
+        open: 'Open YM_Link', exit: 'Exit', mirror: 'Mirror',
+        st: {
+          starting: ['Starting', ''],
+          searching: ['Searching for Quest…', ''],
+          paired: ['Paired · Quest 3S', ''],
+          connected: ['Connected · Quest 3S', ''],
+          mirrorOn: ['Mirroring', 'Quest 3S · 60 fps · 12.4 Mbps'],
+          mirrorPaused: ['Mirror paused', 'Quest 3S'],
+          error: ['Status unavailable', 'Open the main window for details']
+        },
+        dot: { starting: 'm pulse', searching: 'm pulse', paired: 'g ripple', connected: 'g', mirror: 'g', error: 'r' },
+        toastOpen: 'Main window restored (demo)', toastExit: 'YM_Link exited · demo restores it shortly',
+        hint: 'Right-click (or click) the tray icon to open the menu; ↑ ↓ to move, Enter to activate, Esc to dismiss.'
+      }
+    };
+    var state = { st: 'connected', lang: 'zh', theme: 'light', mirrorRow: false, mirrorOn: false, exited: false, kb: -1, saved: null };
+
+    try {
+      var g = (window.zcode && window.zcode.widgetState) || {};
+      var saved = g.privateContent || g.modelContent;
+      if (saved && typeof saved === 'object') {
+        if (S.zh.st && saved.st in { starting:1,searching:1,paired:1,connected:1,mirror:1,error:1 }) state.st = saved.st;
+        if (saved.lang === 'en') state.lang = 'en';
+        if (saved.theme === 'dark') state.theme = 'dark';
+        state.mirrorRow = !!saved.mirrorRow;
+      }
+    } catch (e) { }
+
+    function save() {
+      try {
+        window.zcode && window.zcode.setWidgetState &&
+          window.zcode.setWidgetState({ modelContent: { state: state.st, lang: state.lang, theme: state.theme, mirrorRow: state.mirrorRow } }).catch(function () { });
+      } catch (e) { }
+    }
+
+    function t() { return S[state.lang]; }
+
+    function setStatus() {
+      var key = state.st === 'mirror' ? (state.mirrorOn ? 'mirrorOn' : 'mirrorPaused') : state.st;
+      var line = t().st[key], dotCls = t().dot[state.st] || '';
+      var html = '<div class="l1"><span class="dot ' + dotCls + '"></span><span></span></div>';
+      statusEl.innerHTML = html;
+      statusEl.querySelector('.l1 span:last-child').textContent = line[0];
+      if (line[1]) {
+        var l2 = document.createElement('div'); l2.className = 'l2'; l2.textContent = line[1];
+        statusEl.appendChild(l2);
+      }
+      mirrorRowEl.hidden = !state.mirrorRow;
+      if (state.mirrorRow) {
+        var on = state.st === 'mirror' && state.mirrorOn;
+        switchEl.className = 'ym-switch ' + (on ? 'on' : 'off');
+        mirrorRowEl.setAttribute('aria-checked', on ? 'true' : 'false');
+        mirrorLbl.textContent = t().mirror;
+      }
+    }
+
+    function applyLang() {
+      root.querySelector('#ytOpen').textContent = t().open;
+      root.querySelector('#ytExit').textContent = t().exit;
+      root.querySelector('#ytHint').textContent = t().hint;
+      root.querySelector('#ytLang').textContent = state.lang === 'zh' ? '中' : 'EN';
+      menu.setAttribute('aria-label', 'YM_Link');
+      setStatus(); tick();
+    }
+
+    function applyTheme() {
+      stage.dataset.theme = state.theme;
+      [taskbar, menu, toast].forEach(function (el) {
+        el.classList.remove('light', 'dark'); el.classList.add(state.theme);
+      });
+    }
+
+    function pill(group, attr, val) {
+      root.querySelectorAll(group + ' .nav-link').forEach(function (b) {
+        var on = b.getAttribute(attr) === val;
+        b.classList.toggle('active', on); b.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+    }
+
+    function tick() {
+      var now = new Date(), hh = now.getHours(), mm = now.getMinutes();
+      function p(n) { return (n < 10 ? '0' : '') + n; }
+      if (state.lang === 'zh') {
+        root.querySelector('#ytTime').textContent = p(hh) + ':' + p(mm);
+        root.querySelector('#ytDate').textContent = now.getFullYear() + '/' + (now.getMonth() + 1) + '/' + now.getDate();
+      } else {
+        var h12 = hh % 12 || 12;
+        root.querySelector('#ytTime').textContent = h12 + ':' + p(mm) + (hh < 12 ? ' AM' : ' PM');
+        root.querySelector('#ytDate').textContent = (now.getMonth() + 1) + '/' + now.getDate() + '/' + now.getFullYear();
+      }
+    }
+    setInterval(tick, 30000);
+
+    /* 菜单定位：klip ComputePlacement —— 右缘在锚点左 12px，底缘不低于任务栏上方 8px */
+    function place() {
+      var s = stage.getBoundingClientRect(), r = trayIcon.getBoundingClientRect();
+      var anchorX = r.left - s.left + r.width / 2, anchorY = r.top - s.top;
+      var taskbarTop = s.height - 48, mw = menu.offsetWidth, mh = menu.offsetHeight;
+      var left = anchorX - 12 - mw;
+      left = Math.max(4, Math.min(left, s.width - mw - 4));
+      var top = Math.min(anchorY - 6, taskbarTop - 8) - mh;
+      top = Math.max(4, top);
+      menu.style.left = left + 'px'; menu.style.top = top + 'px';
+    }
+
+    var toastTimer = null;
+    function showToast(msg) {
+      toastMsg.textContent = msg;
+      toast.classList.add('open');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(function () { toast.classList.remove('open'); }, 2400);
+    }
+
+    function rows() {
+      var list = [];
+      root.querySelectorAll('#ytMenu .ym-row').forEach(function (r) {
+        if (r.hidden || r.classList.contains('disabled')) return;
+        list.push(r);
+      });
+      return list;
+    }
+    function setKb(idx) {
+      var list = rows();
+      state.kb = list.length ? (idx + list.length) % list.length : -1;
+      list.forEach(function (r, i) { r.classList.toggle('kb', i === state.kb); });
+    }
+
+    function openMenu() {
+      if (state.exited) return;
+      if (!menu.hidden) return;
+      setStatus();
+      menu.hidden = false; place();
+      requestAnimationFrame(function () { menu.classList.add('open'); });
+      trayIcon.setAttribute('aria-expanded', 'true');
+      setKb(0);
+    }
+    function closeMenu() {
+      if (menu.hidden) return;
+      menu.classList.remove('open'); trayIcon.setAttribute('aria-expanded', 'false');
+      var m = menu;
+      setTimeout(function () { m.hidden = true; }, 130);
+    }
+
+    function activate(row) {
+      var act = row.dataset.act;
+      if (act === 'open') { closeMenu(); showToast(t().toastOpen); }
+      else if (act === 'exit') {
+        closeMenu(); state.exited = true;
+        trayIcon.classList.add('hidden-icon');
+        showToast(t().toastExit);
+        setTimeout(function () { state.exited = false; trayIcon.classList.remove('hidden-icon'); }, 2600);
+      } else if (act === 'mirror') {
+        state.mirrorOn = !(state.st === 'mirror' && state.mirrorOn);
+        state.st = state.mirrorOn ? 'mirror' : 'paired';
+        pill('#ytStates', 'data-st', state.st); setStatus(); save();
+      }
+    }
+
+    trayIcon.addEventListener('contextmenu', function (e) { e.preventDefault(); openMenu(); });
+    trayIcon.addEventListener('click', function () { menu.hidden ? openMenu() : closeMenu(); });
+    menu.addEventListener('click', function (e) {
+      var row = e.target.closest('.ym-row');
+      if (row && !row.hidden) activate(row);
+    });
+    document.addEventListener('mousedown', function (e) {
+      if (menu.hidden) return;
+      if (!menu.contains(e.target) && !trayIcon.contains(e.target) && root.contains(e.target)) closeMenu();
+    });
+    document.addEventListener('keydown', function (e) {
+      if (menu.hidden) return;
+      if (e.key === 'Escape') { closeMenu(); e.preventDefault(); }
+      else if (e.key === 'ArrowDown') { setKb(state.kb + 1); e.preventDefault(); }
+      else if (e.key === 'ArrowUp') { setKb(state.kb - 1); e.preventDefault(); }
+      else if ((e.key === 'Enter' || e.key === ' ') && state.kb >= 0) { var list = rows(); activate(list[state.kb]); e.preventDefault(); }
+    });
+    window.addEventListener('resize', function () { if (!menu.hidden) place(); });
+
+    root.querySelector('#ytStates').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-st]'); if (!b) return;
+      state.st = b.dataset.st; if (state.st === 'mirror' && !state.mirrorOn) state.mirrorOn = true;
+      pill('#ytStates', 'data-st', state.st); setStatus(); save();
+    });
+    root.querySelector('#ytLangs').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-lang]'); if (!b) return;
+      state.lang = b.dataset.lang; pill('#ytLangs', 'data-lang', state.lang); applyLang(); save();
+    });
+    root.querySelector('#ytThemes').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-th]'); if (!b) return;
+      state.theme = b.dataset.th; pill('#ytThemes', 'data-th', state.theme); applyTheme(); save();
+    });
+    root.querySelector('#ytMirrorRow').addEventListener('change', function (e) {
+      state.mirrorRow = e.target.checked; setStatus(); save();
+      if (!menu.hidden) place();
+    });
+
+    pill('#ytStates', 'data-st', state.st);
+    pill('#ytLangs', 'data-lang', state.lang);
+    pill('#ytThemes', 'data-th', state.theme);
+    root.querySelector('#ytMirrorRow').checked = state.mirrorRow;
+    applyTheme(); applyLang(); tick();
+    window.lucide && lucide.createIcons && lucide.createIcons({ attrs: { width: 16, height: 16 } });
+  })();
+  </script>
+</div>
+
+</body>
+</html>
