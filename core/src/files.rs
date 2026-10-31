@@ -193,7 +193,7 @@ impl FileCatalog {
             FileRequest::Stat { share_id, path } => {
                 let root = self.root(&share_id, &path)?;
                 Ok(FileResponse::Stat {
-                    entry: root.entry(&path)?,
+                    entry: root.entry(&path, true)?,
                 })
             }
             FileRequest::List {
@@ -210,7 +210,7 @@ impl FileCatalog {
                 {
                     return Err(FileError::InvalidRequest);
                 }
-                if !root.entry(&path)?.is_directory {
+                if !root.entry(&path, false)?.is_directory {
                     return Err(FileError::NotDirectory);
                 }
                 let dir = root.dir.open_dir(local_path(&path)).map_err(io_error)?;
@@ -236,7 +236,7 @@ impl FileCatalog {
                     if !valid_path(&child) {
                         continue;
                     }
-                    if let Ok(entry) = root.entry(&child) {
+                    if let Ok(entry) = root.entry(&child, false) {
                         candidates.insert(name, entry);
                         if candidates.len() > usize::from(limit) + 1 {
                             candidates.pop_last();
@@ -253,6 +253,9 @@ impl FileCatalog {
                         more = true;
                         break;
                     }
+                    // Only prepare returned files, never the rest of the directory scan.
+                    #[cfg(windows)]
+                    let entry = root.entry(&entry.path, true)?;
                     bytes += cost;
                     entries.push(entry);
                 }
@@ -309,7 +312,7 @@ impl FileCatalog {
 }
 
 impl SharedRoot {
-    fn entry(&self, path: &str) -> Result<FileEntry, FileError> {
+    fn entry(&self, path: &str, prepare_read: bool) -> Result<FileEntry, FileError> {
         let metadata = if path.is_empty() {
             self.dir.dir_metadata()
         } else {
@@ -319,7 +322,17 @@ impl SharedRoot {
         let (size, version) = if metadata.is_dir() {
             (0, None)
         } else if metadata.is_file() {
-            let file = self.open_file(path)?;
+            #[cfg(windows)]
+            let file = if prepare_read {
+                self.open_version_file(path)?
+            } else {
+                self.open_file(path)?
+            };
+            #[cfg(not(windows))]
+            let file = {
+                let _ = prepare_read;
+                self.open_file(path)?
+            };
             let actual = file.metadata().map_err(io_error)?;
             (actual.len(), Some(file_version(&file, &actual)?))
         } else {
@@ -337,6 +350,32 @@ impl SharedRoot {
             size,
             version,
         })
+    }
+
+    #[cfg(windows)]
+    fn open_version_file(&self, path: &str) -> Result<cap_std::fs::File, FileError> {
+        use std::os::windows::io::AsRawHandle;
+        use windows_sys::Win32::Storage::FileSystem::{
+            GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION, FILE_ATTRIBUTE_OFFLINE,
+            FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS, FILE_ATTRIBUTE_RECALL_ON_OPEN,
+        };
+        let mut file = self.open_file(path)?;
+        let mut info: BY_HANDLE_FILE_INFORMATION = unsafe { std::mem::zeroed() };
+        if unsafe { GetFileInformationByHandle(file.as_raw_handle(), &mut info) } == 0 {
+            return Err(FileError::Unavailable);
+        }
+        let deferred = FILE_ATTRIBUTE_OFFLINE
+            | FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS
+            | FILE_ATTRIBUTE_RECALL_ON_OPEN;
+        if info.dwFileAttributes & deferred == 0 {
+            // Finish first-access metadata updates before publishing a token.
+            // Close the primer so the final handle observes committed timestamps.
+            // Data-read errors retain the existing metadata-only listing behavior.
+            let _ = file.read(&mut [0u8; 1]);
+            drop(file);
+            return self.open_file(path);
+        }
+        Ok(file)
     }
 
     fn open_file(&self, path: &str) -> Result<cap_std::fs::File, FileError> {
