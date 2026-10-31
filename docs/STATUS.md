@@ -23,6 +23,7 @@
 
 | 工作 | 当前结论 / 下一动作 |
 | --- | --- |
+| [YML-019 最新 Windows 安装包](tasks/archive/YML-019-latest-windows-package.md) | done：已取回 f9df8d3 同源 CI 的 Windows x64 EXE / ZIP，与当前 main 产品 / 依赖 / 打包代码一致；本机及独立代理完整 SHA-256、ZIP CRC / 元数据 / 279 份依赖许可 / 安装器图标通过。安装器52,118,106 bytes、未签名，位于忽略入库的 `dist/packages/ci-f9df8d3/`；同源CI安装 / 启动 / 卸载通过，当前用户已有安装，本轮未覆盖安装或恢复性能排查。 |
 | [YML-018 Windows UI 对齐](tasks/YML-018-windows-ui-alignment.md) | 实现 /CI通过，用户机验收blocked：按Mac对齐侧栏、原生分段导航、显示器卡片与三页空态，统一WPF控件。f9df8d3 Windows103 /2 ignored、生产XAML双语两尺寸24状态 /12图抽检、真实ABI、Release /安装启动卸载通过；新版包已生成。待Windows11电脑上线补默认宽窗 /实际键盘 /高对比；YML-017性能排查保持暂停。[记录](evidence/2026-10-31-windows-ui-alignment.md)。 |
 | [YML-017 Windows 性能排查](tasks/YML-017-windows-idle-performance.md) | blocked（用户要求暂停，待实际连接VR后通知继续）：安装版激活后两段约61s平均0.87%单核；后继开发版恢复前台30s约67.73%单核（16线程归一化4.23%）。两次热线程栈经过UIA同步派发，观察干扰尚未排除；对照被并行任务关闭进程打断。已停止测量 / 窗口操作，未改产品代码，不宣称根因或真实性能验收通过。[报告](evidence/2026-10-31-windows-idle-performance.md)。 |
 | [YML-016 共享路径显示](tasks/archive/YML-016-share-path-display.md) | done：普通盘符 / UNC 展示修复 `9583921`；用户追加独立 CR 的 1 P2（尾点 / 尾空格目录复制歧义）已修复，6 项边界回归 red→green、复审关闭。本轮完整门禁（Rust103 /2 ignored、Python47 /3 skipped）、WPF / Release / ABI / smoke 通过，最终主窗口已启动、配置校验不变；文件页回读时用户 Esc 停止自动化，本轮最终文件页回读 not-run。原始路径与授权保留，未替换已安装版本或公开 Release。 |
