@@ -23,6 +23,7 @@
 
 | 工作 | 当前结论 / 下一动作 |
 | --- | --- |
+| [YML-022 VR 连接闪退](tasks/YML-022-windows-connection-crash.md) | verifying：两次系统记录与新增编译 BAML 回归均复现设备行 Button→DockPanel 异常；改 ContextMenu 的 EventSetter 后回归 /独立 CR /Release及ABI smoke通过。首轮 Rust bind 遇 OS10055，串行完整门禁107 passed /2 ignored通过。待实际窗口和真实VR重连；VR电脑名称 /系统显示按用户要求先在游目仓库做YM-331 HTML Demo，未改匿名广播。 |
 | [YML-021 安装后启动与桌面图标](tasks/archive/YML-021-installer-launch-shortcut.md) | done：完成页立即打开与桌面快捷方式选项均默认勾选 / 可取消，静默安装不自启。57a9e0d 三平台 CI success，两轮真实安装（默认 /取消桌面任务）的完整载荷 / .lnk 目标 / 进程检查 / 原生启动 / 卸载清理通过；52,083,482 bytes 安装器已下载至 `dist/packages/ci-57a9e0d/`，SHA-256 / CRC / 元数据 / 许可 / 图标通过。保留 YML-020 修复，未签名；用户安装及交互完成页 /升级记忆 not-run，未覆盖既有安装。 |
 | [YML-020 Windows 显示器名称](tasks/archive/YML-020-windows-display-names.md) | done：已修复后端固定 Display n，按各 GDI 源的活动 monitor 提取 PnP 型号；本机实际窗口 / Release C ABI 已显示 HWV6446（3840×2160）及 RTK1600（1600×2560）。四项新回归、本机完整门禁（Rust107 /2 ignored、Python47 /3 skipped）、独立审查及 ffe9ce5 /57a9e0d 两次三平台 CI 通过；最终安装包合并 YML-021 已取回核验。首轮并行检查端口占用保留记录，未恢复性能排查。 |
 | [YML-019 Windows 安装包取回](tasks/archive/YML-019-latest-windows-package.md) | done（历史交付）：已取回 f9df8d3 同源 CI 的 Windows x64 EXE / ZIP，与当时 main 产品 / 依赖 / 打包代码一致；本机及独立代理完整 SHA-256、ZIP CRC / 元数据 / 279 份依赖许可 / 安装器图标通过。安装器52,118,106 bytes、未签名，位于忽略入库的 `dist/packages/ci-f9df8d3/`；后继显示器修复和安装体验由 YML-020 /021 更新。 |

@@ -19,7 +19,7 @@ internal static class TemplateBindingTests
         ExceptionDispatchInfo? failure = null;
         var thread = new Thread(() =>
         {
-            try { MaterializeRows(); RenderWorkspaces(); }
+            try { MaterializeRows(); RenderWorkspaces(); MaterializeCompiledRows(); }
             catch (Exception error) { failure = ExceptionDispatchInfo.Capture(error); }
             finally { Dispatcher.CurrentDispatcher.InvokeShutdown(); }
         }) { IsBackground = true };
@@ -34,6 +34,42 @@ internal static class TemplateBindingTests
     {
         using var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("YM_Link.Tests." + name)!;
         return XDocument.Load(stream);
+    }
+
+    // Keep compiled BAML and its generated event connectors in this regression.
+    // Loose XAML previews strip events and cannot catch connectionId failures.
+    private static void MaterializeCompiledRows()
+    {
+        XNamespace wpf = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
+        XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+        var markup = new XElement(wpf + "ResourceDictionary", ReadXaml("App.xaml").Root!.Element(wpf + "Application.Resources")!.Elements());
+        markup.SetAttributeValue(XNamespace.Xmlns + "x", x.NamespaceName);
+        var app = new Application { Resources = (ResourceDictionary)XamlReader.Parse(markup.ToString()), ShutdownMode = ShutdownMode.OnExplicitShutdown };
+        var localizer = new Localizer("en");
+        App.SetLanguageResources(localizer);
+        var window = new MainWindow(localizer);
+        try
+        {
+            // Never show this window: Loaded starts the real backend.
+            PopulatePreview(window, localizer, selectLanguage: false);
+            foreach (var name in new[] { "PeerList", "ShareList", "TransferList" })
+            {
+                var list = Need<ItemsControl>(window, name);
+                list.ApplyTemplate();
+                list.Measure(new Size(700, 500));
+                list.Arrange(new Rect(0, 0, 700, 500));
+                list.UpdateLayout();
+                Require(Find<Button>(list) is not null, name + " compiled row actions did not materialize.");
+            }
+        }
+        finally
+        {
+            var closing = typeof(MainWindow).GetMethod("WindowClosing", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            window.Closing -= closing.CreateDelegate<System.ComponentModel.CancelEventHandler>(window);
+            window.Close();
+            app.Shutdown();
+        }
+        Console.WriteLine("PASS: compiled production BAML device/share/transfer rows and event connectors materialize without starting the backend.");
     }
 
     private static void MaterializeRows()
@@ -92,6 +128,7 @@ internal static class TemplateBindingTests
         foreach (var attribute in markup.DescendantsAndSelf().Attributes().Where(attribute =>
             attribute.Name == x + "Class" || (attribute.Name.Namespace == XNamespace.None && events.Contains(attribute.Name.LocalName))).ToArray())
             attribute.Remove();
+        markup.Descendants().Where(element => element.Name.LocalName == "EventSetter").Remove();
     }
 
     private static void RenderWorkspaces()
@@ -220,7 +257,7 @@ internal static class TemplateBindingTests
         return window;
     }
 
-    private static void PopulatePreview(Window window, Localizer localizer)
+    private static void PopulatePreview(Window window, Localizer localizer, bool selectLanguage = true)
     {
         Need<TextBlock>(window, "DeviceName").Text = "Cinema PC (test fixture)";
         Need<TextBlock>(window, "PeerCount").Text = "1";
@@ -251,7 +288,7 @@ internal static class TemplateBindingTests
         foreach (var name in new[] { "PauseButton", "ResumeButton", "StopButton" }) Need<FrameworkElement>(window, name).Visibility = Visibility.Collapsed;
         Need<TextBlock>(window, "FooterStatus").Text = localizer["status_connected"];
         Need<TextBlock>(window, "FooterPorts").Text = string.Format(localizer["network_ports"], 47620, 47621);
-        Need<ComboBox>(window, "LanguageChoice").SelectedIndex = localizer["connect"] == "Connect" ? 1 : 2;
+        if (selectLanguage) Need<ComboBox>(window, "LanguageChoice").SelectedIndex = localizer["connect"] == "Connect" ? 1 : 2;
     }
 
     private static void SelectWorkspace(Window window, Localizer localizer, int index)
