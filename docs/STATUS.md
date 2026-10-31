@@ -2,7 +2,7 @@
 
 更新：2026-10-31。仅记录最近实测事实、未关闭问题与下一步；详细证据见任务。
 
-当前安装版已更新至 e7141ca 的成功 CI 完整载荷，747 文件 /用户配置保持及 startup smoke 通过；首次文件读取修复的两轮 CR 均已闭环，见 [YML-031](tasks/YML-031-file-version-read.md)。此前 YM-332 的33项runtime回归、Quest无调试器名称 /Windows识别及配对前取消已通过；UDP规则仅限安装版 /专用网络 /本地子网。完整认证 /Known /重启恢复仍未签通过，原发现失败与一次身份识别超时保留，见[YML-023](tasks/YML-023-encrypted-identification.md)。
+当前安装版已更新至8789d24成功CI完整载荷，包含配对波纹初始化闪退修复及此前文件首读修复；747文件 /配置保持 /startup与实际主窗口启动通过。闪退的生产BAML相同异常已RED→GREEN，双轮CR属实问题闭环，见[YML-032](tasks/archive/YML-032-taskbar-context-crash.md)；大文件实际解码边界仍见[YML-031](tasks/YML-031-file-version-read.md)。此前Quest无调试器名称 /Windows识别及配对前取消已通过；完整认证 /Known /重启恢复仍未签，原失败保留，见[YML-023](tasks/YML-023-encrypted-identification.md)。
 
 用户授权的历史邮箱修正已完成：20 个既有提交的 author / committer 均统一为目标邮箱，20 个文件树不变，16 个提交号变化；旧记录中的提交号见[旧 → 新映射](evidence/2026-10-27-history-email-rewrite.md)。
 
@@ -10,7 +10,7 @@
 
 | 项目 | 最近实际记录及边界 |
 | --- | --- |
-| [YML-032 任务栏右键时闪退](tasks/YML-032-taskbar-context-crash.md) | verifying：系统1026与生产BAML已复现已配对波纹动画的冻结对象异常；将Transform初始化纳入同Style Setter，界面与动画效果保持。R1两项测试隔离 /假绿问题已修复复审；隔离后RED→GREEN、Windows发布 /ABI /startup及完整Python47 /Rust120通过。先推R1修复，再继续R2 /同源8.0.32包；不使用Computer Use、不再索要重复人工复现。 |
+| [YML-032 任务栏右键时闪退](tasks/archive/YML-032-taskbar-context-crash.md) | done：生产BAML复现同样冻结动画异常，Transform改为同Style Setter后通过；R1两项测试问题修复并先推8789d24，再R2无新增。完整Python47 /Rust120、Windows构建与三平台CI通过；同源8.0.32完整安装更新、747文件 /配置 /startup /主窗口与监听正常，新增匹配崩溃0。真实鼠标右键未由agent操作，不使用Computer Use、不索要重复复现。 |
 | 仓库 | GitHub public `forrestzhu/youmu-link`，2026-10-27 用户明确授权 Apache-2.0 开发预览；匿名 API / LICENSE 200、私下漏洞报告 enabled=true。历史邮箱已统一，未追加历史正文 / 旧运行记录清理，不自动发布正式 Release。 |
 | 设计与实现基线 | 用户授权基于现有 demo 实现，M1 通过；[YML-001](tasks/archive/YML-001-bootstrap.md) 归档。按 [ADR-0002](engineering/decisions/0002-native-desktop.md) 改为 macOS SwiftUI / AppKit 原生界面 + Rust 后端，取代桌面 Tauri 方案。 |
 | Rust 核心 | UDP 发现 / 三端口回退、Noise XX、SPAKE2、系统身份与信任、capability 授权文件服务。rescan 单路由失败不阻断其余探测，新增 2 项真实 UDP 回归；核心 Windows 46 / Mac 41 项通过。当前应用协议v4 /四位配对，发现v1与transport-v2保持；1147 Quest真实LAN core链已通过，原生Mac当前补正常断开反馈回归。 |
