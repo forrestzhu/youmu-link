@@ -69,6 +69,14 @@ Tests: desktop::runtime::tests (Hello-only 静默退出、活动会话 /镜像 /
 
 Quest完整主机原进程exit0（2257非skip通过 /26 SMB环境skip、双lint /双APK /release Kotlin完成），另会话当前同0c51输入的完整22E2E /180语言已独立重算与原字节同步机器凭据；不将windows-lan-relay合成Rust对端当实际WPF安装版。待共享网络夹具释放后补当前安装版↔Quest3S直接LAN、取消 /重启稳定恢复与自有临时信任清理，仍保持verifying。
 
+## 2026-10-31 实际 LAN 发现排查
+
+用户手动打开上述安装版后要求不使用 Computer Use；本轮仅使用CLI /ADB /JDWP与仪器测试。核对实际进程路径、源包摘要和监听端口，Quest3S固定serial在线，未操作并行模拟器或其他会话的夹具。安装版信任基线0；运行冻结private1532双APK（与YM-332已核验E2E相同），`native-lan-03`在20秒发现等待处失败，保留原始失败与设备清理证据，临时Android目录剩余0。
+
+发现当前安装程序仅有此前授权的TCP入站规则；有效冻结v1 Query从Quest向三个UDP端口发送均无回复，修正CLI探测参数后TCP连接成功。准备仅放行安装程序 /Private /LocalSubnet /Inbound UDP47610–47612、EdgeTraversal Block的新规则脚本（SHA-256 `10ae3c4f662c6b182bb4c7752b570e4cb05f68f440c45f64e3d925fcb7e4318f`）。两轮新独立只读复核均0项问题，AST /隔离mock核对正确范围与拒绝范围偏差；用户点击管理员确认后脚本退出0，精确范围回读通过，不修改原TCP规则或其他策略。随后同一Query即获得157字节有效Beacon，公告端口与安装版实际TCP listener一致，缺失UDP入站是本轮发现阻塞的已验证原因。
+
+`native-lan-04`发现已通过，但在加密名称 /系统等待处超时；原失败保留。以相同应用UID进行真实TCP与UDP探测均通过，Noise首包也得到96字节响应帧，不把首包响应冒作完整认证。随后冻结APK的CLI调试运行已完成识别 /Windows类型 /配对前无信任 /取消，但等待人工配对码超时，不能记完整pass。新一轮无调试器 `native-lan-05`同样完成上述识别与取消，live_port精确绑定安装版；等待人工四位码180秒后超时，本轮退出1，未完成认证、Known及重启恢复。终态复核无活动instrumentation、自有Android临时目录0、USB转发已清理，桌面信任仍0且文件摘要与基线一致；安装版原进程继续运行，自启动以来匹配Application1000 /1026崩溃事件0。04的识别超时原因尚未单独定位，不因后续识别成功删除该记录。
+
 ## Next
 
-当前两轮独立CR与属实问题修复 /复审已经完成。用户打开最新安装版后，绑定双端提交 /实际运行包完成Quest3S↔Windows真实LAN名称 /平台识别、连接 /取消及已有会话保持验收；补双端证据互链与最终strict检查。未验真实LAN前保持verifying，不以组件测试、CI或安装版启动代签。
+当前两轮独立CR与属实问题修复 /复审已经完成，实际LAN识别 /配对前取消的部分检查已执行。待用户方便人工报码时重新发起NativeDeviceTest，完成认证、Known、6500ms断线稳定与重启恢复；同时保留并继续确认04的首次识别超时。全过程遵守不用Computer Use，仅CLI /ADB及必要人工操作；完整链路未通过前保持verifying，不以部分阶段、组件测试或CI代签。

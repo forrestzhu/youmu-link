@@ -2,7 +2,7 @@
 
 更新：2026-10-31。仅记录最近实测事实、未关闭问题与下一步；详细证据见任务。
 
-YM-332已按用户要求先推第一轮修复，再完成第二轮CR及属实问题复审，33项runtime回归通过。当前main产品代码与355871e一致，其三平台完整CI已通过；本轮已完整备份并覆盖更新安装版为该CI载荷，747文件核对及安装版startup /snapshot /shutdown smoke通过，配置保持，应用退出后由用户手动打开。已按用户授权添加仅限安装版、专用网络与本地子网的TCP入站规则。另一会话Quest22E2E /180语言已核验；实际WPF安装版↔Quest LAN仍待验。详情见[YML-023](tasks/YML-023-encrypted-identification.md)。
+YM-332已按用户要求先推第一轮修复，再完成第二轮CR及属实问题复审，33项runtime回归通过。当前安装版为355871e成功CI完整载荷，747文件与本机startup /snapshot /shutdown smoke通过，配置保持。用户手动打开后按其要求仅用CLI /ADB验证：补齐仅限安装版、专用网络、本地子网的UDP47610–47612规则后，同一Query由0回复变为有效Beacon；无调试器已通过真实Quest名称 /Windows识别及配对前取消，完整认证 /Known /重启恢复待人工配对码。原发现失败与另一次身份识别超时保留，不以部分阶段签完整LAN。详情见[YML-023](tasks/YML-023-encrypted-identification.md)。
 
 用户授权的历史邮箱修正已完成：20 个既有提交的 author / committer 均统一为目标邮箱，20 个文件树不变，16 个提交号变化；旧记录中的提交号见[旧 → 新映射](evidence/2026-10-27-history-email-rewrite.md)。
 
@@ -31,7 +31,7 @@ YM-332已按用户要求先推第一轮修复，再完成第二轮CR及属实问
 | [YML-026 显示器卡片原生落地](tasks/archive/YML-026-monitor-selection-native.md) | superseded by YML-028：整卡同色方向源于误读，用户已明确要求图标 / 名称分区；原生构建、YML-027三平台CI和CR等历史工程结果保留，不作为修正后视觉验收。 |
 | [YML-025 显示器选择 HTML 原型](tasks/archive/YML-025-monitor-selection-demo.md) | superseded by YML-028：早期整卡淡蓝原型方向已修正，当前demo已同步上下分区 / 细分隔线；历史浏览器与门禁结果保留。 |
 | [YML-024 本机虚假设备与新安装包](tasks/YML-024-self-discovery-filter.md) | verifying：本机多网卡修复8fdf714及动态新增/32的CR修复7ae881c均已推送；新增回归green、复审关闭。同产品源码a830d75的run41181994786三平台全success，Windows117 /2 ignored /0 filtered、Release /ABI /启动及两轮安装卸载通过；原安装包与校验记录保留。当前安装版已按用户要求覆盖更新至包含该修复的355871e，完整载荷与smoke通过，待设备列表实显。本机占端口失败保留，未发布新公开Release。 |
-| [YML-023 加密连接前识别](tasks/YML-023-encrypted-identification.md) | verifying：Hello-only不接管active；取消 /撤销 /pin、双向单边信任及匿名新IP /端口刷新恢复回归均RED→GREEN，两轮独立CR属实问题已关闭。runtime33项与三平台CI通过；安装版现完整更新为355871e CI载荷，747文件与实际startup /snapshot /shutdown smoke通过、配置保持，等待用户打开。游目[YM-332](https://github.com/forrestzhu/youmu/blob/main/docs/tasks/YM-332-link-device-identification.md)完整主机 /Quest22E2E与180语言凭据已核验；实际Quest3S↔WPF安装版LAN待验。 |
+| [YML-023 加密连接前识别](tasks/YML-023-encrypted-identification.md) | verifying：两轮独立CR属实问题已关闭，runtime33项与三平台CI通过。安装版355871e完整载荷与smoke通过；补齐Private /LocalSubnet UDP发现规则后，实际Quest无调试器名称 /Windows识别及配对前取消通过。人工报码等待超时，完整认证 /Known /重启恢复待验；一次识别超时仍保留，测试已清理、桌面信任0、无新增匹配崩溃事件。 |
 | [YML-022 VR 连接闪退](tasks/YML-022-windows-connection-crash.md) | verifying：系统记录与编译BAML回归复现Button→DockPanel；EventSetter修复55eef04已推送，回归 /独立CR /Release /ABI smoke与本机安装版实际启动通过。原组件备份保留，最新完整安装版更新见YML-023。首轮Rust bind OS10055，串行完整门禁107 passed /2 ignored通过；待真实VR重连。名称 /系统已按获批Demo在游目YM-332原生接入，UDP继续匿名。 |
 | [YML-021 安装后启动与桌面图标](tasks/archive/YML-021-installer-launch-shortcut.md) | done：完成页立即打开与桌面快捷方式选项均默认勾选 / 可取消，静默安装不自启。57a9e0d 三平台 CI success，两轮真实安装（默认 /取消桌面任务）的完整载荷 / .lnk 目标 / 进程检查 / 原生启动 / 卸载清理通过；52,083,482 bytes 安装器已下载至 `dist/packages/ci-57a9e0d/`，SHA-256 / CRC / 元数据 / 许可 / 图标通过。保留 YML-020 修复，未签名；用户安装及交互完成页 /升级记忆 not-run，未覆盖既有安装。 |
 | [YML-020 Windows 显示器名称](tasks/archive/YML-020-windows-display-names.md) | done：已修复后端固定 Display n，按各 GDI 源的活动 monitor 提取 PnP 型号；本机实际窗口 / Release C ABI 已显示 HWV6446（3840×2160）及 RTK1600（1600×2560）。四项新回归、本机完整门禁（Rust107 /2 ignored、Python47 /3 skipped）、独立审查及 ffe9ce5 /57a9e0d 两次三平台 CI 通过；最终安装包合并 YML-021 已取回核验。首轮并行检查端口占用保留记录，未恢复性能排查。 |
