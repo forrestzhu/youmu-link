@@ -41,7 +41,17 @@ Tests: desktop::runtime::tests (Hello-only 静默退出、活动会话 /镜像 /
 
 安装版已更新为 `97dacbd` Release 的 `ymlink_desktop.dll`，SHA-256回读 `f9b03660883542122c82f4f1141d506418daa28c155b701aa817cd37c0a21561`；原Rust DLL备份位于ignored `dist/backups/yml023-97dacbd/`。保留YML-022已修复的managed界面DLL及安装版.NET 8.0.33，更新后已重新启动。上述部署 /启动不等于真实LAN验收；游目YM-332正在原生开发，连接前名称 /平台识别、实际连接 /取消及已有会话保持的Quest3S↔Windows验证仍为not-run。
 
-## Next
+## 2026-10-31 安装版完整更新
+
+用户要求更新后由其手动打开。同步至 `cf6337f`，确认其相对 `355871e9add81d1bd35c22cb9716dddf0a40b9ae` 仅有文档变化；取回该产品提交的成功 [CI run 41188794396](https://github.com/forrestzhu/youmu-link/actions/runs/41188794396) Windows 完整制品，未使用本机 SDK 默认的旧运行库。外层 artifact SHA-256 与 GitHub digest 一致（`8f8baab8f09265f50f40e57f5d3bc3516eb43c4d0c16fc2882b0a1a275e39a6f`），外层 /内层 ZIP CRC、两份载荷 sidecar、源码 /平台元数据、PE 图标与根许可文件核验通过。安装器 SHA-256 `b86168b68ca9f164e40bda5ebfaf6d1adb4e57fa699532458c6564702408660f`；完整载荷含747文件及自包含 .NET /WPF 8.0.32。
+
+确认应用已退出后，完整备份旧安装目录754文件并逐一核对摘要，使用上述安装器沿用原目录静默覆盖（不重启、不自动启动、不主动关闭其他应用），安装器退出0。全部747个载荷文件与安装后逐字节一致；安装版 `--smoke-test` 退出0，真实 backend startup /snapshot /shutdown 通过。更新前后用户状态文件集合与摘要均保持；原路径、配对与共享配置不迁移。最终应用保持退出，由用户自行打开。忽略入库的原始制品、部署回执及备份分别位于 `dist/packages/ci-355871e-verified/` 与 `dist/backups/yml023-355871e-full/`。
+
+安装后 managed DLL SHA-256 `a2f05192527fccb72229f65f8d2adbb7d7a73f2def32193dfbbdb5f1140c19f9`，Rust DLL `c183859d7728b62d0eb5ad6c8859e4ef4010ab44c3cbfb66a9e08f35cc22556f`。包含此前连接 /单边信任重拨修复、自发现过滤以及最新显示器分区与托盘功能；X /Alt+F4 仅收起托盘，实际退出使用托盘菜单。启动检查不代替实际安装版与 Quest 的 LAN 验收，任务继续 verifying。
+
+此前经用户明确批准的防火墙操作已成功：仅为安装版程序添加 Private /LocalSubnet /TCP 入站允许规则 `Youmu.YM_Link.PrivateLan.Tcp.YML023`，不修改公共网络或系统默认策略；实际 Quest 直连仍待验证。此前两次 Native 尝试未取得识别成功，保留失败记录；第二次目标实际为另一目录的临时预览，不将其当作已放行安装版的复验结果。
+
+## 追加两轮 CR 与主机验证
 
 2026-10-31 YM-332开发完成后的第一轮独立CR（桌面受审97dacbd、Quest受审d20b03a2上66文件快照，tree SHA-256 `9a7c91f032f1b497470c22010f21fc5ddfbac749f11d2adc7ca8ed49aa3f155b`）发现反向单边信任缺失：Quest保留身份但忘记桌面时，桌面每5秒自动拨入，Known需重新配对后仍重复。新增真实TCP回归先RED（第二次自动拨号仍被accept），再在自动Known确认需配对时按身份暂停重拨；不占active、不创建配对窗口，显式手动连接与正常入站恢复继续可用，认证成功 /忘记时清暂停。定向cargo测试最终1 passed /0 failed /0 ignored，rustfmt通过；同一测试另验证显式四位配对后可再次自动Known连接。
 
@@ -59,4 +69,6 @@ Tests: desktop::runtime::tests (Hello-only 静默退出、活动会话 /镜像 /
 
 Quest完整主机原进程exit0（2257非skip通过 /26 SMB环境skip、双lint /双APK /release Kotlin完成），另会话当前同0c51输入的完整22E2E /180语言已独立重算与原字节同步机器凭据；不将windows-lan-relay合成Rust对端当实际WPF安装版。待共享网络夹具释放后补当前安装版↔Quest3S直接LAN、取消 /重启稳定恢复与自有临时信任清理，仍保持verifying。
 
-推送第一轮修复后启动新的独立第二轮CR，绑定双端提交 /实际运行包完成Quest3S↔Windows真实LAN名称 /平台识别、连接 /取消及已有会话保持验收；补双端证据互链与最终strict检查。未验真实LAN前保持verifying，不以组件测试、CI或安装版启动代签。
+## Next
+
+当前两轮独立CR与属实问题修复 /复审已经完成。用户打开最新安装版后，绑定双端提交 /实际运行包完成Quest3S↔Windows真实LAN名称 /平台识别、连接 /取消及已有会话保持验收；补双端证据互链与最终strict检查。未验真实LAN前保持verifying，不以组件测试、CI或安装版启动代签。
