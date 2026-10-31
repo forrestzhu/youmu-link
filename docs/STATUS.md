@@ -2,7 +2,7 @@
 
 更新：2026-10-31。仅记录最近实测事实、未关闭问题与下一步；详细证据见任务。
 
-YM-332已按用户要求先推第一轮修复，再完成第二轮CR及属实问题复审，33项runtime回归通过。当前安装版为355871e成功CI完整载荷，747文件与本机startup /snapshot /shutdown smoke通过，配置保持。用户手动打开后按其要求仅用CLI /ADB验证：补齐仅限安装版、专用网络、本地子网的UDP47610–47612规则后，同一Query由0回复变为有效Beacon；无调试器已通过真实Quest名称 /Windows识别及配对前取消，完整认证 /Known /重启恢复待人工配对码。原发现失败与另一次身份识别超时保留，不以部分阶段签完整LAN。详情见[YML-023](tasks/YML-023-encrypted-identification.md)。
+当前安装版已更新至 e7141ca 的成功 CI 完整载荷，747 文件 /用户配置保持及 startup smoke 通过；首次文件读取修复的两轮 CR 均已闭环，见 [YML-031](tasks/YML-031-file-version-read.md)。此前 YM-332 的33项runtime回归、Quest无调试器名称 /Windows识别及配对前取消已通过；UDP规则仅限安装版 /专用网络 /本地子网。完整认证 /Known /重启恢复仍未签通过，原发现失败与一次身份识别超时保留，见[YML-023](tasks/YML-023-encrypted-identification.md)。
 
 用户授权的历史邮箱修正已完成：20 个既有提交的 author / committer 均统一为目标邮箱，20 个文件树不变，16 个提交号变化；旧记录中的提交号见[旧 → 新映射](evidence/2026-10-27-history-email-rewrite.md)。
 
