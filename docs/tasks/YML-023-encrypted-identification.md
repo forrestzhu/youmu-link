@@ -47,4 +47,6 @@ Tests: desktop::runtime::tests (Hello-only 静默退出、活动会话 /镜像 /
 
 用户要求第一轮问题修复后先commit /push main供另一会话E2E同步，再继续第二轮CR；本次按此顺序交付中间提交。当前修订尚未更新安装版，完整verify /第二轮CR /当前修订真实LAN为pending，既有97dacbd的完整门禁与CI不冒作新修订结果。
 
+第一轮追加复核指出自动暂停分支在post-Known信任锁等待后绕过epoch检查。真实TCP回归以重复socket peek确认桌面已发Known，再持住信任锁并驱动连接future阻塞，取消epoch后释放锁；旧实现真实RED为晚发布`explicit pairing required`并改ready。修复在同一active gate内先核epoch再更新暂停 /反馈，最终 `cargo test -p ymlink-desktop automatic_known_mismatch -- --test-threads=1` 2 passed /0 failed /0 ignored，rustfmt通过。Quest第一轮实现已推送 `348545f9`，对应41项主机 /真实TCP /Rust互操作 /原生渲染无失败或skip，8态fidelity通过；Quest当前语言凭据 /完整E2E仍待另一会话新包验证。
+
 推送第一轮修复后启动新的独立第二轮CR，绑定双端提交 /实际运行包完成Quest3S↔Windows真实LAN名称 /平台识别、连接 /取消及已有会话保持验收；补双端证据互链与最终strict检查。未验真实LAN前保持verifying，不以组件测试、CI或安装版启动代签。

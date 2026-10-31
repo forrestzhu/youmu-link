@@ -431,6 +431,75 @@ async fn known_wait_cancellation_and_changed_pins_cannot_admit_a_late_connection
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cancelled_automatic_known_mismatch_cannot_publish_or_pause_peer() {
+    let (shared, mut writer, _incoming, _read, server, _commands) = isolated_file_server().await;
+    writer.send(&Message::Bye { v: VERSION }).await.unwrap();
+    server.await.unwrap().unwrap();
+    *shared.active.lock().unwrap() = None;
+    shared.edit(|state| state.listen_port = 32000);
+    let peer = Identity::generate().unwrap();
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let local = TcpStream::connect(listener.local_addr().unwrap())
+        .await
+        .unwrap();
+    let actual = local.peer_addr().unwrap();
+    let (remote, _) = listener.accept().await.unwrap();
+    let raw = remote.into_std().unwrap();
+    let peek = TcpStream::from_std(raw.try_clone().unwrap()).unwrap();
+    let remote = TcpStream::from_std(raw).unwrap();
+    let hello = Hello::new(&peer, "Cancelled automatic retry", "quest", actual.port());
+    shared
+        .trust
+        .lock()
+        .await
+        .remember_endpoint(&hello, &peer.public_key(), Some(actual.to_string()))
+        .unwrap();
+    let mut connection = Box::pin(connection(shared.clone(), local, actual, true, None, false));
+    let mut session = tokio::select! {
+        result = SecureSession::handshake(remote, false, &peer, hello) => result.unwrap(),
+        _ = &mut connection => panic!("connection ended before Hello"),
+    };
+    // Drive the backend until Known IO, then hold its post-Known trust recheck.
+    let mut byte = [0];
+    tokio::select! {
+        result = peek.peek(&mut byte) => assert!(result.unwrap() > 0),
+        _ = &mut connection => panic!("connection ended before sending Known"),
+    }
+    let trust = shared.trust.lock().await;
+    let remote_trust = TrustStore::memory();
+    tokio::select! {
+        result = session.needs_pairing(&remote_trust) => assert!(result.unwrap()),
+        _ = &mut connection => panic!("connection ended before Known"),
+    }
+    assert!(
+        tokio::time::timeout(Duration::from_millis(100), &mut connection)
+            .await
+            .is_err()
+    );
+    let before = serde_json::to_value(&*shared.state.lock().unwrap()).unwrap();
+    shared
+        .dial_cancel
+        .send_modify(|epoch| *epoch = epoch.wrapping_add(1));
+    drop(trust);
+    tokio::time::timeout(Duration::from_secs(1), connection)
+        .await
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(&*shared.state.lock().unwrap()).unwrap(),
+        before,
+        "cancelled automatic Known must not publish a late error"
+    );
+    assert!(
+        !shared
+            .reconnect_paused
+            .lock()
+            .unwrap()
+            .contains(&peer.device_id()),
+        "cancelled automatic Known must not pause a future retry"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn automatic_known_mismatch_pauses_redial_until_manual_pairing_succeeds() {
     let (shared, mut writer, _incoming, _read, server, _commands) = isolated_file_server().await;
     writer.send(&Message::Bye { v: VERSION }).await.unwrap();

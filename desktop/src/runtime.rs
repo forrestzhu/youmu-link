@@ -746,6 +746,13 @@ async fn connection_guarded(
         }
     }
     if initiator && !manual && needs_pairing {
+        let active = shared.active.lock().expect("lock poisoned");
+        if dial_guard
+            .as_ref()
+            .is_some_and(|(epoch, guard)| *epoch != *guard.borrow())
+        {
+            return;
+        }
         shared
             .reconnect_paused
             .lock()
@@ -753,7 +760,6 @@ async fn connection_guarded(
             .insert(remote.device_id.clone());
         // A lost trust record needs an explicit pairing action. Do not keep
         // making the headset enter and leave its connection screen every tick.
-        let active = shared.active.lock().expect("lock poisoned");
         if active.is_none() {
             shared.edit(|state| {
                 state.status = "ready".into();
