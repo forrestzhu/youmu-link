@@ -45,7 +45,7 @@ Query  = { v: 1, query: true, tag_hash: octets(16), session_nonce: octets(16) }
 1. **绑定与心跳**：按 47610→47611→47612 顺序绑定首个可用 UDP 端口。启动即广播，之后每 60000ms 刷新接口列表，向去重后的各接口定向广播地址 + `255.255.255.255` 的**全部三个候选端口**发送 Beacon；不能只向本机绑定端口广播。
 2. **显式 rescan / Query**：桌面启动和用户重扫时立即刷新接口，并向上述全部广播地址 × 三个候选端口发送 Query，再广播本机 Beacon。测试显式允许 loopback 时另探测 127.0.0.1。单个地址 / 端口发送失败不阻止其余探测；至少一个 Query 发送成功则视为扫描已发出，全部失败报告 socket 错误。发送成功不等于已发现或认证对端。接收方校验通过后向 Query 的实际源 IP:UDP 端口**单播**回复 Beacon，同一源 IP 冷却 1s，防放大 / 回环。手动 IP:TCP 端口直连使用与自动发现相同的会话及配对语义。
 3. **接收过滤**（不满足即静默丢弃）：
-   - 源为可单播 IPv4 且与本机某个有效 IPv4 接口同网段（按 netmask 逐位比较，接受实际配置的企业 / 公网地址段及链路本地网段；拒绝未指定地址与零掩码接口，排除 loopback / 组播 / 网络号 / 定向广播地址本身）。loopback 仅显式配置（测试 / CI）允许。
+   - 源为可单播 IPv4 且与本机某个有效 IPv4 接口同网段（按 netmask 逐位比较，接受实际配置的企业 / 公网地址段及链路本地网段；拒绝未指定地址与零掩码接口，排除本机任一接口地址 / loopback / 组播 / 网络号 / 定向广播地址本身）。本机地址排除覆盖不同进程nonce及重叠子网，避免本机多实例互列为设备；loopback 仅显式配置（测试 / CI）允许。该本地接收策略不改变发现v1报文字段。
    - `session_nonce` ≠ 本机 nonce（自回环抑制）。
    - `tag_hash` 匹配本机 tag（未配对不同 tag 的设备互相不可见）。
    - CBOR 解码通过、无未知字段、定长字段长度正确、总长 ≤512B。
@@ -59,7 +59,7 @@ Query  = { v: 1, query: true, tag_hash: octets(16), session_nonce: octets(16) }
 - Noise `Noise_XX_25519_ChaChaPoly_SHA256`，prologue `b"youmu-link-v2"`；每次 TCP 连接完整握手。业务不会复用旧会话 token。双方独立、顺序递增的 Noise nonce 从 0 开始；不发送明文业务内容。
 - 身份仅使用 Noise X25519 静态密钥；`device_id = hex(SHA256(noise_pub)[0..16])`。本阶段不做组内信任事件传播，因此删除未使用的 Ed25519 身份；macOS 私钥保存于 OS Keychain，Windows 保存于 Credential Manager（service `app.youmu.link`，account `device-identity-v2`），系统凭据存储失败不得回退明文文件。信任与目录配置置于当前用户私有目录；Windows 设置仅当前用户与 SYSTEM 可访问的受保护继承 ACL，并拒绝 junction / reparse 根。
 - 首个传输帧为 CBOR Hello：`{v:4,tag_hash,device_id,public_key,name,platform,listen_port}`。`tag_hash` 为 octets(16)、`public_key` 为 octets(32)，device_id 为 32 个小写十六进制字符，名称 1–128 UTF-8 字节、平台 1–32 UTF-8 字节且均无控制字符、端口非零；未知字段拒绝。Hello 内的公钥与 Noise 握手认证的 remote static 必须完全相同，device_id 必须由该公钥派生；tag_hash 必须等于本机组指纹。
-- TCP 监听 IPv4；产品模式只接受 / 拨号实际接口同子网的可单播 IPv4（包括企业地址段和链路本地地址），loopback 仅显式测试配置允许。最多 4 个入站连接任务，单个主动拨号流程。双向竞争时同一身份对以 `initiator == (local.device_id < remote.device_id)` 确定首选方向，仅保留一个 active；不同设备不能顶替当前 active。
+- TCP 监听 IPv4；产品模式只接受 / 拨号实际接口同子网的远端可单播 IPv4（包括企业地址段和链路本地地址，排除本机接口地址），loopback 仅显式测试配置允许。最多 4 个入站连接任务，单个主动拨号流程。双向竞争时同一身份对以 `initiator == (local.device_id < remote.device_id)` 确定首选方向，仅保留一个 active；不同设备不能顶替当前 active。
 - 已配对公钥不匹配、已绑定端点出现新身份或自动重连目标 device_id 不符均拒绝，不以新 id 静默绕过旧信任。主动连接同时校验实际拨号端点的 pin 与对端公告端点，Hello 中的 listen_port 不能替换实际拨号地址来绕过校验；公告端点用于后续回拨。原生界面的显式断开禁止该身份入站 / 自动重连，直到用户主动连接；断线后的已信任设备每 5s 重试一个可用候选端点，未信任设备始终需要用户连接及短码。
 
 ### 3.2 首次配对与重连

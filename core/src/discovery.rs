@@ -281,7 +281,6 @@ fn interface_subnets() -> Vec<Subnet> {
                     }),
                     IfAddr::V6(_) => None,
                 })
-                .filter(|subnet| subnet_bounds(subnet).is_some())
                 .collect()
         })
         .unwrap_or_default()
@@ -324,7 +323,9 @@ fn allowed_source(src: IpAddr, subnets: &[Subnet], allow_loopback: bool) -> bool
     if ip.is_loopback() {
         return allow_loopback;
     }
-    if !unicast_v4(ip) {
+    // A second local runtime has a different nonce; none of this host's
+    // interfaces represent a remote device, even across overlapping subnets.
+    if !unicast_v4(ip) || subnets.iter().any(|subnet| subnet.ip == ip) {
         return false;
     }
     subnets.iter().any(|subnet| {
@@ -365,7 +366,13 @@ async fn broadcast_beacon(shared: &Shared) {
 fn broadcast_targets(shared: &Shared) -> Vec<Ipv4Addr> {
     let mut targets: Vec<Ipv4Addr> = Vec::new();
     if let Ok(guard) = shared.subnets.lock() {
-        targets.extend(guard.iter().filter_map(|subnet| subnet.broadcast));
+        // Keep every local IPv4 for self exclusion, but only probe valid LANs.
+        targets.extend(
+            guard
+                .iter()
+                .filter(|subnet| subnet_bounds(subnet).is_some())
+                .filter_map(|subnet| subnet.broadcast),
+        );
     }
     targets.push(Ipv4Addr::BROADCAST);
     targets.sort_unstable();
@@ -613,6 +620,81 @@ mod tests {
             netmask: mask.parse().unwrap(),
             broadcast: None,
         }
+    }
+
+    #[test]
+    fn local_interface_addresses_are_not_remote_peers() {
+        let interfaces = [
+            subnet("172.22.64.1", "255.255.240.0"),
+            subnet("172.22.192.1", "255.255.240.0"),
+            subnet("192.168.1.3", "255.255.255.0"),
+            subnet("192.168.31.67", "255.255.255.0"),
+        ];
+        for interface in interfaces {
+            for allow_loopback in [false, true] {
+                assert!(
+                    !allowed_source(IpAddr::V4(interface.ip), &interfaces, allow_loopback),
+                    "local interface {} must never become a remote candidate",
+                    interface.ip
+                );
+            }
+        }
+        assert!(allowed_source(
+            "192.168.31.9".parse().unwrap(),
+            &interfaces,
+            false
+        ));
+        assert!(!allowed_source(
+            "127.0.0.1".parse().unwrap(),
+            &interfaces,
+            false
+        ));
+        assert!(allowed_source(
+            "127.0.0.1".parse().unwrap(),
+            &interfaces,
+            true
+        ));
+    }
+
+    #[test]
+    fn local_address_cannot_be_admitted_by_an_overlapping_interface() {
+        let interfaces = [
+            subnet("10.1.0.2", "255.255.0.0"),
+            subnet("10.1.1.2", "255.255.255.0"),
+            subnet("10.1.1.4", "255.255.255.255"),
+        ];
+        for source in ["10.1.1.2", "10.1.1.4"] {
+            assert!(!allowed_source(source.parse().unwrap(), &interfaces, false));
+        }
+        assert!(allowed_source(
+            "10.1.1.3".parse().unwrap(),
+            &interfaces,
+            false
+        ));
+    }
+
+    #[tokio::test]
+    async fn invalid_interface_entries_are_not_broadcast_targets() {
+        let discovery = discovery_without_broadcast().await;
+        *discovery.shared.subnets.lock().unwrap() = vec![
+            Subnet {
+                broadcast: Some("10.1.0.255".parse().unwrap()),
+                ..subnet("10.1.0.2", "255.255.255.0")
+            },
+            Subnet {
+                broadcast: Some("10.1.1.4".parse().unwrap()),
+                ..subnet("10.1.1.4", "255.255.255.255")
+            },
+            Subnet {
+                broadcast: Some("203.0.113.8".parse().unwrap()),
+                ..subnet("10.1.2.2", "255.255.255.0")
+            },
+        ];
+        assert_eq!(
+            broadcast_targets(&discovery.shared),
+            vec!["10.1.0.255".parse().unwrap(), Ipv4Addr::BROADCAST]
+        );
+        discovery.stop();
     }
 
     #[test]

@@ -25,6 +25,7 @@ YM-332第一轮独立CR追加的反向单边信任自动重拨循环已真实TCP
 
 | 工作 | 当前结论 / 下一动作 |
 | --- | --- |
+| [YML-024 本机虚假设备](tasks/YML-024-self-discovery-filter.md) | verifying：截图4个地址确认为本机Hyper-V /WSL /以太网 /WLAN；不同运行实例nonce可绕过旧过滤。已排除全部本机IPv4（含重叠子网 /VPN /32）；3项新回归red→green，独立CR的1 P2已关闭。Python47 /3 skipped、Rust111 /2 ignored /1 filtered、Release /真实ABI通过；完整verify的端口回退被安装版占47610阻断，启动smoke被单实例挡住。用户Esc停止窗口自动化，未替换安装版或继续操作窗口，待补无过滤门禁与实显。 |
 | [YML-023 加密连接前识别](tasks/YML-023-encrypted-identification.md) | verifying：97dacbd将Known交换前置到active接管之前，并通过既有caps追加可选identify；Hello-only探测、活动会话保持、取消 /撤销 /pin反馈red→green，独立复审与三平台CI通过。安装版Rust DLL已备份并更新为该Release，SHA记录在任务，保留修复后的界面DLL和.NET8.0.33，已重新启动。游目[YM-332](https://github.com/forrestzhu/youmu/blob/main/docs/tasks/YM-332-link-device-identification.md)正在原生开发；真实Quest3S↔Windows名称 /平台识别、连接 /取消与已有会话保持仍not-run。 |
 | [YML-022 VR 连接闪退](tasks/YML-022-windows-connection-crash.md) | verifying：系统记录与编译BAML回归复现Button→DockPanel；EventSetter修复55eef04已推送，回归 /独立CR /Release /ABI smoke与本机安装版实际启动通过。保留原组件备份与.NET8.0.33，后继Rust更新见YML-023。首轮Rust bind OS10055，串行完整门禁107 passed /2 ignored通过；待真实VR重连。Quest3S已通过ADB在线，名称 /系统由YM-331 Demo推进至YM-332原生开发，UDP继续匿名。 |
 | [YML-021 安装后启动与桌面图标](tasks/archive/YML-021-installer-launch-shortcut.md) | done：完成页立即打开与桌面快捷方式选项均默认勾选 / 可取消，静默安装不自启。57a9e0d 三平台 CI success，两轮真实安装（默认 /取消桌面任务）的完整载荷 / .lnk 目标 / 进程检查 / 原生启动 / 卸载清理通过；52,083,482 bytes 安装器已下载至 `dist/packages/ci-57a9e0d/`，SHA-256 / CRC / 元数据 / 许可 / 图标通过。保留 YML-020 修复，未签名；用户安装及交互完成页 /升级记忆 not-run，未覆盖既有安装。 |
