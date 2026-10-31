@@ -53,4 +53,6 @@ Tests: desktop::runtime::tests (Hello-only 静默退出、活动会话 /镜像 /
 
 24269ac的[CI](https://github.com/forrestzhu/youmu-link/actions/runs/41180395541) Linux /macOS success，Windows安装器卸载smoke未移除exe导致失败（此前Rust /WPF /Release步骤通过）；不记三平台全绿。新修复CI /完整verify与真实设备仍待验，安装版未再替换。
 
+最终产品提交171741340095e024fb01c7f935a01b0863ccd185的[CI run41181100201](https://github.com/forrestzhu/youmu-link/actions/runs/41181100201)回读completed /success，Linux、Windows、macOS三job全部success；Windows原安装器卸载smoke复验通过，保留上一轮失败记录。[gitleaks run41181100187](https://github.com/forrestzhu/youmu-link/actions/runs/41181100187)同提交success。本机构建 `cargo build --locked -p ymlink-desktop --lib --release` 退出0，Rust DLL SHA-256 `c06dd224ab4292c3405995de8086232b3578ca495f6ff85849f76271cac233f4`。未替换仍在使用的97dacbd安装版；当前修订实际Quest LAN仍not-run，Quest完整主机full-host-02及另一会话新包E2E继续执行，不以CI /本机Release代签。
+
 推送第一轮修复后启动新的独立第二轮CR，绑定双端提交 /实际运行包完成Quest3S↔Windows真实LAN名称 /平台识别、连接 /取消及已有会话保持验收；补双端证据互链与最终strict检查。未验真实LAN前保持verifying，不以组件测试、CI或安装版启动代签。
