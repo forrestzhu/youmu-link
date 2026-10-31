@@ -23,6 +23,7 @@
 
 | 工作 | 当前结论 / 下一动作 |
 | --- | --- |
+| [YML-024 本机虚假设备](tasks/YML-024-self-discovery-filter.md) | verifying：截图4个地址确认为本机Hyper-V /WSL /以太网 /WLAN；不同运行实例nonce可绕过旧过滤。已排除全部本机IPv4（含重叠子网 /VPN /32）；3项新回归red→green，独立CR的1 P2已关闭。Python47 /3 skipped、Rust111 /2 ignored /1 filtered、Release /真实ABI通过；完整verify的端口回退被安装版占47610阻断，启动smoke被单实例挡住。用户Esc停止窗口自动化，未替换安装版或继续操作窗口，待补无过滤门禁与实显。 |
 | [YML-022 VR 连接闪退](tasks/YML-022-windows-connection-crash.md) | verifying：系统记录与编译BAML回归复现Button→DockPanel；EventSetter修复55eef04已推送，回归 /独立CR /Release /ABI smoke与本机安装版实际启动通过。保留原组件备份，仅更新界面DLL，既有.NET8.0.33保留。首轮Rust bind OS10055，串行完整门禁107 passed /2 ignored通过；待真实VR重连。Quest3S当前ADB已在线，名称 /系统按用户要求先交游目YM-331 HTML Demo待审阅，未改匿名广播。 |
 | [YML-021 安装后启动与桌面图标](tasks/archive/YML-021-installer-launch-shortcut.md) | done：完成页立即打开与桌面快捷方式选项均默认勾选 / 可取消，静默安装不自启。57a9e0d 三平台 CI success，两轮真实安装（默认 /取消桌面任务）的完整载荷 / .lnk 目标 / 进程检查 / 原生启动 / 卸载清理通过；52,083,482 bytes 安装器已下载至 `dist/packages/ci-57a9e0d/`，SHA-256 / CRC / 元数据 / 许可 / 图标通过。保留 YML-020 修复，未签名；用户安装及交互完成页 /升级记忆 not-run，未覆盖既有安装。 |
 | [YML-020 Windows 显示器名称](tasks/archive/YML-020-windows-display-names.md) | done：已修复后端固定 Display n，按各 GDI 源的活动 monitor 提取 PnP 型号；本机实际窗口 / Release C ABI 已显示 HWV6446（3840×2160）及 RTK1600（1600×2560）。四项新回归、本机完整门禁（Rust107 /2 ignored、Python47 /3 skipped）、独立审查及 ffe9ce5 /57a9e0d 两次三平台 CI 通过；最终安装包合并 YML-021 已取回核验。首轮并行检查端口占用保留记录，未恢复性能排查。 |
