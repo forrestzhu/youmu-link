@@ -179,7 +179,7 @@ struct Shared {
     config_path: PathBuf,
     mirror_cancel: Mutex<Option<watch::Sender<Option<MirrorEnd>>>>,
     disconnected: Mutex<HashSet<String>>,
-    reconnect_paused: Mutex<HashSet<String>>,
+    reconnect_paused: Mutex<HashMap<String, HashSet<IpAddr>>>,
     mirror_generation: AtomicU64,
     allow_loopback: bool,
     share_changes: Mutex<()>,
@@ -190,6 +190,11 @@ struct Shared {
 }
 
 impl Shared {
+    fn automatic_reconnect_paused(&self, id: Option<&str>, address: SocketAddr) -> bool {
+        let paused = self.reconnect_paused.lock().expect("lock poisoned");
+        id.is_some_and(|id| paused.contains_key(id))
+            || paused.values().any(|hosts| hosts.contains(&address.ip()))
+    }
     fn pending_dial_matches(&self, id: &str) -> bool {
         self.dial_target
             .lock()
@@ -439,7 +444,7 @@ async fn run(
         config_path,
         mirror_cancel: Mutex::new(None),
         disconnected: Mutex::new(HashSet::new()),
-        reconnect_paused: Mutex::new(HashSet::new()),
+        reconnect_paused: Mutex::new(HashMap::new()),
         mirror_generation: AtomicU64::new(1),
         allow_loopback,
         share_changes: Mutex::new(()),
@@ -483,7 +488,7 @@ async fn run(
                 if shared.active.lock().expect("lock poisoned").is_none() && !shared.dialing.load(Ordering::Acquire) {
                     let state=shared.state.lock().expect("lock poisoned");
                     let has_trust=state.peers.iter().any(|p|p.trusted);
-                    let candidates:Vec<_>=state.peers.iter().filter(|p| state.pairing.is_none() && !p.address.is_empty() && !shared.disconnected.lock().expect("lock poisoned").contains(&p.id) && !shared.reconnect_paused.lock().expect("lock poisoned").contains(&p.id) && (p.trusted || (has_trust && p.status=="discovered"))).cloned().collect();
+                    let candidates:Vec<_>=state.peers.iter().filter(|p| state.pairing.is_none() && !p.address.is_empty() && !shared.disconnected.lock().expect("lock poisoned").contains(&p.id) && !p.address.parse().is_ok_and(|address| shared.automatic_reconnect_paused(Some(&p.id), address)) && (p.trusted || (has_trust && p.status=="discovered"))).cloned().collect();
                     drop(state);
                     if !candidates.is_empty() {
                         let peer = &candidates[reconnect_cursor % candidates.len()];
@@ -542,15 +547,7 @@ fn publish_authenticated_peer(s: &mut Snapshot, peer: Peer) {
 }
 
 fn dial(shared: Arc<Shared>, address: SocketAddr, expected: Option<String>, manual: bool) {
-    if !manual
-        && expected.as_ref().is_some_and(|id| {
-            shared
-                .reconnect_paused
-                .lock()
-                .expect("lock poisoned")
-                .contains(id)
-        })
-    {
+    if !manual && shared.automatic_reconnect_paused(expected.as_deref(), address) {
         return;
     }
     if shared.dialing.swap(true, Ordering::AcqRel) {
@@ -757,7 +754,9 @@ async fn connection_guarded(
             .reconnect_paused
             .lock()
             .expect("lock poisoned")
-            .insert(remote.device_id.clone());
+            .entry(remote.device_id.clone())
+            .or_default()
+            .insert(address.ip());
         // A lost trust record needs an explicit pairing action. Do not keep
         // making the headset enter and leave its connection screen every tick.
         if active.is_none() {

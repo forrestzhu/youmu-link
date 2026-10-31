@@ -2,7 +2,7 @@
 
 更新：2026-10-31。仅记录最近实测事实、未关闭问题与下一步；详细证据见任务。
 
-YM-332第一轮独立CR追加的反向单边信任自动重拨循环已真实TCP RED→GREEN（定向1/1、无skip，rustfmt通过）。按用户要求先推送此修复，再继续第二轮CR与完整验证；安装版仍为97dacbd，新修订完整verify /真实LAN待验。详情见[YML-023](tasks/YML-023-encrypted-identification.md)。
+YM-332已按用户要求先推第一轮修复，再完成新独立第二轮CR。反向单边信任、取消竞态及匿名新IP /端口刷新绕过暂停均真实TCP RED→GREEN，33项runtime回归无失败 /skip，第二轮复核关闭属实问题。安装版仍为97dacbd，新修订完整verify /真实LAN待验；24269ac CI的Windows卸载smoke失败保留。详情见[YML-023](tasks/YML-023-encrypted-identification.md)。
 
 用户授权的历史邮箱修正已完成：20 个既有提交的 author / committer 均统一为目标邮箱，20 个文件树不变，16 个提交号变化；旧记录中的提交号见[旧 → 新映射](evidence/2026-10-27-history-email-rewrite.md)。
 

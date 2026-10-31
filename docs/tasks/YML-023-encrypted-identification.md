@@ -49,4 +49,8 @@ Tests: desktop::runtime::tests (Hello-only 静默退出、活动会话 /镜像 /
 
 第一轮追加复核指出自动暂停分支在post-Known信任锁等待后绕过epoch检查。真实TCP回归以重复socket peek确认桌面已发Known，再持住信任锁并驱动连接future阻塞，取消epoch后释放锁；旧实现真实RED为晚发布`explicit pairing required`并改ready。修复在同一active gate内先核epoch再更新暂停 /反馈，最终 `cargo test -p ymlink-desktop automatic_known_mismatch -- --test-threads=1` 2 passed /0 failed /0 ignored，rustfmt通过。Quest第一轮实现已推送 `348545f9`，对应41项主机 /真实TCP /Rust互操作 /原生渲染无失败或skip，8态fidelity通过；Quest当前语言凭据 /完整E2E仍待另一会话新包验证。
 
+按用户要求完成推送后，新独立subagent第二轮CR受审桌面24269ac、Quest348545f9，结束81/81差异 /依赖摘要一致，发现1项P2：已信任Quest换IP且单边信任丢失，新匿名路由expected=None绕过ID暂停。真实TCP保存旧127.0.0.2、发现实际127.0.0.1，旧实现重复accept先RED；统一内存身份→host暂停关联后，在tick选择和dial TCP前同时抑制已解析匿名host。另端口刷新到第二真实listener先RED再GREEN，保留手动配对、正常入站及成功 /Forget清理。最终runtime串行33 passed /0 failed /0 ignored、rustfmt通过；第二轮主审独立复核关闭该P2及端口刷新边界，0项新属实问题。双轮受审提交 /发现 /实际验证见[汇总](https://github.com/forrestzhu/youmu/blob/main/docs/evidence/2026-10-31-link-device-identification-review.md)。
+
+24269ac的[CI](https://github.com/forrestzhu/youmu-link/actions/runs/41180395541) Linux /macOS success，Windows安装器卸载smoke未移除exe导致失败（此前Rust /WPF /Release步骤通过）；不记三平台全绿。新修复CI /完整verify与真实设备仍待验，安装版未再替换。
+
 推送第一轮修复后启动新的独立第二轮CR，绑定双端提交 /实际运行包完成Quest3S↔Windows真实LAN名称 /平台识别、连接 /取消及已有会话保持验收；补双端证据互链与最终strict检查。未验真实LAN前保持verifying，不以组件测试、CI或安装版启动代签。

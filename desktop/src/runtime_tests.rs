@@ -494,13 +494,22 @@ async fn cancelled_automatic_known_mismatch_cannot_publish_or_pause_peer() {
             .reconnect_paused
             .lock()
             .unwrap()
-            .contains(&peer.device_id()),
+            .contains_key(&peer.device_id()),
         "cancelled automatic Known must not pause a future retry"
     );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn automatic_known_mismatch_pauses_redial_until_manual_pairing_succeeds() {
+    known_mismatch_pauses_route(false).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn anonymous_moved_route_known_mismatch_pauses_redial_until_manual_pairing_succeeds() {
+    known_mismatch_pauses_route(true).await;
+}
+
+async fn known_mismatch_pauses_route(anonymous: bool) {
     let (shared, mut writer, _incoming, _read, server, _commands) = isolated_file_server().await;
     writer.send(&Message::Bye { v: VERSION }).await.unwrap();
     server.await.unwrap().unwrap();
@@ -509,12 +518,17 @@ async fn automatic_known_mismatch_pauses_redial_until_manual_pairing_succeeds() 
     let peer = Identity::generate().unwrap();
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
+    let saved_address = if anonymous {
+        SocketAddr::from(([127, 0, 0, 2], address.port()))
+    } else {
+        address
+    };
     let hello = Hello::new(&peer, "Trust lost on Quest", "quest", address.port());
     shared
         .trust
         .lock()
         .await
-        .remember_endpoint(&hello, &peer.public_key(), Some(address.to_string()))
+        .remember_endpoint(&hello, &peer.public_key(), Some(saved_address.to_string()))
         .unwrap();
     shared.edit(|state| {
         publish_authenticated_peer(
@@ -523,11 +537,18 @@ async fn automatic_known_mismatch_pauses_redial_until_manual_pairing_succeeds() 
                 id: peer.device_id(),
                 name: hello.name.clone(),
                 platform: "quest".into(),
-                address: address.to_string(),
+                address: saved_address.to_string(),
                 status: "disconnected".into(),
                 trusted: true,
             },
-        )
+        );
+        if anonymous {
+            record_discovered_peer(state, address, None);
+            assert!(state
+                .peers
+                .iter()
+                .any(|peer| !peer.trusted && peer.address == address.to_string()));
+        }
     });
     let wait_dial = || async {
         tokio::time::timeout(Duration::from_secs(2), async {
@@ -538,7 +559,8 @@ async fn automatic_known_mismatch_pauses_redial_until_manual_pairing_succeeds() 
         .await
         .unwrap();
     };
-    dial(shared.clone(), address, Some(peer.device_id()), false);
+    let expected = (!anonymous).then(|| peer.device_id());
+    dial(shared.clone(), address, expected.clone(), false);
     let (stream, _) = tokio::time::timeout(Duration::from_secs(1), listener.accept())
         .await
         .unwrap()
@@ -553,7 +575,7 @@ async fn automatic_known_mismatch_pauses_redial_until_manual_pairing_succeeds() 
     );
     wait_dial().await;
     for _ in 0..2 {
-        dial(shared.clone(), address, Some(peer.device_id()), false);
+        dial(shared.clone(), address, expected.clone(), false);
         assert!(
             tokio::time::timeout(Duration::from_millis(150), listener.accept())
                 .await
@@ -562,6 +584,18 @@ async fn automatic_known_mismatch_pauses_redial_until_manual_pairing_succeeds() 
         );
     }
     assert!(shared.state.lock().unwrap().pairing.is_none());
+    if anonymous {
+        let rotated = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let rotated_address = rotated.local_addr().unwrap();
+        shared.edit(|state| record_discovered_peer(state, rotated_address, None));
+        dial(shared.clone(), rotated_address, None, false);
+        assert!(
+            tokio::time::timeout(Duration::from_millis(150), rotated.accept())
+                .await
+                .is_err(),
+            "an anonymous beacon port refresh must not bypass the pause"
+        );
+    }
 
     // An explicit connection still permits the normal four-digit exchange.
     dial(shared.clone(), address, Some(peer.device_id()), true);
@@ -601,7 +635,7 @@ async fn automatic_known_mismatch_pauses_redial_until_manual_pairing_succeeds() 
     wait_dial().await;
 
     // Successful authorization re-enables automatic Known recovery.
-    dial(shared.clone(), address, Some(peer.device_id()), false);
+    dial(shared.clone(), address, expected, false);
     let (stream, _) = tokio::time::timeout(Duration::from_secs(1), listener.accept())
         .await
         .unwrap()
@@ -1563,7 +1597,7 @@ async fn isolated_file_server() -> (
         config_path: PathBuf::new(),
         mirror_cancel: Mutex::new(None),
         disconnected: Mutex::new(HashSet::new()),
-        reconnect_paused: Mutex::new(HashSet::new()),
+        reconnect_paused: Mutex::new(HashMap::new()),
         mirror_generation: AtomicU64::new(1),
         allow_loopback: true,
         share_changes: Mutex::new(()),
