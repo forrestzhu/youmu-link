@@ -1,6 +1,6 @@
 # YML-029：Windows 关闭收起到托盘与显式退出
 
-Status: verifying
+Status: done
 Workflow: behavior
 Requires-Device: no
 Tests: windows/Tests 实际编译窗口关闭 / 重复关闭 / 显式异步退出及后端排队生命周期，真实不可见 NotifyIcon 菜单 / 中英 / 资源销毁；Release / ABI / smoke；Rust 沿用 harness verify，无协议变更
@@ -22,7 +22,7 @@ Tests: windows/Tests 实际编译窗口关闭 / 重复关闭 / 显式异步退�
 - [x] X 收起 / 打开恢复 / 显式退出的代码路径分离，保留后台状态和退出 drain / 重入保护。
 - [x] 原生托盘 / 图标 / 中英菜单、语言更新与资源释放有自动回归；关闭回归 RED→GREEN。
 - [x] WPF / BAML / 本地化 / 真实 ABI / Release 自包含构建与适用完整门禁有实际结果，保留本机端口限制。
-- [ ] 开发后新独立 CR，属实问题修复复验；自查、任务 / STATUS、commit / push main 与严格推送门禁闭环。
+- [x] 开发后新独立 CR 无待修问题；自查、任务 / STATUS、commit / push main 与严格推送门禁闭环，交付前核对最终实际远端。
 
 ## Verification
 
@@ -38,7 +38,10 @@ Tests: windows/Tests 实际编译窗口关闭 / 重复关闭 / 显式异步退�
 - 添加 UseWindowsForms 仅供系统托盘和菜单，移除其隐式namespace防止WPF歧义；保留 WPF 原 manifest 的 PerMonitorV2 并对仅提示改用 WinForms DPI API 的 WFAC010 作有注释的单项排除，不改既有DPI行为。WindowLoaded加一次性门禁，恢复时不重复启动后台；菜单语言由现有 App.SetLanguageResources 同步。组件 / 内嵌图标在App退出释放，Smoke只构造 / 释放不可见托盘资源。
 - 新独立CR基线 `3b90cd8f763b9a2b50edcb26c781ac6ee376b551`，审查完整工作区差异及构建 / 安装脚本假设；App blob `9735427881768d53c6d2e0bcd1005e2308f11a16`、MainWindow blob `020aa62f0ce62d3492e6673babeaafa60f31279f`、TrayIcon blob `dfdb73ebf6d728371a3b62ba95af87ebfca5e20b`。无属实待修问题；检查了框架静默Shell注册请求语义，普通Explorer重启由原生组件TaskbarCreated自动重加，未成立永久丢失问题，不增加私有反射或自定义Shell互操作。
 - 本机完整 `harness verify`（RUST_TEST_THREADS=1）：Python47项 /3 skipped、check /rustfmt通过，core23、discovery8通过，端口回退用例因用户仍运行的分区版占用UDP47610而 OS10048；后续Rust目标not-run，保留失败，不关闭用户应用或用筛选测试代签。等待同源CI的不筛选完整回归及发布载荷 smoke。
+- 受审实现提交 `355871e9add81d1bd35c22cb9716dddf0a40b9ae` 已推送；对应 [run41188794396](https://github.com/forrestzhu/youmu-link/actions/runs/41188794396) 最终三平台全success，[gitleaks41188794362](https://github.com/forrestzhu/youmu-link/actions/runs/41188794362) 同SHA success。三平台均实际执行 `cargo test --workspace --all-targets --locked`，Linux104 passed /0 ignored，Windows117 passed /2 ignored，macOS110 passed /1 ignored，均0 failed /0 filtered；保留既有显式硬件采集忽略项。Mac另有Swift9、重链接2项、应用资源 / 静态链接 / 签名与DMG /ZIP通过。
+- Windows job124501225032 解码日志由主代理回读：新不可见托盘 / 中英菜单 / 左键双击 / 释放测试、反复X保留轮询 / 显式Exit清理测试均有PASS；发布版内嵌图标 / 不可见托盘资源、真实Rust启动 / snapshot / clean shutdown smoke通过。完整载荷安装 / 选项 / 静默不自启 / 原生启动关闭 / 卸载清理、ZIP / 安装器与制品上传通过。Windows CI为Server2025 10.0.26100，Mac为Apple Silicon15.8.2，不代签用户Win11托盘实操或真实Quest / LAN。
+- `git diff --check`、仓库check通过；最终交付记录只补文档，与CI已验实现的生产源码相同。本机完整门禁失败保留，实际托盘展开 / 恢复 / 系统高对比及用户窗口X仍not-run（由用户自验）；当前旧窗口未重启 / 操作，新版开发文件已构建在 `dist/YM_Link`。
 
 ## Next
 
-实现、RED→GREEN、本地Release及新独立CR已完成；推送后核验同源CI的完整Rust / 原生发布启动 / 安装载荷，再归档最终记录。实际托盘展开 / X / 恢复 / 高对比仍由用户自行检查。
+实现、RED→GREEN、本地Release、新独立CR和同源三平台完整CI / 发布smoke均已完成。用户可退出旧版后运行 `dist/YM_Link/YM_Link.exe`，自行确认实际X收起、托盘菜单 / 双击恢复和退出；不把自动回归或CI代签真实窗口 / 连接 / 采集验收。
