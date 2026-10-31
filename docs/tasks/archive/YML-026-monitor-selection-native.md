@@ -30,7 +30,8 @@ Tests: windows/Tests/YM_Link.Tests.csproj (既有生产 BAML、选中绑定与�
 - 追加 `cargo test --workspace --all-targets -- --skip beacon_ports_fall_back_in_order`：core / discovery / files / protocol / session / windows_platform 的58项通过，1 filtered；desktop 44 passed / 5 failed / 2 ignored，后续 target not-run。5项均在 `wait_state` 超时：`authenticated_eof_disconnects_without_an_alert_but_auth_and_protocol_failures_still_surface`、`authorized_folders_survive_backend_restart_and_revocation_stays_revoked`、`native_runtime_pairs_windows_macos_and_headset_roles_in_both_directions`、`rejection_before_ready_keeps_a_route_for_an_explicit_fresh_retry`、`wrong_code_preserves_the_display_window_and_five_attempts_limit_new_connections`。随后 `cargo test -p ymlink-desktop --lib runtime::tests -- --test-threads=1` 的33项全部通过（11.07s），含上述5项；保留并发失败，不据此认定根因或修改 Rust。
 - 独立只读审查受审实现 `4469f28`（基于 main `1692af1` 的 XAML 差异，blob `0708a73e9e9dcdc4cda5be21e2e37bb6f45501d8`），核对状态优先级、稳定几何、键盘专属 FocusVisualStyle、原生选择 / 无障碍及高对比资源映射，两张原生样本检查无新增问题。无业务 / 协议代码或资源文案变更，不新增镜像样式 setter 的测试。
 - `4469f28` 已推送；同源 [CI run 41184260855](https://github.com/forrestzhu/youmu-link/actions/runs/41184260855) 的 Linux checks（Python / check / rustfmt / 不过滤的完整 Rust 测试）已 success，Windows / macOS 构建当时仍在进行，未代填通过。`git diff --check` / 仓库 check 通过；最终记录提交后执行 `check --require-pushed`。
+- 后续用户追加完整验证与新独立 CR 见 [YML-027](YML-027-monitor-selection-cr.md)：旧4469f28的run最终因文档推送 cancelled；同生产实现f51e700的run41184493604最终三平台 / 原生构建 / 启动 / 安装器与gitleaks全success，Windows Rust117 /2 ignored /0 filtered、macOS Rust110 /1 ignored /0 filtered、Swift9通过。历史本机失败保留，不再将当时进行中的状态作为当前结论。
 
 ## Next
 
-代码与自包含开发版已交付，任务按用户限定的“代码和构建”范围完成；运行 `dist/YM_Link/YM_Link.exe` 自查完整窗口的 hover / 点击 / Tab / 方向键，高对比手动检查 not-run。安装版未覆盖。CI 原生平台状态独立保留，不将后台 CI 或原生渲染样本代签用户人工验收。
+代码与自包含开发版已交付，任务按用户限定的“代码和构建”范围完成；后继完整自动验证与追加独立 CR 已由YML-027关闭。运行 `dist/YM_Link/YM_Link.exe` 自查完整窗口的 hover / 点击 / Tab / 方向键，高对比手动检查 not-run。安装版未覆盖，不将后台 CI 或原生渲染样本代签用户人工验收。
