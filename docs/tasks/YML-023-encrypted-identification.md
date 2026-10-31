@@ -55,4 +55,8 @@ Tests: desktop::runtime::tests (Hello-only 静默退出、活动会话 /镜像 /
 
 最终产品提交171741340095e024fb01c7f935a01b0863ccd185的[CI run41181100201](https://github.com/forrestzhu/youmu-link/actions/runs/41181100201)回读completed /success，Linux、Windows、macOS三job全部success；Windows原安装器卸载smoke复验通过，保留上一轮失败记录。[gitleaks run41181100187](https://github.com/forrestzhu/youmu-link/actions/runs/41181100187)同提交success。本机构建 `cargo build --locked -p ymlink-desktop --lib --release` 退出0，Rust DLL SHA-256 `c06dd224ab4292c3405995de8086232b3578ca495f6ff85849f76271cac233f4`。未替换仍在使用的97dacbd安装版；当前修订实际Quest LAN仍not-run，Quest完整主机full-host-02及另一会话新包E2E继续执行，不以CI /本机Release代签。
 
+后续安全ff同步另一会话7ae881c发现过滤，a830d75的[三平台CI41181994786](https://github.com/forrestzhu/youmu-link/actions/runs/41181994786)与[gitleaks41181994816](https://github.com/forrestzhu/youmu-link/actions/runs/41181994816)均success；本轮runtime两文件仍与独立复审SHA一致。再次Release构建退出0。实读安装版进程已退出、14:09后YM_Link匹配崩溃事件0；备份并核对原97dacbd DLL到ignored `dist/backups/yml023-a830d75/`，仅更新Rust DLL，回读SHA `448b1c487cf115477f539ea3e02d9ffb20de5ebf7931090b639eab615a8e36cc`。managed55组件SHA及.NET8.0.33回读保持；本次未启动更新后的应用，以免干扰另一会话模拟器Windows网络夹具。
+
+Quest完整主机原进程exit0（2257非skip通过 /26 SMB环境skip、双lint /双APK /release Kotlin完成），另会话当前同0c51输入的完整22E2E /180语言已独立重算与原字节同步机器凭据；不将windows-lan-relay合成Rust对端当实际WPF安装版。待共享网络夹具释放后补当前安装版↔Quest3S直接LAN、取消 /重启稳定恢复与自有临时信任清理，仍保持verifying。
+
 推送第一轮修复后启动新的独立第二轮CR，绑定双端提交 /实际运行包完成Quest3S↔Windows真实LAN名称 /平台识别、连接 /取消及已有会话保持验收；补双端证据互链与最终strict检查。未验真实LAN前保持verifying，不以组件测试、CI或安装版启动代签。

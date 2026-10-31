@@ -2,7 +2,7 @@
 
 更新：2026-10-31。仅记录最近实测事实、未关闭问题与下一步；详细证据见任务。
 
-YM-332已按用户要求先推第一轮修复，再完成新独立第二轮CR。反向单边信任、取消竞态及匿名新IP /端口刷新绕过暂停均真实TCP RED→GREEN，33项runtime回归无失败 /skip，第二轮复核关闭属实问题。1717413三平台完整CI /gitleaks与本机Rust Release通过；上一轮Windows卸载smoke失败已复验通过并保留记录。安装版仍为97dacbd，新修订真实LAN待验。详情见[YML-023](tasks/YML-023-encrypted-identification.md)。
+YM-332已按用户要求先推第一轮修复，再完成第二轮CR及属实问题复审，33项runtime回归通过。已合入另一会话7ae881c，a830d75三平台完整CI /gitleaks通过。原安装版进程退出后，97dacbd Rust DLL已备份并更新为当前Release（managed55与.NET8.0.33保持），尚未重启；另一会话Quest22E2E /180语言已核验，实际WPF↔Quest LAN待共享Windows网络夹具释放后验证。详情见[YML-023](tasks/YML-023-encrypted-identification.md)。
 
 用户授权的历史邮箱修正已完成：20 个既有提交的 author / committer 均统一为目标邮箱，20 个文件树不变，16 个提交号变化；旧记录中的提交号见[旧 → 新映射](evidence/2026-10-27-history-email-rewrite.md)。
 
