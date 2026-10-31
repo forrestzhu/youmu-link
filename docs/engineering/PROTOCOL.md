@@ -37,7 +37,7 @@ Query  = { v: 1, query: true, tag_hash: octets(16), session_nonce: octets(16) }
 
 - `tag_hash = SHA256(tag_utf8)[0..16]`；YM_Link 默认 tag 为 `"youmu-link"`。tag 是分组指纹，**不是密码、不承载鉴权**。
 - `session_nonce`：进程启动随机 16B，用于自回环抑制与对端重启检测；相同源地址的 nonce 变化会再次发出 PeerDiscovered。
-- `caps`：文本能力位，总数 ≤8；当前桌面广播 `["control","files","mirror"]`。发现模块单独运行的默认值为 `["discovery"]`。未知能力不赋予权限，接收方可忽略。
+- `caps`：文本能力位，总数 ≤8；当前桌面广播 `["control","files","mirror","identify"]`。发现模块单独运行的默认值为 `["discovery"]`。未知能力不赋予权限，接收方可忽略。可选 `identify` 表示支持下述 Hello-only 加密识别边界；没有该能力的旧 v4 桌面不得自动探测。此为既有数组的可选值扩展，不增加字段，发现 v1 /应用 v4 保持。
 - `listen_port`：桌面运行时先绑定系统分配的非零 TCP listener 端口，再以 discovery 的 `advertised_port` 广播该 TCP 端口；UDP 绑定端口独立。仅独立发现测试未设置 advertised_port 时沿用本地 UDP 端口，不将其视为可配对服务。
 
 ### 2.3 行为
@@ -63,6 +63,8 @@ Query  = { v: 1, query: true, tag_hash: octets(16), session_nonce: octets(16) }
 - 已配对公钥不匹配、已绑定端点出现新身份或自动重连目标 device_id 不符均拒绝，不以新 id 静默绕过旧信任。主动连接同时校验实际拨号端点的 pin 与对端公告端点，Hello 中的 listen_port 不能替换实际拨号地址来绕过校验；公告端点用于后续回拨。原生界面的显式断开禁止该身份入站 / 自动重连，直到用户主动连接；断线后的已信任设备每 5s 重试一个可用候选端点，未信任设备始终需要用户连接及短码。
 
 ### 3.2 首次配对与重连
+
+- **连接前识别（可选 identify）**：仅对声明该能力的桌面，头显可完成既有 Noise + Hello、读取校验后的名称 /平台，然后关闭连接；不发送 Known /PairRequest、不写信任、不请求文件或镜像。桌面在完成双方 Known 交换前不得占 active、停止镜像、创建配对窗口或改变传输；该阶段入站关闭 /超时静默退出。网络等待不持信任 /active锁，沿用5秒Known超时和4入站上限。头显只在前台可见且空闲时探测，最多并发2、每个总时限5秒，按端点 /nonce缓存并支持单行重试；离页 /后台 /显式连接关闭探测socket。名称来自尚未配对的加密会话，不构成用户信任；显式连接仍验证本次身份并完成原有配对。旧客户端显式连接继续使用原字段和顺序，未知能力可忽略。
 
 - Hello 后双方发送加密 `{kind:"known",v:4,known:bool}`；只有双方都已持久信任对方的本次 Noise 静态公钥，才可跳过首次配对。任何一端忘记信任都必须重新配对；单方宣称 `known=true` 不足以放行业务。
 - 桌面端显示随机均匀四位ASCII数字码（0000–9999），头显端输入。显示 / 输入角色独立于 TCP 发起方；Windows / macOS 桌面互测时，TCP responder 显示、initiator 输入。平台标识 `headset-test` 的 Rust 测试对端始终输入桌面显示的码。码有效期 300s（单调时钟）；取消、过期、错误码或连接断开立即结束本次加密连接；错码的逻辑窗口保留规则见§3.2.1。

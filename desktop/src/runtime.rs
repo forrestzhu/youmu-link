@@ -404,7 +404,12 @@ async fn run(
             // Unit backends dial explicit TCP endpoints; avoid exhausting the
             // three production discovery ports when these tests run in parallel.
             listen_port: (cfg!(test) && allow_loopback).then_some(0),
-            caps: vec!["control".into(), "files".into(), "mirror".into()],
+            caps: vec![
+                "control".into(),
+                "files".into(),
+                "mirror".into(),
+                "identify".into(),
+            ],
             allow_loopback,
             ..Default::default()
         },
@@ -597,6 +602,13 @@ async fn connection_guarded(
     manual: bool,
     mut dial_guard: Option<(u64, watch::Receiver<u64>)>,
 ) {
+    // Cancellation also covers inbound connections that have not entered the
+    // active gate yet. Creating the guard before Noise closes the last race.
+    if dial_guard.is_none() {
+        let cancelled = shared.dial_cancel.subscribe();
+        let epoch = *cancelled.borrow();
+        dial_guard = Some((epoch, cancelled));
+    }
     let (name, port) = {
         let s = shared.state.lock().expect("lock poisoned");
         (s.device_name.clone(), s.listen_port)
@@ -611,7 +623,7 @@ async fn connection_guarded(
     } else {
         handshake.await
     };
-    let session = match result {
+    let mut session = match result {
         Ok(session) => session,
         Err(error) => {
             if initiator && manual {
@@ -632,7 +644,18 @@ async fn connection_guarded(
     };
     let remote = session.remote().clone();
     let endpoint = SocketAddr::new(address.ip(), remote.listen_port).to_string();
+    // Explicit disconnect must reject an automatic inbound retry before Known
+    // can make the peer believe it has reconnected. Recheck at the active gate.
+    if !manual
+        && shared
+            .disconnected
+            .lock()
+            .expect("lock poisoned")
+            .contains(&remote.device_id)
     {
+        return;
+    }
+    let local_trust = {
         let trust = shared.trust.lock().await;
         if expected.as_ref().is_some_and(|id| *id != remote.device_id)
             || (initiator
@@ -649,6 +672,60 @@ async fn connection_guarded(
         // Anonymous discovery is only a hint. Probe a moved peer's encrypted
         // identity, but never start unsolicited pairing on an outbound retry.
         if initiator && !manual && !trust.check(&remote, &session.remote_key()).unwrap_or(false) {
+            return;
+        }
+        trust.detached()
+    };
+    // Hello-only identification is intentionally outside the active gate.
+    // Neither EOF nor timeout here may interrupt an existing session or show
+    // a pairing prompt. Do not hold the trust lock during network IO.
+    let known = session.needs_pairing(&local_trust);
+    let result = if let Some((epoch, cancelled)) = &mut dial_guard {
+        if *epoch != *cancelled.borrow() {
+            return;
+        }
+        tokio::select! { biased; _=cancelled.changed()=>return, result=known=>result }
+    } else {
+        known.await
+    };
+    if let Err(error) = result {
+        if initiator && manual {
+            shared.dial_error(
+                address,
+                error.to_string(),
+                dial_guard.as_ref().map(|(epoch, _)| *epoch),
+            );
+        }
+        return;
+    }
+    {
+        let trust = shared.trust.lock().await;
+        // Another connection may have changed a route pin while Known waited.
+        // Recheck both routes before any active handoff, and do not resurrect
+        // a previously trusted identity that the user has just forgotten.
+        if (initiator
+            && trust
+                .check_endpoint(&remote, &session.remote_key(), &address.to_string())
+                .is_err())
+            || trust
+                .check_endpoint(&remote, &session.remote_key(), &endpoint)
+                .is_err()
+        {
+            if initiator && manual {
+                shared.dial_error(
+                    address,
+                    "paired identity key changed; forget the old device before pairing again"
+                        .into(),
+                    dial_guard.as_ref().map(|(epoch, _)| *epoch),
+                );
+            }
+            return;
+        }
+        if local_trust
+            .check(&remote, &session.remote_key())
+            .unwrap_or(false)
+            && !trust.check(&remote, &session.remote_key()).unwrap_or(false)
+        {
             return;
         }
     }

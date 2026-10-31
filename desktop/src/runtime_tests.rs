@@ -196,6 +196,9 @@ fn authenticated_eof_disconnects_without_an_alert_but_auth_and_protocol_failures
             .await
             .unwrap();
             if failure == "unauthenticated-eof" {
+                // A peer that enters Known has requested a real connection;
+                // failures after this point retain the existing feedback.
+                assert!(session.needs_pairing(&TrustStore::memory()).await.unwrap());
                 drop(session);
                 wait_state(&backend, |s| s.error_id > 0).await;
                 let state = backend.state.lock().unwrap();
@@ -272,6 +275,158 @@ fn authenticated_eof_disconnects_without_an_alert_but_auth_and_protocol_failures
         drop(client);
         drop(backend);
         std::fs::remove_dir_all(temp).unwrap();
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn hello_only_identification_leaves_idle_state_and_trust_unchanged() {
+    let (shared, mut writer, _incoming, _read, server, _commands) = isolated_file_server().await;
+    writer.send(&Message::Bye { v: VERSION }).await.unwrap();
+    server.await.unwrap().unwrap();
+    *shared.active.lock().unwrap() = None;
+    shared.edit(|state| state.listen_port = 32000);
+    let before = serde_json::to_value(&*shared.state.lock().unwrap()).unwrap();
+    let mirror_generation = shared.mirror_generation.load(Ordering::Acquire);
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let stream = TcpStream::connect(listener.local_addr().unwrap())
+        .await
+        .unwrap();
+    let (remote_stream, address) = listener.accept().await.unwrap();
+    let task = tokio::spawn(connection(
+        shared.clone(),
+        remote_stream,
+        address,
+        false,
+        None,
+        false,
+    ));
+    let identity = Identity::generate().unwrap();
+    let session = SecureSession::handshake(
+        stream,
+        true,
+        &identity,
+        Hello::new(&identity, "Identification only", "quest", 32009),
+    )
+    .await
+    .unwrap();
+    assert_eq!(session.remote().name, "test");
+    drop(session);
+    tokio::time::timeout(Duration::from_secs(1), task)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(&*shared.state.lock().unwrap()).unwrap(),
+        before
+    );
+    assert!(shared.active.lock().unwrap().is_none());
+    assert_eq!(
+        shared.mirror_generation.load(Ordering::Acquire),
+        mirror_generation
+    );
+    assert!(!shared
+        .trust
+        .lock()
+        .await
+        .peers()
+        .iter()
+        .any(|peer| peer.device_id == identity.device_id()));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn known_wait_cancellation_and_changed_pins_cannot_admit_a_late_connection() {
+    for change in ["cancel-inbound", "pin-outbound", "forget-inbound"] {
+        let (shared, mut writer, _incoming, _read, server, _commands) =
+            isolated_file_server().await;
+        writer.send(&Message::Bye { v: VERSION }).await.unwrap();
+        server.await.unwrap().unwrap();
+        *shared.active.lock().unwrap() = None;
+        shared.edit(|state| state.listen_port = 32000);
+        let peer = Identity::generate().unwrap();
+        let hello = Hello::new(&peer, "Known wait", "quest", 32009);
+        if change == "forget-inbound" {
+            shared
+                .trust
+                .lock()
+                .await
+                .remember(&hello, &peer.public_key())
+                .unwrap();
+        }
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let client = TcpStream::connect(listener.local_addr().unwrap())
+            .await
+            .unwrap();
+        let (accepted, _) = listener.accept().await.unwrap();
+        let initiator = change == "pin-outbound";
+        let (local, remote) = if initiator {
+            (client, accepted)
+        } else {
+            (accepted, client)
+        };
+        let actual = local.peer_addr().unwrap();
+        // Peek a duplicated handle without consuming bytes: after Hello,
+        // readability proves the desktop has sent Known from its old snapshot.
+        let raw = remote.into_std().unwrap();
+        let peek = TcpStream::from_std(raw.try_clone().unwrap()).unwrap();
+        let remote = TcpStream::from_std(raw).unwrap();
+        let task = tokio::spawn(connection(
+            shared.clone(),
+            local,
+            actual,
+            initiator,
+            None,
+            true,
+        ));
+        let mut session = SecureSession::handshake(remote, !initiator, &peer, hello)
+            .await
+            .unwrap();
+        let mut byte = [0];
+        assert!(
+            tokio::time::timeout(Duration::from_secs(1), peek.peek(&mut byte))
+                .await
+                .unwrap()
+                .unwrap()
+                > 0
+        );
+        assert!(
+            shared.trust.try_lock().is_ok(),
+            "Known IO must not hold the trust lock"
+        );
+        match change {
+            "cancel-inbound" => {
+                shared
+                    .dial_cancel
+                    .send_modify(|epoch| *epoch = epoch.wrapping_add(1));
+            }
+            "pin-outbound" => {
+                let other = Identity::generate().unwrap();
+                shared
+                    .trust
+                    .lock()
+                    .await
+                    .remember_endpoint(
+                        &Hello::new(&other, "New endpoint owner", "windows", actual.port()),
+                        &other.public_key(),
+                        Some(actual.to_string()),
+                    )
+                    .unwrap();
+            }
+            _ => {
+                shared.trust.lock().await.forget(&peer.device_id()).unwrap();
+            }
+        }
+        let _ = session.needs_pairing(&TrustStore::memory()).await;
+        tokio::time::timeout(Duration::from_secs(1), task)
+            .await
+            .expect(change)
+            .unwrap();
+        assert!(shared.active.lock().unwrap().is_none(), "{change}");
+        assert!(shared.state.lock().unwrap().pairing.is_none(), "{change}");
+        assert_eq!(
+            shared.state.lock().unwrap().error.is_some(),
+            change == "pin-outbound",
+            "only a real manual pin failure needs recovery feedback"
+        );
     }
 }
 
@@ -2158,6 +2313,57 @@ async fn preferred_connection_handoff_preserves_interrupted_transfer_controls() 
     })
     .await
     .unwrap();
+
+    // A Hello-only identification from the same identity in the preferred
+    // direction must not steal this active connection or its real paused work.
+    let active_generation = shared.active.lock().unwrap().as_ref().unwrap().generation;
+    let mirror_generation = shared.mirror_generation.load(Ordering::Acquire);
+    let before_probe = serde_json::to_value(&*shared.state.lock().unwrap()).unwrap();
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let client = TcpStream::connect(listener.local_addr().unwrap())
+        .await
+        .unwrap();
+    let (accepted, _) = listener.accept().await.unwrap();
+    let (local, remote) = if preferred_initiator {
+        (client, accepted)
+    } else {
+        (accepted, client)
+    };
+    let address = local.peer_addr().unwrap();
+    let probe_task = tokio::spawn(connection(
+        shared.clone(),
+        local,
+        address,
+        preferred_initiator,
+        None,
+        false,
+    ));
+    let probe = SecureSession::handshake(
+        remote,
+        !preferred_initiator,
+        &peer,
+        Hello::new(&peer, "Quest test", "headset-test", 32009),
+    )
+    .await
+    .unwrap();
+    drop(probe);
+    tokio::time::timeout(Duration::from_secs(1), probe_task)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        shared.active.lock().unwrap().as_ref().unwrap().generation,
+        active_generation
+    );
+    assert_eq!(
+        shared.mirror_generation.load(Ordering::Acquire),
+        mirror_generation
+    );
+    assert_eq!(
+        serde_json::to_value(&*shared.state.lock().unwrap()).unwrap(),
+        before_probe
+    );
+    assert!(!old_connection.is_finished());
 
     // Complete the competing preferred connection only after the original
     // connection has real paused work. No capture or OS permissions are used.
