@@ -48,6 +48,8 @@ Windows 11 Pro x64 build 26200 安装版已从 e7141ca 的 CI 完整载荷更新
 
 Quest 3S /Android 14 API34 incremental 4069240020600610 的新目录版由另一会话独占验证；本会话尝试受控安装 workspace1958 时因设备 lease busy 被拒，actions=[]，未抢占 /覆盖。自建1958双 APK、debug /release lint 与 release Kotlin /AndroidTest 编译在 8m22s 内成功。当前实际完整 E2E 使用另一会话同源 68110d1a /1952；待其结束后核对结果，不重复索要用户操作。
 
+后续已完成：另一会话同源68110d1a /private1952真机22/22与180语言pass，原始报告 /日志 /双包前后摘要 /当前指纹与清理经独立核对；E2E-020新增目录名称断言通过。该用例使用固定合成Rust peer和Windows LAN relay，不等同本安装版 /用户5GB媒体播放。机器凭据由原始runner按原字节复制至Quest仓库，SHA `872fc4cae19e88611ee174c87b8990977ec94ce4b92813315819fa977448241b`，未手写或跳过门禁，详见YM-334。确认其他预览已退出后，CLI重新打开已更新安装版，实际主进程 /TCP /UDP监听存活；保持启动，全程未使用Computer Use。
+
 ## Next
 
-两轮 CR、同源 CI、完整安装更新及 startup 已通过；继续核对 YM-334 的当前真机 E2E /目录与实际文件播放边界。保持 verifying；不再请求重复人工复现，也不以同源 API /合成自动用例代替用户媒体解码验收。
+两轮 CR、同源 CI、完整安装更新 /startup与当前Quest22E2E /180语言已通过；保留用户媒体实际解码待验边界，保持 verifying，不再请求重复人工复现。
