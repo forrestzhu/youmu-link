@@ -44,7 +44,9 @@ internal static class TemplateBindingTests
         XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
         var markup = new XElement(wpf + "ResourceDictionary", ReadXaml("App.xaml").Root!.Element(wpf + "Application.Resources")!.Elements());
         markup.SetAttributeValue(XNamespace.Xmlns + "x", x.NamespaceName);
+        // A real App queues its startup even without Run; keep its backend/tray out of this fixture.
         var app = new Application { Resources = (ResourceDictionary)XamlReader.Parse(markup.ToString()), ShutdownMode = ShutdownMode.OnExplicitShutdown };
+        app.Resources[SystemParameters.ClientAreaAnimationKey] = true;
         var localizer = new Localizer("en");
         App.SetLanguageResources(localizer);
         var window = new MainWindow(localizer);
@@ -52,8 +54,31 @@ internal static class TemplateBindingTests
         SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(window.Dispatcher));
         try
         {
-            // Never show this window: Loaded starts the real backend.
+            // Show only an inactive off-screen test window, without starting the backend.
+            var startup = typeof(MainWindow).GetMethod("WindowLoaded", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            window.Loaded -= startup.CreateDelegate<RoutedEventHandler>(window);
+            window.WindowStartupLocation = WindowStartupLocation.Manual;
+            window.Left = -20000;
+            window.Top = -20000;
+            window.ShowActivated = false;
+            window.ShowInTaskbar = false;
             PopulatePreview(window, localizer, selectLanguage: false);
+            var peerList = Need<ListBox>(window, "PeerList");
+            var peer = (PeerItem)peerList.Items[0];
+            peerList.IsEnabled = true;
+            peer.Update(peer.Data with { Status = "disconnected", Trusted = true }, localizer);
+            window.Show();
+            FlushLayout(window);
+            VerifyPeerStatus(window, localizer, "compiled", motionEnabled: true);
+            peerList.ItemsSource = Array.Empty<PeerItem>();
+            FlushLayout(window);
+            peerList.ItemsSource = new[] { peer };
+            peerList.IsEnabled = true;
+            peer.Update(peer.Data with { Status = "disconnected", Trusted = true }, localizer);
+            FlushLayout(window);
+            VerifyPeerStatus(window, localizer, "compiled-recreated", motionEnabled: true);
+            Require(!PrivateField<bool>(window, "loaded"), "Compiled template tests must not start the backend.");
+            Require(app.Windows.Count == 1 && ReferenceEquals(app.Windows[0], window), "Compiled template tests must not create another application window.");
             foreach (var name in new[] { "PeerList", "ShareList", "TransferList" })
             {
                 var list = Need<ItemsControl>(window, name);
@@ -287,8 +312,9 @@ internal static class TemplateBindingTests
         }
     }
 
-    private static void VerifyPeerStatus(Window window, Localizer localizer, string prefix)
+    private static void VerifyPeerStatus(Window window, Localizer localizer, string prefix, bool? motionEnabled = null)
     {
+        var animate = motionEnabled ?? SystemParameters.ClientAreaAnimation;
         var list = Need<ListBox>(window, "PeerList");
         var row = (PeerItem)list.Items[0];
         var original = row.Data;
@@ -320,7 +346,8 @@ internal static class TemplateBindingTests
             var pairedStatus = key == "status_paired";
             Require(indicator is not null && indicator.IsVisible == pairedStatus, "The green dot must only accompany the paired status.");
             Require(ripple is not null, "The paired state needs its ripple indicator.");
-            RequireRipple(ripple!, pairedStatus && SystemParameters.ClientAreaAnimation);
+            Require(ripple!.IsEnabled == animate, "Ripple must honor the effective motion preference.");
+            RequireRipple(ripple, pairedStatus && animate);
             if (pairedStatus)
             {
                 ripple!.IsEnabled = false;
@@ -333,13 +360,13 @@ internal static class TemplateBindingTests
                 RequireRipple(ripple, false);
                 window.Show();
                 FlushLayout(window);
-                RequireRipple(ripple, SystemParameters.ClientAreaAnimation);
+                RequireRipple(ripple, animate);
                 window.WindowState = WindowState.Minimized;
                 FlushLayout(window);
                 RequireRipple(ripple, false);
                 window.WindowState = WindowState.Normal;
                 FlushLayout(window);
-                RequireRipple(ripple, SystemParameters.ClientAreaAnimation);
+                RequireRipple(ripple, animate);
             }
             Require(Find<Button>(list)?.Content?.ToString() == localizer[action], "A paired idle device must retain Connect while an active device retains Disconnect.");
             if (status == "disconnected" && trusted) SavePreview(window, prefix + "-paired");
@@ -359,7 +386,7 @@ internal static class TemplateBindingTests
         timer.Start();
         try { Dispatcher.PushFrame(frame); }
         finally { timer.Stop(); }
-        Require(Matches(), $"Ripple animation clocks must be {(animated ? "active" : "removed")} for the current visibility and motion preference.");
+        Require(Matches(), $"Ripple animation clocks must be {(animated ? "active" : "removed")}: visible={ripple.IsVisible}, enabled={ripple.IsEnabled}, opacityClock={ripple.HasAnimatedProperties}, transformClock={((ScaleTransform)ripple.RenderTransform).HasAnimatedProperties}, frozen={ripple.RenderTransform.IsFrozen}.");
     }
 
     private static Window LoadPreview(Localizer localizer, Size size)

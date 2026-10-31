@@ -10,6 +10,7 @@
 
 | 项目 | 最近实际记录及边界 |
 | --- | --- |
+| [YML-032 任务栏右键时闪退](tasks/YML-032-taskbar-context-crash.md) | verifying：系统1026与生产BAML已复现已配对波纹动画的冻结对象异常；将Transform初始化纳入同Style Setter，界面与动画效果保持。R1两项测试隔离 /假绿问题已修复复审；隔离后RED→GREEN、Windows发布 /ABI /startup及完整Python47 /Rust120通过。先推R1修复，再继续R2 /同源8.0.32包；不使用Computer Use、不再索要重复人工复现。 |
 | 仓库 | GitHub public `forrestzhu/youmu-link`，2026-10-27 用户明确授权 Apache-2.0 开发预览；匿名 API / LICENSE 200、私下漏洞报告 enabled=true。历史邮箱已统一，未追加历史正文 / 旧运行记录清理，不自动发布正式 Release。 |
 | 设计与实现基线 | 用户授权基于现有 demo 实现，M1 通过；[YML-001](tasks/archive/YML-001-bootstrap.md) 归档。按 [ADR-0002](engineering/decisions/0002-native-desktop.md) 改为 macOS SwiftUI / AppKit 原生界面 + Rust 后端，取代桌面 Tauri 方案。 |
 | Rust 核心 | UDP 发现 / 三端口回退、Noise XX、SPAKE2、系统身份与信任、capability 授权文件服务。rescan 单路由失败不阻断其余探测，新增 2 项真实 UDP 回归；核心 Windows 46 / Mac 41 项通过。当前应用协议v4 /四位配对，发现v1与transport-v2保持；1147 Quest真实LAN core链已通过，原生Mac当前补正常断开反馈回归。 |

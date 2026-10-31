@@ -30,9 +30,9 @@
                       <Grid x:Name="PairedIndicator" Width="16" Height="16" Margin="0,0,5,0" IsHitTestVisible="False">
                         <Grid.Style><Style TargetType="Grid"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding ShowsPairedStatus}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></Grid.Style>
                         <Ellipse x:Name="PairedRipple" Width="8" Height="8" Stroke="{DynamicResource SuccessInk}" StrokeThickness="1" Opacity="0" RenderTransformOrigin="0.5,0.5" IsEnabled="{DynamicResource {x:Static SystemParameters.ClientAreaAnimationKey}}">
-                          <Ellipse.RenderTransform><ScaleTransform/></Ellipse.RenderTransform>
                           <Ellipse.Style>
                             <Style TargetType="Ellipse">
+                              <Setter Property="RenderTransform"><Setter.Value><ScaleTransform/></Setter.Value></Setter>
                               <Style.Triggers>
                                 <DataTrigger Binding="{Binding WindowState, RelativeSource={RelativeSource AncestorType=Window}}" Value="Minimized"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger>
                                 <MultiTrigger>
