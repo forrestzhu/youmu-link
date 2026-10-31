@@ -1,6 +1,6 @@
 # YML-020：Windows 显示器型号名称识别
 
-Status: verifying
+Status: done
 Workflow: behavior
 Requires-Device: no
 Tests: ymlink-desktop::capture::windows::tests (显示器型号解析 / 活动状态 / 隐私边界)；windows/Tests (双语名称 / 编号回退)
@@ -20,7 +20,7 @@ Tests: ymlink-desktop::capture::windows::tests (显示器型号解析 / 活动�
 - [x] Rust 枚举返回活动屏幕型号，错误 / 无型号回退编号，ID / 尺寸 / 捕获句柄对应不变。
 - [x] 先以失败测试固定型号解析及隐私边界，再通过 Rust / WPF 回归和完整 harness verify。
 - [x] Release 构建 / 实际窗口启动验证本机两型号及分辨率；不启动镜像 / 音频采集、不改变已有安装。
-- [ ] 含修复的安装包与 SHA-256 就绪，文档 / 独立审查 / main 推送门禁闭环。
+- [x] 含修复的安装包与 SHA-256 就绪，文档 / 独立审查通过；提交 / 推送及严格门禁按仓库交付流程执行。
 
 ## Verification
 
@@ -39,7 +39,8 @@ Tests: ymlink-desktop::capture::windows::tests (显示器型号解析 / 活动�
 - 启动本轮 `dist/YM_Link/YM_Link.exe` 并用 computer-use 前台核对真实窗口：两个型号及上述分辨率均实际显示，首屏已选项正常；未开始镜像或音频采集。开发目录与当前用户安装分离，不覆盖安装。
 - 独立代理逐行审查实现与 WPF 测试，未发现需修复的确定性问题：GDI 源匹配不依赖全局顺序、活动过滤、失败回退、UTF-16 / 隐私边界及指针生命周期均成立，原有捕获 ID / HMONITOR 映射不变。克隆屏采用同一 GDI 源的首个有效活动型号；克隆 / 热插拔 / 同型号多屏实际验收 not-run，不把这两屏扩展模式代签所有显示拓扑。
 - 源码 `ffe9ce56ec543f7bf738a404d215926a876f3b42` 的[三平台 CI run 41152416780](https://github.com/forrestzhu/youmu-link/actions/runs/41152416780) 全部 success。独立代理回读 Windows job 124391944493 实际日志，107 passed /2 ignored、四项新型号测试、WPF / ABI / Release / smoke及安装 / 完整载荷 / 卸载均通过。Windows artifact 13023797586（124,197,265 bytes），digest `917fe7114a978869f63ec12a36360efb6247cc4ad0df958386604bbcc6a23b3d`，未下载此中间包；用户追加安装完成启动 / 桌面快捷方式后，最终包合并 [YML-021](YML-021-installer-launch-shortcut.md) 交付。
+- 最终交付源码 `57a9e0d206634982b51f3a92c4fed0d357a65c85`，保留相同 Rust / WPF 产品源码并加入 YML-021 安装选项；三平台 [run 41153337802](https://github.com/forrestzhu/youmu-link/actions/runs/41153337802) 全 success，Windows 107 passed /2 ignored 与增强的两轮安装验收通过。安装器已实际下载到 `dist/packages/ci-57a9e0d/`，52,083,482 bytes，SHA-256 `b0482b4515d6fe2cca9430c52a71091c6caf5b51efb9ef8f4ceee4207f2912fe` 与 sidecar 一致；完整载荷 / 许可 / 元数据和未签名边界见 YML-021。
 
 ## Next
 
-显示器修复及本机 / CI 验证完成，最终安装包合并 YML-021 后继配置，下载 / 校验后归档交付。YML-017 性能任务保持暂停。
+显示器名称修复和含安装选项的最终包已就绪，由用户自行安装；真实镜像 / 采集沿用 YML-003，YML-017 性能任务保持暂停。

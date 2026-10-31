@@ -1,6 +1,6 @@
 # YML-021：安装完成启动与桌面快捷方式
 
-Status: verifying
+Status: done
 Workflow: behavior
 Requires-Device: no
 Tests: not-applicable (不改 Rust 或协议；原生 Inno 配置由 CI 编译及实际安装验证，扩展现有 Windows smoke 检查快捷方式 / 静默不启动 / 卸载清理，运行 Python 回归与仓库检查)
@@ -18,9 +18,9 @@ Tests: not-applicable (不改 Rust 或协议；原生 Inno 配置由 CI 编译�
 ## Acceptance
 
 - [x] 原生安装任务 / 完成页启动选项就位，均可取消且静默不自启。
-- [ ] CI 实际安装默认创建桌面 / 开始菜单快捷方式，目标正确；取消桌面任务时无桌面快捷方式。
-- [ ] 两种安装均完整载荷 / 原生启动 / 卸载通过，快捷方式及卸载记录清理通过。
-- [ ] 独立审查 / 文档检查及最终安装包 SHA-256 / main 交付门禁闭环，YML-020 修复一并保留。
+- [x] CI 实际安装默认创建桌面 / 开始菜单快捷方式，目标正确；取消桌面任务时无桌面快捷方式。
+- [x] 两种安装均完整载荷 / 原生启动 / 卸载通过，快捷方式及卸载记录清理通过。
+- [x] 独立审查 / 文档检查与最终安装包 SHA-256 通过，YML-020 修复一并保留；提交 / 推送及严格门禁按仓库交付流程执行。
 
 ## Verification
 
@@ -36,6 +36,19 @@ Tests: not-applicable (不改 Rust 或协议；原生 Inno 配置由 CI 编译�
 
 独立审查未发现确定性阻断：Tasks绑定、postinstall默认勾选、skipifsilent、TASKS空及失败时 finally 卸载均符合预期。验收边界：进程检查为存活快照，非进程启动历史追踪；失败会尝试卸载但不主动结束应用，异常传播后不声称清理断言通过。交互完成页、升级任务选择记忆的实际操作 not-run，依据 Inno 原生语义，不以静默测试代签。
 
+最终源码 `57a9e0d206634982b51f3a92c4fed0d357a65c85` 的[CI run 41153337802](https://github.com/forrestzhu/youmu-link/actions/runs/41153337802) 三平台全 success。独立代理回读 Windows job 124394765058：Rust107 passed /2 ignored、四项型号回归、WPF / 双语 / ABI / Release及后端 smoke 均通过；增强安装脚本的完成消息只在默认 / TASKS空两轮的载荷、真实 .lnk 目标、注册项、无存活应用、显式启动 / 退出及卸载清理全部通过后打印，实际日志已确认该消息。交互式 Finish 人工点击仍未覆盖。
+
+GitHub connector 取回 artifact 13023824493，外层 124,168,206 bytes；实际 SHA-256 与服务端 digest 一致：`ae46605bfa998d850183098ec8e9a8ff1f1069a36ed6851ed0a91fe3ad3c8ae8`。安全提取恰好四个预期文件到忽略入库的 `dist/packages/ci-57a9e0d/`，外层 / 内层 CRC 均通过：
+
+| 文件 | 大小（bytes） | SHA-256（与 sidecar 一致） |
+| --- | --- | --- |
+| `YM_Link-0.1.0-windows-x64-57a9e0d20663-setup.exe` | 52,083,482 | `b0482b4515d6fe2cca9430c52a71091c6caf5b51efb9ef8f4ceee4207f2912fe` |
+| `YM_Link-0.1.0-windows-x64-57a9e0d20663.zip` | 72,083,722 | `191359ece8067199bab5dde89054696957493e94d483c6ddfe701b5701e89336` |
+
+ZIP 747 个成员 /279 个依赖许可文件，BUILD-INFO 完整源码 SHA、windows-x64、0.1.0 与预期一致；应用、自包含运行库及根许可齐全，LICENSE / NOTICE 与仓库逐字节一致。安装器 PE 图标与正式 ICO 一致，Authenticode 回读 NotSigned。未覆盖当前用户安装或发布 GitHub Release；本机已有安装，安装选项实际交互留待用户自行安装，不把 CI 静默验收称为人工交互通过。
+
+独立代理再次回读下载后的实际文件，外层 / 内层 hash、sidecar、CRC与逐字节成员比对全部通过；无重复或越界 ZIP 成员。根三份许可与提交一致，inventory 的278份文本完整非空，128个Rust依赖名称 /版本与Cargo.lock精确对应，Rust运行时1.85.0；两个.NET运行时包均8.0.33，与包内deps精确对应。独立解析安装器和产品EXE的7帧图标均与正式ICO一致；精确git diff确认ffe9ce5至57a9e0d仅安装脚本与文档变化，Rust /WPF产品源码不变。最终归档后的 `harness check`（91个文本文件）与diff检查通过；提交 /推送后以 `harness check --require-pushed` 执行严格交付门禁。
+
 ## Next
 
-独立审查 / Python 回归通过后推送并验证后继 CI；取回含 YML-020 + 本任务的新安装包并核验交付。
+含 YML-020 型号修复和本任务安装选项的新 setup.exe 已就绪，向用户交付本机路径。保留未签名开发包边界与未执行的完成页 / 升级交互验收；YML-017 性能任务保持暂停。
