@@ -105,10 +105,17 @@
                 <DockPanel Margin="0,0,0,18"><Button x:Name="RefreshButton" DockPanel.Dock="Right" Content="{DynamicResource refresh}" Style="{StaticResource QuietButton}" Click="RefreshDisplays" Margin="12,0,0,0" /><TextBlock Text="{DynamicResource choose_display}" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" /></DockPanel>
                 <ListBox x:Name="DisplayChoice" SelectionChanged="DisplaySelectionChanged" SizeChanged="DisplayAreaSizeChanged" Background="Transparent" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled" AutomationProperties.Name="{DynamicResource choose_display}">
                   <ListBox.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="2"/></ItemsPanelTemplate></ListBox.ItemsPanel>
-                  <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}"><Setter Property="Padding" Value="12"/><Setter Property="Margin" Value="0,0,16,16"/><Setter Property="AutomationProperties.Name" Value="{Binding Label}"/><Style.Triggers><Trigger Property="IsSelected" Value="True"><Setter Property="BorderBrush" Value="{DynamicResource Accent}"/><Setter Property="BorderThickness" Value="2"/><Setter Property="Padding" Value="11"/></Trigger></Style.Triggers></Style></ListBox.ItemContainerStyle>
+                  <ListBox.Resources>
+                    <!-- Native focus visuals appear for keyboard navigation; keep the cue inside the card. -->
+                    <Style x:Key="DisplayCardFocus" TargetType="Control">
+                      <Setter Property="Template">
+                        <Setter.Value><ControlTemplate><Border Background="{DynamicResource Accent}" Width="32" Height="2" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="13,0,0,7" /></ControlTemplate></Setter.Value>
+                      </Setter>
+                    </Style>
+                  </ListBox.Resources>
+                  <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}"><Setter Property="Padding" Value="11"/><Setter Property="BorderThickness" Value="2"/><Setter Property="Margin" Value="0,0,16,16"/><Setter Property="FocusVisualStyle" Value="{StaticResource DisplayCardFocus}"/><Setter Property="AutomationProperties.Name" Value="{Binding Label}"/></Style></ListBox.ItemContainerStyle>
                   <ListBox.ItemTemplate><DataTemplate><StackPanel>
-                    <Border Height="106" Background="{DynamicResource AccentSoft}" CornerRadius="6">
-                      <Grid>
+                      <Grid Height="106">
                         <Path Width="58" Height="46" Stretch="Uniform" Data="M 3,3 L 69,3 L 69,45 L 3,45 Z M 36,45 L 36,57 M 23,57 L 49,57" StrokeThickness="1.5" StrokeLineJoin="Round">
                           <Path.Style><Style TargetType="Path"><Setter Property="Stroke" Value="{DynamicResource SecondaryInk}"/><Style.Triggers><DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True"><Setter Property="Stroke" Value="{DynamicResource Accent}"/></DataTrigger></Style.Triggers></Style></Path.Style>
                         </Path>
@@ -116,7 +123,6 @@
                           <Path.Style><Style TargetType="Path"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></Path.Style>
                         </Path>
                       </Grid>
-                    </Border>
                     <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="13" Margin="0,12,0,3"/>
                     <TextBlock Text="{Binding Resolution}" Style="{StaticResource Secondary}"/>
                   </StackPanel></DataTemplate></ListBox.ItemTemplate>
