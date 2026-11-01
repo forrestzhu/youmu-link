@@ -7,7 +7,7 @@ use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use tokio::net::{TcpListener, TcpStream};
-use ymlink_core::files::{FileEntry, FileRequest, FileResponse, MAX_READ_BYTES};
+use ymlink_core::files::{FileEntry, FileRequest, FileResponse, TRANSFER_CHUNK_BYTES};
 use ymlink_core::identity::{Identity, TrustStore};
 use ymlink_core::session::{Hello, Pairing, SecureReader, SecureSession, SecureWriter};
 use ymlink_desktop::wire::{Message, MirrorAction, VERSION};
@@ -464,7 +464,7 @@ impl Download {
         if offset != self.state.offset
             || total != self.state.total
             || version != self.state.version
-            || data.len() > MAX_READ_BYTES as usize
+            || data.len() > TRANSFER_CHUNK_BYTES as usize
             || end > total
             || eof != (end == total)
             || (data.is_empty() && !eof)

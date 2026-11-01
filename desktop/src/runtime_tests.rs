@@ -1517,17 +1517,50 @@ async fn isolated_file_server() -> (
     tokio::task::JoinHandle<session::Result<()>>,
     AbortTask,
 ) {
+    isolated_file_server_with(Some(4096)).await
+}
+
+/// `socket_buffer` of `Some(4096)` recreates a stalled TCP writer quickly;
+/// `None` keeps OS defaults for throughput-oriented tests.
+async fn isolated_file_server_with(
+    socket_buffer: Option<u32>,
+) -> (
+    Arc<Shared>,
+    session::SecureWriter,
+    mpsc::Receiver<Message>,
+    AbortTask,
+    tokio::task::JoinHandle<session::Result<()>>,
+    AbortTask,
+) {
+    let (shared, writer, reader, server, responder) = isolated_file_server_raw(socket_buffer).await;
+    let (incoming, read_task) = receiver(reader);
+    (shared, writer, incoming, read_task, server, responder)
+}
+
+async fn isolated_file_server_raw(
+    socket_buffer: Option<u32>,
+) -> (
+    Arc<Shared>,
+    session::SecureWriter,
+    session::SecureReader,
+    tokio::task::JoinHandle<session::Result<()>>,
+    AbortTask,
+) {
     let identity = Identity::generate().unwrap();
     let client_identity = Identity::generate().unwrap();
     let socket = tokio::net::TcpSocket::new_v4().unwrap();
-    socket.set_send_buffer_size(4096).unwrap();
+    if let Some(size) = socket_buffer {
+        socket.set_send_buffer_size(size).unwrap();
+    }
     socket.bind("127.0.0.1:0".parse().unwrap()).unwrap();
     let listener = socket.listen(8).unwrap();
     let port = listener.local_addr().unwrap().port();
     let (client, server) = tokio::join!(
         async {
             let socket = tokio::net::TcpSocket::new_v4().unwrap();
-            socket.set_recv_buffer_size(4096).unwrap();
+            if let Some(size) = socket_buffer {
+                socket.set_recv_buffer_size(size).unwrap();
+            }
             let stream = socket
                 .connect(format!("127.0.0.1:{port}").parse().unwrap())
                 .await
@@ -1621,8 +1654,7 @@ async fn isolated_file_server() -> (
     });
     let server = tokio::spawn(serve(shared.clone(), server, outgoing, media, 1));
     let (reader, writer) = client.into_split().unwrap();
-    let (incoming, read_task) = receiver(reader);
-    (shared, writer, incoming, read_task, server, responder)
+    (shared, writer, reader, server, responder)
 }
 
 struct HeldCatalog {
@@ -1704,7 +1736,7 @@ async fn slow_file_work_keeps_remote_mirror_controls_responsive() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn file_work_is_bounded_and_cancelled_requests_do_not_emit_chunks() {
+async fn file_work_queues_beyond_four_slots_and_cancelled_requests_do_not_emit_chunks() {
     let (shared, mut writer, mut incoming, _read, server, _commands) = isolated_file_server().await;
     let directory =
         std::env::temp_dir().join(format!("ymlink-serve-files-{:016x}", rand::random::<u64>()));
@@ -1767,19 +1799,14 @@ async fn file_work_is_bounded_and_cancelled_requests_do_not_emit_chunks() {
             .await
             .unwrap();
     }
-    let busy = tokio::time::timeout(Duration::from_millis(750), next(&mut incoming, &mut writer))
-        .await
-        .expect("full file work must be rejected without waiting for disk");
-    assert!(matches!(
-        busy,
-        Message::FileResponse {
-            id: 12,
-            response: FileResponse::Error {
-                code: ymlink_core::files::FileError::Unavailable
-            },
-            ..
-        }
-    ));
+    // Four disk slots are busy (one of them for the cancelled job); the fifth
+    // request waits in the queue instead of being rejected.
+    assert!(
+        tokio::time::timeout(Duration::from_millis(750), next(&mut incoming, &mut writer))
+            .await
+            .is_err(),
+        "queued file work must wait for a disk slot, not answer early"
+    );
     assert_eq!(
         shared
             .state
@@ -1795,10 +1822,10 @@ async fn file_work_is_bounded_and_cancelled_requests_do_not_emit_chunks() {
     drop(held);
     let mut responses = 0;
     let mut chunks = 0;
-    while responses != 2 || chunks != 1 {
+    while responses != 3 || chunks != 1 {
         match next(&mut incoming, &mut writer).await {
             Message::FileResponse {
-                id: 10 | 11,
+                id: 10..=12,
                 response: FileResponse::Shares { .. },
                 ..
             } => responses += 1,
@@ -1840,6 +1867,7 @@ async fn file_work_is_bounded_and_cancelled_requests_do_not_emit_chunks() {
 async fn cancelling_file_waiters_keeps_io_slots_until_disk_work_finishes() {
     let (shared, mut writer, _incoming, _read, server, _commands) = isolated_file_server().await;
     let held = hold_catalog(shared.clone()).await;
+    let (replies, _reply_queue) = mpsc::channel::<Message>(32);
     let mut old = FileWork::new();
     for id in 0..MAX_FILE_WORK {
         file_request(
@@ -1847,6 +1875,7 @@ async fn cancelling_file_waiters_keeps_io_slots_until_disk_work_finishes() {
             &mut old,
             FileTarget::Request(id as u64),
             FileRequest::Shares,
+            replies.clone().try_reserve_owned().unwrap(),
         );
     }
     tokio::time::timeout(Duration::from_secs(1), async {
@@ -1869,6 +1898,7 @@ async fn cancelling_file_waiters_keeps_io_slots_until_disk_work_finishes() {
         &mut new,
         FileTarget::Request(9),
         FileRequest::Shares,
+        replies.clone().try_reserve_owned().unwrap(),
     );
     assert!(
         tokio::time::timeout(Duration::from_millis(30), new.join_next())
@@ -1883,7 +1913,7 @@ async fn cancelling_file_waiters_keeps_io_slots_until_disk_work_finishes() {
             .unwrap()
             .unwrap()
             .unwrap(),
-        (FileTarget::Request(9), FileResponse::Shares { .. })
+        (FileTarget::Request(9), FileResponse::Shares { .. }, _)
     ));
     writer.send(&Message::Bye { v: VERSION }).await.unwrap();
     tokio::time::timeout(Duration::from_secs(2), server)
@@ -1891,6 +1921,242 @@ async fn cancelling_file_waiters_keeps_io_slots_until_disk_work_finishes() {
         .unwrap()
         .unwrap()
         .unwrap();
+}
+
+fn sample_directory(name: &str, size: usize) -> (PathBuf, Vec<u8>) {
+    let directory =
+        std::env::temp_dir().join(format!("ymlink-{name}-{:016x}", rand::random::<u64>()));
+    std::fs::create_dir(&directory).unwrap();
+    let data: Vec<u8> = (0..size)
+        .map(|i| (i as u32).wrapping_mul(2_654_435_761).to_le_bytes()[1])
+        .collect();
+    std::fs::write(directory.join("film.bin"), &data).unwrap();
+    (directory, data)
+}
+
+fn share_sample(shared: &Shared, directory: &Path) -> String {
+    let mut catalog = shared.catalog.lock().unwrap();
+    catalog
+        .add("share".into(), "test".into(), directory)
+        .unwrap();
+    match catalog.handle(FileRequest::Stat {
+        share_id: "share".into(),
+        path: "film.bin".into(),
+    }) {
+        FileResponse::Stat { entry } => entry.version.unwrap(),
+        _ => panic!("expected version"),
+    }
+}
+
+fn range_read(id: u64, version: &str, offset: u64, length: u32) -> Message {
+    Message::FileRequest {
+        v: VERSION,
+        id,
+        request: FileRequest::Read {
+            share_id: "share".into(),
+            path: "film.bin".into(),
+            version: version.into(),
+            offset,
+            length,
+        },
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn pipelined_range_reads_are_all_served_and_reuse_one_open_handle() {
+    use ymlink_core::files::{FileError, MAX_READ_BYTES};
+    let (shared, mut writer, mut incoming, _read, server, _commands) =
+        isolated_file_server_with(None).await;
+    let depth = 16u64;
+    let (directory, data) =
+        sample_directory("pipeline", depth as usize * MAX_READ_BYTES as usize + 1000);
+    let version = share_sample(&shared, &directory);
+    for index in 0..depth {
+        writer
+            .send(&range_read(
+                index,
+                &version,
+                index * u64::from(MAX_READ_BYTES),
+                MAX_READ_BYTES,
+            ))
+            .await
+            .unwrap();
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    while seen.len() != depth as usize {
+        match next(&mut incoming, &mut writer).await {
+            Message::FileResponse {
+                id,
+                response:
+                    FileResponse::Read {
+                        offset,
+                        total,
+                        data: block,
+                        eof,
+                        ..
+                    },
+                ..
+            } => {
+                assert_eq!(offset, id * u64::from(MAX_READ_BYTES));
+                assert_eq!(total, data.len() as u64);
+                assert_eq!(block.len(), MAX_READ_BYTES as usize);
+                assert_eq!(
+                    &data[offset as usize..offset as usize + block.len()],
+                    &block[..]
+                );
+                assert!(!eof);
+                assert!(seen.insert(id), "duplicate reply for {id}");
+            }
+            other => panic!("unexpected reply to a pipelined read: {other:?}"),
+        }
+    }
+    assert_eq!(
+        shared.catalog.lock().unwrap().open_file_count(),
+        1,
+        "consecutive reads of one version reuse a single validated handle"
+    );
+    // Modifying the file behind the cached handle must surface as `changed`
+    // and drop the handle, exactly like a fresh open would.
+    {
+        use std::io::Write;
+        let mut file = std::fs::OpenOptions::new()
+            .append(true)
+            .open(directory.join("film.bin"))
+            .unwrap();
+        file.write_all(b"tail").unwrap();
+    }
+    writer
+        .send(&range_read(99, &version, 0, MAX_READ_BYTES))
+        .await
+        .unwrap();
+    assert!(matches!(
+        next(&mut incoming, &mut writer).await,
+        Message::FileResponse {
+            id: 99,
+            response: FileResponse::Error {
+                code: FileError::Changed
+            },
+            ..
+        }
+    ));
+    assert_eq!(shared.catalog.lock().unwrap().open_file_count(), 0);
+    writer.send(&Message::Bye { v: VERSION }).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(2), server)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    shared.catalog.lock().unwrap().remove("share");
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn file_queue_overflow_rejects_only_the_excess_request() {
+    let (shared, mut writer, mut incoming, _read, server, _commands) = isolated_file_server().await;
+    let held = hold_catalog(shared.clone()).await;
+    let total = (MAX_FILE_WORK + MAX_FILE_QUEUE + 1) as u64;
+    for id in 0..total {
+        writer
+            .send(&Message::FileRequest {
+                v: VERSION,
+                id,
+                request: FileRequest::Shares,
+            })
+            .await
+            .unwrap();
+    }
+    let first = next(&mut incoming, &mut writer).await;
+    assert!(
+        matches!(
+            first,
+            Message::FileResponse {
+                id,
+                response: FileResponse::Error {
+                    code: ymlink_core::files::FileError::Unavailable
+                },
+                ..
+            } if id == total - 1
+        ),
+        "only the request beyond the queue is rejected: {first:?}"
+    );
+    drop(held);
+    let mut served = std::collections::BTreeSet::new();
+    while served.len() != (total - 1) as usize {
+        match next(&mut incoming, &mut writer).await {
+            Message::FileResponse {
+                id,
+                response: FileResponse::Shares { .. },
+                ..
+            } => {
+                assert!(served.insert(id));
+            }
+            other => panic!("queued request answered incorrectly: {other:?}"),
+        }
+    }
+    writer.send(&Message::Bye { v: VERSION }).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(2), server)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+}
+
+/// Throughput report for the encrypted range-read path over loopback. The
+/// client only decrypts (`recv_raw`) so the number reflects the desktop's
+/// read → encode → encrypt → send pipeline, not the generic Rust CBOR decoder.
+/// It is a benchmark, not a gate: run with `cargo test --release -p
+/// ymlink-desktop pipelined_loopback_throughput_report -- --ignored --nocapture`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "throughput benchmark; run manually with --ignored --nocapture"]
+async fn pipelined_loopback_throughput_report() {
+    use ymlink_core::files::MAX_READ_BYTES;
+    let (shared, mut writer, mut reader, server, _commands) = isolated_file_server_raw(None).await;
+    let size = 64usize * 1024 * 1024;
+    let (directory, _) = sample_directory("throughput", size);
+    let version = share_sample(&shared, &directory);
+    let chunks = (size as u64).div_ceil(u64::from(MAX_READ_BYTES));
+    for depth in [1u64, 4, 16] {
+        let start = Instant::now();
+        let (mut next_id, mut done, mut in_flight) = (0u64, 0u64, 0u64);
+        while done < chunks {
+            while in_flight < depth && next_id < chunks {
+                writer
+                    .send(&range_read(
+                        next_id,
+                        &version,
+                        next_id * u64::from(MAX_READ_BYTES),
+                        MAX_READ_BYTES,
+                    ))
+                    .await
+                    .unwrap();
+                next_id += 1;
+                in_flight += 1;
+            }
+            let frame = tokio::time::timeout(Duration::from_secs(3), reader.recv_raw())
+                .await
+                .expect("response deadline")
+                .expect("connection open");
+            // Pings are a few bytes; every read reply carries a 32 KiB block.
+            if frame.len() > 1024 {
+                done += 1;
+                in_flight -= 1;
+            }
+        }
+        let seconds = start.elapsed().as_secs_f64();
+        println!(
+            "loopback depth {depth}: {:.1} MB/s ({:.0} chunks/s)",
+            size as f64 / seconds / 1e6,
+            chunks as f64 / seconds
+        );
+    }
+    writer.send(&Message::Bye { v: VERSION }).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(2), server)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    shared.catalog.lock().unwrap().remove("share");
+    std::fs::remove_dir_all(directory).unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

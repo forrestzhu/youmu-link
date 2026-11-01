@@ -2,7 +2,7 @@ use crate::model::{Command, PairingView, Peer, Share, Snapshot, Transfer};
 use crate::pairing::{Budget, EnterTarget, EnterWindow, Windows};
 use crate::wire::{Message, MirrorAction, MirrorInfo, VERSION};
 use serde_json::json;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::net::{IpAddr, SocketAddr};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{mpsc, oneshot, watch, Mutex as AsyncMutex, Semaphore};
 use ymlink_core::discovery::{self, Discovery};
-use ymlink_core::files::{FileCatalog, FileRequest, FileResponse, MAX_READ_BYTES};
+use ymlink_core::files::{FileCatalog, FileRequest, FileResponse, TRANSFER_CHUNK_BYTES};
 use ymlink_core::identity::{Identity, TrustStore};
 use ymlink_core::session::{self, AuthErrorCode, Hello, Pairing, SecureSession};
 
@@ -1246,6 +1246,12 @@ impl Drop for AbortTask {
 }
 
 const MAX_FILE_WORK: usize = 4;
+/// Pipelined range reads wait here for a disk slot and a control-queue permit
+/// instead of being rejected; a headset streams with up to 16 reads in flight.
+const MAX_FILE_QUEUE: usize = 32;
+/// Hard bound on queued file work (requests plus transfer reads) while the
+/// writer is backpressured; beyond it the peer is flooding and is closed.
+const MAX_FILE_BACKLOG: usize = MAX_FILE_QUEUE + MAX_FILE_WORK + 4;
 const MAX_TRANSFER_IDS: usize = 1024;
 
 enum WriterEvent {
@@ -1262,7 +1268,10 @@ enum FileTarget {
     Transfer(String),
 }
 
-type FileWork = tokio::task::JoinSet<session::Result<(FileTarget, FileResponse)>>;
+/// Each job owns the control-queue slot its reply will take, so a completed
+/// read can never be dropped by a full queue.
+type FileWork =
+    tokio::task::JoinSet<session::Result<(FileTarget, FileResponse, mpsc::OwnedPermit<Message>)>>;
 
 async fn serve(
     shared: Arc<Shared>,
@@ -1321,10 +1330,19 @@ async fn serve(
     let mut transfers: HashMap<String, TransferJob> = HashMap::new();
     let mut transfer_ids = HashSet::new();
     let mut files = FileWork::new();
+    let mut waiting: VecDeque<(FileTarget, FileRequest)> = VecDeque::new();
+    let mut waiting_requests = 0usize;
     loop {
         for (id, job) in &mut transfers {
-            send_transfer_chunk(&shared, &mut files, id, job);
+            queue_transfer_chunk(&shared, &mut waiting, id, job);
         }
+        dispatch_file_work(
+            &shared,
+            &control,
+            &mut waiting,
+            &mut waiting_requests,
+            &mut files,
+        )?;
         tokio::select! {
             biased;
             event = events.recv() => {
@@ -1364,9 +1382,17 @@ async fn serve(
                         enqueue(&control,mirror_reply(&shared,id,result))?;
                     }
                     Message::FileRequest{v:VERSION,id,request} => {
-                        if files.len() >= MAX_FILE_WORK {
-                            enqueue(&control,Message::FileResponse{v:VERSION,id,response:FileResponse::Error{code:ymlink_core::files::FileError::Unavailable}})?;
-                        } else { file_request(&shared,&mut files,FileTarget::Request(id),request); }
+                        if waiting_requests >= MAX_FILE_QUEUE {
+                            // Reject only the excess request. If even the rejection
+                            // cannot reserve a queue slot the writer is backpressured;
+                            // queue the request rather than tear down the session, but
+                            // a peer that floods requests while not reading is closed.
+                            match control.clone().try_reserve_owned() {
+                                Ok(permit) => { permit.send(Message::FileResponse{v:VERSION,id,response:FileResponse::Error{code:ymlink_core::files::FileError::Unavailable}}); }
+                                Err(_) if waiting.len() >= MAX_FILE_BACKLOG => return Err(session::Error::Protocol("file request backlog exceeded")),
+                                Err(_) => { waiting_requests += 1; waiting.push_back((FileTarget::Request(id),request)); }
+                            }
+                        } else { waiting_requests += 1; waiting.push_back((FileTarget::Request(id),request)); }
                     }
                     Message::TransferOpen{v:VERSION,id,share_id,path,version,offset} => {
                         remember_transfer_id(&mut transfer_ids,&id)?;
@@ -1412,9 +1438,9 @@ async fn serve(
                 }
             }
             result = files.join_next(), if !files.is_empty() => {
-                let (target,response)=result.expect("join_next only fires while the JoinSet is non-empty").map_err(|_|session::Error::Protocol("file service failed"))??;
+                let (target,response,permit)=result.expect("join_next only fires while the JoinSet is non-empty").map_err(|_|session::Error::Protocol("file service failed"))??;
                 match target {
-                    FileTarget::Request(id)=>enqueue(&control,Message::FileResponse{v:VERSION,id,response})?,
+                    FileTarget::Request(id)=>{ permit.send(Message::FileResponse{v:VERSION,id,response}); }
                     FileTarget::Transfer(id)=>{
                         let Some(job)=transfers.get_mut(&id) else {continue;};
                         job.read_pending=false;
@@ -1423,17 +1449,25 @@ async fn serve(
                                 if !shared.publish(generation,false,|s|{if let Some(t)=s.transfers.iter_mut().find(|t|t.id==id){t.total=total;}}) { return Err(session::Error::Protocol("connection no longer active")); }
                                 if transfer_running(&shared,&id) {
                                     job.awaiting=Some(offset+data.len()as u64);
-                                    enqueue(&control,Message::TransferChunk{v:VERSION,id,offset,total,version,data,eof})?;
+                                    permit.send(Message::TransferChunk{v:VERSION,id,offset,total,version,data,eof});
                                 }
                             }
                             response=>{
                                 transfers.remove(&id);
                                 if !shared.publish(generation,false,|s|{if let Some(t)=s.transfers.iter_mut().find(|t|t.id==id){t.status="failed".into();}}) { return Err(session::Error::Protocol("connection no longer active")); }
-                                enqueue(&control,Message::TransferError{v:VERSION,id,code:format_file_error(response)})?;
+                                permit.send(Message::TransferError{v:VERSION,id,code:format_file_error(response)});
                             }
                         }
                     }
                 }
+            }
+            permit = control.clone().reserve_owned(), if !waiting.is_empty() && files.len() < MAX_FILE_WORK => {
+                // Only reached when the control queue was full: a stalled writer
+                // pauses reads instead of killing the connection.
+                let permit = permit.map_err(|_| session::Error::Protocol("connection control queue closed"))?;
+                let (target,request) = waiting.pop_front().expect("guarded by the branch precondition");
+                if matches!(target, FileTarget::Request(_)) { waiting_requests -= 1; }
+                file_request(&shared,&mut files,target,request,permit);
             }
             _ = maintenance.tick() => {
                 let expired:Vec<_>=transfers.iter().filter(|(_,job)|job.last_activity.elapsed()>=Duration::from_secs(300)).map(|(id,_)|id.clone()).collect();
@@ -1490,39 +1524,65 @@ fn transfer_running(shared: &Shared, id: &str) -> bool {
         .any(|t| t.id == id && t.status == "transferring")
 }
 
-fn send_transfer_chunk(
+/// Starts queued file work while both a disk slot and a control-queue slot are
+/// free. Disk work begins only once its reply already owns the queue slot it
+/// will take, so a finished read is never dropped by a full queue.
+fn dispatch_file_work(
     shared: &Arc<Shared>,
+    control: &mpsc::Sender<Message>,
+    waiting: &mut VecDeque<(FileTarget, FileRequest)>,
+    waiting_requests: &mut usize,
     files: &mut FileWork,
+) -> session::Result<()> {
+    while files.len() < MAX_FILE_WORK && !waiting.is_empty() {
+        let permit = match control.clone().try_reserve_owned() {
+            Ok(permit) => permit,
+            Err(mpsc::error::TrySendError::Full(_)) => break,
+            Err(mpsc::error::TrySendError::Closed(_)) => {
+                return Err(session::Error::Protocol("connection control queue closed"))
+            }
+        };
+        let (target, request) = waiting.pop_front().expect("checked non-empty");
+        if matches!(target, FileTarget::Request(_)) {
+            *waiting_requests -= 1;
+        }
+        file_request(shared, files, target, request, permit);
+    }
+    Ok(())
+}
+
+fn queue_transfer_chunk(
+    shared: &Arc<Shared>,
+    waiting: &mut VecDeque<(FileTarget, FileRequest)>,
     id: &str,
     job: &mut TransferJob,
 ) {
-    if files.len() >= MAX_FILE_WORK
-        || job.read_pending
-        || job.awaiting.is_some()
-        || !transfer_running(shared, id)
-    {
+    if job.read_pending || job.awaiting.is_some() || !transfer_running(shared, id) {
         return;
     }
     job.read_pending = true;
-    file_request(
-        shared,
-        files,
+    waiting.push_back((
         FileTarget::Transfer(id.into()),
         FileRequest::Read {
             share_id: job.share_id.clone(),
             path: job.path.clone(),
             version: job.version.clone(),
             offset: job.offset,
-            length: MAX_READ_BYTES,
+            length: TRANSFER_CHUNK_BYTES,
         },
-    );
+    ));
 }
 
+/// Physical IO runs while holding the catalog mutex, so the four disk slots
+/// overlap CPU work (encode, queueing) but serialize the reads themselves; one
+/// sequential stream is the dominant workload and loopback still reaches
+/// ~70 MB/s. Shrink the critical section before raising MAX_FILE_WORK.
 fn file_request(
     shared: &Arc<Shared>,
     files: &mut FileWork,
     target: FileTarget,
     request: FileRequest,
+    reply: mpsc::OwnedPermit<Message>,
 ) {
     let shared = Arc::clone(shared);
     files.spawn(async move {
@@ -1541,6 +1601,7 @@ fn file_request(
                     .lock()
                     .expect("lock poisoned")
                     .handle(request),
+                reply,
             )
         })
         .await

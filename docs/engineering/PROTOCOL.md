@@ -1,6 +1,6 @@
 # YM_Link 互联协议规范
 
-状态：**v0.6 实现规范**（2026-10-29）。发现保持v1；应用Hello /认证 /业务升级v4，transport-v2 /持久身份格式保持。v4实现已确认的四位自动配对与原位重输；规范不代签实现或设备验收，实际结果见YML-008及游目YM-293。
+状态：**v0.7 实现规范**（2026-10-31）。发现保持v1；应用Hello /认证 /业务保持v4，transport-v2 /持久身份格式保持。v0.7 只放宽 §4.2 的 Read 块上限并规定流水线 / 句柄复用语义，报文字段不变，旧桌面以既有 `invalid_request` 拒绝更大块，客户端据此降级。v4实现已确认的四位自动配对与原位重输；规范不代签实现或设备验收，实际结果见YML-008、YML-032及游目YM-293、YM-335。
 
 互联模型参考已验证的局域网设计；本文为 YM_Link 独立规范，报文与常量不复用参考项目取值。
 
@@ -56,7 +56,7 @@ Query  = { v: 1, query: true, tag_hash: octets(16), session_nonce: octets(16) }
 
 ### 3.1 连接与身份
 
-- TCP 控制连接前缀为 `YL-CTRL2\0`（9 字节）；其后每帧为大端 `u32` 长度 + 消息。Noise 握手帧上限 4096B，传输密文上限 65535B（明文最多 65519B）；零长度、超限或截断即关闭连接。完整握手限时 5s。
+- TCP 控制连接前缀为 `YL-CTRL2\0`（9 字节）；其后每帧为大端 `u32` 长度 + 消息。Noise 握手帧上限 4096B，传输密文上限 65535B（明文最多 65519B）；零长度、超限或截断即关闭连接。完整握手限时 5s。实现应把长度前缀与密文放进同一次 socket 写入，避免 TCP_NODELAY 下每帧多发一个 4 字节小包。
 - Noise `Noise_XX_25519_ChaChaPoly_SHA256`，prologue `b"youmu-link-v2"`；每次 TCP 连接完整握手。业务不会复用旧会话 token。双方独立、顺序递增的 Noise nonce 从 0 开始；不发送明文业务内容。
 - 身份仅使用 Noise X25519 静态密钥；`device_id = hex(SHA256(noise_pub)[0..16])`。本阶段不做组内信任事件传播，因此删除未使用的 Ed25519 身份；macOS 私钥保存于 OS Keychain，Windows 保存于 Credential Manager（service `app.youmu.link`，account `device-identity-v2`），系统凭据存储失败不得回退明文文件。信任与目录配置置于当前用户私有目录；Windows 设置仅当前用户与 SYSTEM 可访问的受保护继承 ACL，并拒绝 junction / reparse 根。
 - 首个传输帧为 CBOR Hello：`{v:4,tag_hash,device_id,public_key,name,platform,listen_port}`。`tag_hash` 为 octets(16)、`public_key` 为 octets(32)，device_id 为 32 个小写十六进制字符，名称 1–128 UTF-8 字节、平台 1–32 UTF-8 字节且均无控制字符、端口非零；未知字段拒绝。Hello 内的公钥与 Noise 握手认证的 remote static 必须完全相同，device_id 必须由该公钥派生；tag_hash 必须等于本机组指纹。
@@ -88,7 +88,7 @@ Known双方true直接授权；否则根据既有平台 /TCP方向选显示方与
 
 - 只有通过双向 Known 或 SPAKE2+双向 key confirmation 的连接才允许 `into_split()`。每个方向的 nonce 从握手后的首个加密 Hello 帧起计数，配对认证与应用帧连续递增，拆分或切换消息类型不重置。单方向帧保持顺序，解密 / CBOR 错误、CBOR 后残留字节或未知应用类型立即关闭。
 - 应用消息外层以 `kind` 的 snake_case 文本区分类型并携带 `v:4`；控制、文件、传输及媒体复用同一已授权 TCP。`ping` / `pong` / `bye` 均为 `{kind,v}`；收到 ping 回复 pong，bye 关闭会话。
-- Rust sender 的控制队列 32 项、媒体队列 8 项、接收队列 32 项，采集包队列 2 项，均有界；独立控制 / 媒体队列复用一个顺序 writer，控制和入站处理优先于待发送媒体。已开始写出的单帧仍按顺序完成，不在帧中插入控制数据。慢接收端不应让本地主控制 actor 等待满媒体队列；停止镜像 / 断开可取消媒体生产。
+- Rust sender 的控制队列 32 项、媒体队列 8 项、接收队列 32 项，采集包队列 2 项，均有界；独立控制 / 媒体队列复用一个顺序 writer，控制和入站处理优先于待发送媒体。已开始写出的单帧仍按顺序完成，不在帧中插入控制数据。慢接收端不应让本地主控制 actor 等待满媒体队列；停止镜像 / 断开可取消媒体生产。文件读取只在取得控制队列名额后才开始磁盘工作：writer 被对端读取速度阻塞时，读取排队等待而不是因队列满断开连接。
 - 会话内每 60s 发送 ping；单次完整帧读取 / 写入限时 130s，超时关闭连接。持续文件 / 镜像任务保持连接，显式断开或网络失败关闭并停止采集；不在活跃播放 / 传输中做 1s 空闲断连。
 
 ## 4. 文件服务（M3，应用 v4 已冻结）
@@ -118,8 +118,9 @@ FileResponse = {kind:"shares",shares:[ShareInfo]}
 
 - List 按 UTF-8 文件名的字节序升序，cursor 为上一页最后一个已返回文件名（exclusive），limit 必须为 1–256。单页另设保守 48KiB 内容预算，防止长路径列表超出 Noise 明文上限；`next_cursor=null` 表示本次枚举已结束。并发目录增删采用尽力而为分页，需要一致视图时客户端重扫。
 - Stat 的普通文件 `version` 是不透明的 64 字符 SHA-256 token；macOS / Unix 以同一文件句柄的设备号、inode、大小、mtime 与 ctime 纳秒值派生；Windows 以同一 capability 文件句柄的 volume serial、file index、大小、创建 / 修改时间与 ChangeTime 派生。目录为 null。它是变化检测 token，不是文件内容哈希；不承诺本地恶意写入者保留所有 metadata 时的内容完整性。Windows 拒绝 DOS 设备名及尾随点 / 空格等歧义组件；不会将这些请求映射为设备或其他路径。
-- Read 要求 version 与当前同 fd metadata 相同，offset 不大于大小，length 为 1–16384 字节。读取后再次复核同 fd metadata，变化 / 替换 / 截短均返回 `changed` 并丢弃本块。数据按剩余大小截短；offset 等于大小返回空数据与 eof=true。单块最坏 CBOR uint 数组编码仍小于 §3 的 65519B 明文限制。
-- 流式播放使用 Read range / seek；当前桌面实现提供加密范围读取服务，Quest Media3 的实际解码 / 播放仍为 not-run。接收端处理落盘、文件名冲突与原子完成，本服务只读，不允许远端写入电脑。下载使用下节停等传输。
+- Read 要求 version 与当前同 fd metadata 相同，offset 不大于大小，length 为 1–32512 字节（v0.7）；v0.6 及更早桌面只接受 1–16384，并对更大 length 返回 `invalid_request`。客户端默认以 32512 请求，收到该错误即在本连接内降到 16384 重发，不视为文件错误。读取后再次复核同 fd metadata，变化 / 截短均返回 `changed` 并丢弃本块。数据按剩余大小截短；offset 等于大小返回空数据与 eof=true。单块最坏 CBOR uint 数组编码（每项 2 字节）连同 `file_response` 外层仍小于 §3 的 65519B 明文限制。
+- 服务端可在同一 share / path / version 的连续读取之间保留已校验的文件句柄（上限 8 个，30s 空闲释放），每次读取前后仍用该句柄 metadata 核对版本，因此一个 version 内的字节绝不混拼不同文件。句柄每 1s 按路径重新打开核对一次：同名替换（新 inode、相同大小 / 时间）最迟在下一次核对时返回 `changed`；就地追加 / 截短由同 fd metadata 立即发现。撤销共享立即丢弃其句柄。
+- 流式播放使用 Read range / seek，客户端应把多个 Read 流水线发送（游目保持最多 16 个在途，从 2 个逐步增加），响应顺序不保证，按 `id` 匹配。服务端按到达顺序排队，不因在途数量拒绝；排队上限 32 个请求，超出返回 `unavailable`。接收端处理落盘、文件名冲突与原子完成，本服务只读，不允许远端写入电脑。下载使用下节停等传输。
 - 错误码为 `denied` / `invalid_request` / `unavailable` / `not_file` / `not_directory` / `changed`。未授权 share、非法路径与越界访问返回 denied，错误不含本机路径或授权外文件存在性。客户端不得把错误正文作为路径日志记录。
 
 ### 4.3 停等传输与断点恢复
@@ -135,7 +136,7 @@ FileResponse = {kind:"shares",shares:[ShareInfo]}
 ```
 
 - id 为 1–64 字节 ASCII 字母 / 数字 / `_` / `-`。每条连接最多 4 个服务端传输 job；同一连接最多接受 1024 个不同 id，任何已使用 id 不可重开，避免旧 Ack / 控制误作用于新任务。重连后可用原 id 续传；超过上限需重连。桌面任务视图最多保留 128 条记录，仅淘汰最早的 completed / cancelled / failed；活动、暂停和等待续传记录保留。若 128 条全为未完成记录，Open 返回 transfer_error 提示取消中断任务，不删除活动记录或关闭正常连接。Open 的 share_id / path / version / offset 受 §4.1–§4.2 同样的授权、版本和偏移校验。
-- 接收端先 Stat 取得 version / size，再 Open；服务端最多发送 16384B 的一块数据，然后等待 Ack。Ack.offset 必须恰好等于刚发块 offset + data 长度，不是块起始位置；错误 Ack 关闭连接。仅接收端成功落盘后才能 Ack，服务端接到 Ack 才推进下一块。offset 等于 total 时返回空 data、eof=true，仍需要 Ack；空文件同理。
+- 接收端先 Stat 取得 version / size，再 Open；服务端最多发送 16384B 的一块数据（独立于 §4.2 的 Read 上限），然后等待 Ack。Ack.offset 必须恰好等于刚发块 offset + data 长度，不是块起始位置；错误 Ack 关闭连接。仅接收端成功落盘后才能 Ack，服务端接到 Ack 才推进下一块。offset 等于 total 时返回空 data、eof=true，仍需要 Ack；空文件同理。
 - 接收端逐块核对 id、连续 offset、固定 total / version、数据长度和 eof 与末尾位置一致；不符即停止，不能把不同版本拼接。服务端在每块读取前后核对文件版本；错误发 transfer_error，不携带本地绝对路径。`code` 当前是路径无关的错误文本（FileError 的显示文本或 `transfer timed out`），不是 §4.2 的 FileResponse.error 枚举编码；接收方应作为错误展示，恢复前重新 Stat。
 - action 仅为 `pause` / `resume` / `cancel`，可由接收端或桌面原生控制发起。pause 停止新块，已经在途的一块仍可到达并 Ack；resume 继续当前 job；cancel 移除 job，本连接已使用且不再活动的 id 的迟到 Ack 被忽略。未知任务或非法 action 是协议错误；本地已经终态的过期控制只报告 UI 错误，不关闭正常连接。
 - 传输活动时间在 Open / 合法 Ack 更新；包括暂停在内，超过 300s 无活动的 job 在 60s 会话维护 tick 检查时失败、移除并发 transfer_error。阈值为 300s，检查不是精确计时器；过期后需接收端重新 Open。

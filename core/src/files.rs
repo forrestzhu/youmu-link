@@ -7,11 +7,25 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
-pub const MAX_READ_BYTES: u32 = 16_384;
+/// Largest `Read` block. Every data byte may encode as two CBOR bytes, so the
+/// whole `file_response` map must stay under the 65 519 B Noise plaintext limit.
+pub const MAX_READ_BYTES: u32 = 32_512;
+/// Transfer chunks (PROTOCOL §4.3) keep the frozen 16 KiB stop-and-wait size.
+pub const TRANSFER_CHUNK_BYTES: u32 = 16_384;
+/// Older peers reject `Read.length` above this value with `invalid_request`.
+pub const LEGACY_MAX_READ_BYTES: u32 = 16_384;
 pub const MAX_LIST_ENTRIES: u16 = 256;
 const MAX_SHARES: usize = 64;
 const LIST_BYTE_BUDGET: usize = 48 * 1024;
+const MAX_OPEN_FILES: usize = 8;
+const OPEN_FILE_IDLE: Duration = Duration::from_secs(30);
+/// How often a cached handle is checked against the directory entry so that a
+/// file replaced at the same path (new inode, same metadata) still reports
+/// `changed` instead of streaming the old file indefinitely.
+pub const PATH_REVALIDATION: Duration = Duration::from_secs(1);
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -110,15 +124,46 @@ impl fmt::Display for FileError {
 
 impl std::error::Error for FileError {}
 
-#[derive(Default)]
+/// A validated regular file kept open between consecutive range reads of one
+/// stream. The version is re-derived from this same handle on every read.
+struct OpenFile {
+    share_id: String,
+    path: String,
+    version: String,
+    file: cap_std::fs::File,
+    last_used: Instant,
+    path_checked: Instant,
+}
+
 pub struct FileCatalog {
     roots: BTreeMap<String, SharedRoot>,
+    /// Interior mutability because `handle()` is `&self`; the runtime wraps the
+    /// whole catalog in one lock anyway, so reads serialize by design.
+    open: Mutex<Vec<OpenFile>>,
+    revalidation: Duration,
+}
+
+impl Default for FileCatalog {
+    fn default() -> Self {
+        Self::with_revalidation(PATH_REVALIDATION)
+    }
 }
 
 impl FileCatalog {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// `revalidation` bounds how long a replaced file can keep serving its old
+    /// content through a cached handle; `Duration::ZERO` checks on every read.
+    #[must_use]
+    pub fn with_revalidation(revalidation: Duration) -> Self {
+        Self {
+            roots: BTreeMap::new(),
+            open: Mutex::new(Vec::new()),
+            revalidation,
+        }
     }
 
     /// Only call for a directory explicitly selected by the local user.
@@ -164,7 +209,20 @@ impl FileCatalog {
     }
 
     pub fn remove(&mut self, id: &str) -> bool {
+        self.open_files().retain(|open| open.share_id != id);
         self.roots.remove(id).is_some()
+    }
+
+    /// Number of file handles currently kept open for streaming reads.
+    #[must_use]
+    pub fn open_file_count(&self) -> usize {
+        self.open_files().len()
+    }
+
+    fn open_files(&self) -> std::sync::MutexGuard<'_, Vec<OpenFile>> {
+        self.open
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     #[must_use]
@@ -284,31 +342,93 @@ impl FileCatalog {
                 {
                     return Err(FileError::InvalidRequest);
                 }
-                let mut file = root.open_file(&path)?;
-                let before = file.metadata().map_err(io_error)?;
-                if file_version(&file, &before)? != version {
-                    return Err(FileError::Changed);
+                let now = Instant::now();
+                let mut open = self.open_files();
+                open.retain(|entry| now.duration_since(entry.last_used) < OPEN_FILE_IDLE);
+                let index = match open.iter().position(|entry| {
+                    entry.share_id == share_id && entry.path == path && entry.version == version
+                }) {
+                    Some(index) => {
+                        // The handle pins one inode; re-open by path now and then
+                        // so a replacement at the same name is still reported.
+                        if now.duration_since(open[index].path_checked) >= self.revalidation {
+                            let unchanged = root.open_file(&path).and_then(|current| {
+                                let metadata = current.metadata().map_err(io_error)?;
+                                Ok(file_version(&current, &metadata)? == version)
+                            });
+                            match unchanged {
+                                Ok(true) => open[index].path_checked = now,
+                                Ok(false) => {
+                                    open.swap_remove(index);
+                                    return Err(FileError::Changed);
+                                }
+                                Err(error) => {
+                                    open.swap_remove(index);
+                                    return Err(error);
+                                }
+                            }
+                        }
+                        index
+                    }
+                    None => {
+                        let file = root.open_file(&path)?;
+                        if open.len() >= MAX_OPEN_FILES {
+                            let oldest = open
+                                .iter()
+                                .enumerate()
+                                .min_by_key(|(_, entry)| entry.last_used)
+                                .map(|(index, _)| index)
+                                .expect("non-empty");
+                            open.swap_remove(oldest);
+                        }
+                        open.push(OpenFile {
+                            share_id,
+                            path,
+                            version: version.clone(),
+                            file,
+                            last_used: now,
+                            path_checked: now,
+                        });
+                        open.len() - 1
+                    }
+                };
+                let entry = &mut open[index];
+                entry.last_used = now;
+                let result = read_block(entry, offset, length);
+                if matches!(result, Err(FileError::Changed)) {
+                    open.swap_remove(index);
                 }
-                if offset > before.len() {
-                    return Err(FileError::InvalidRequest);
-                }
-                let count = u64::from(length).min(before.len() - offset) as usize;
-                file.seek(SeekFrom::Start(offset)).map_err(io_error)?;
-                let mut data = vec![0; count];
-                file.read_exact(&mut data).map_err(|_| FileError::Changed)?;
-                if file_version(&file, &file.metadata().map_err(io_error)?)? != version {
-                    return Err(FileError::Changed);
-                }
-                Ok(FileResponse::Read {
-                    offset,
-                    total: before.len(),
-                    version,
-                    eof: offset + count as u64 == before.len(),
-                    data,
-                })
+                result
             }
         }
     }
+}
+
+fn read_block(entry: &mut OpenFile, offset: u64, length: u32) -> Result<FileResponse, FileError> {
+    let before = entry.file.metadata().map_err(io_error)?;
+    if file_version(&entry.file, &before)? != entry.version {
+        return Err(FileError::Changed);
+    }
+    if offset > before.len() {
+        return Err(FileError::InvalidRequest);
+    }
+    let count = u64::from(length).min(before.len() - offset) as usize;
+    entry.file.seek(SeekFrom::Start(offset)).map_err(io_error)?;
+    let mut data = vec![0; count];
+    entry
+        .file
+        .read_exact(&mut data)
+        .map_err(|_| FileError::Changed)?;
+    if file_version(&entry.file, &entry.file.metadata().map_err(io_error)?)? != entry.version {
+        return Err(FileError::Changed);
+    }
+    Ok(FileResponse::Read {
+        offset,
+        total: before.len(),
+        version: entry.version.clone(),
+        eof: offset + count as u64 == before.len(),
+        data,
+    })
 }
 
 impl SharedRoot {

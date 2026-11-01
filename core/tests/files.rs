@@ -12,8 +12,10 @@ impl Fixture {
         Self(path)
     }
 
+    /// Zero revalidation keeps the strict "replacement is reported on the next
+    /// read" semantics observable; production rechecks the path every second.
     fn catalog(&self) -> FileCatalog {
-        let mut catalog = FileCatalog::new();
+        let mut catalog = FileCatalog::with_revalidation(std::time::Duration::ZERO);
         catalog
             .add("films".into(), "Films".into(), &self.0)
             .unwrap();
@@ -434,6 +436,86 @@ fn request_limits_bound_allocation_and_noise_frame_size() {
             }
         );
     }
+}
+
+#[test]
+fn streaming_reads_reuse_one_handle_until_the_file_changes_or_the_share_goes() {
+    let fixture = Fixture::new();
+    let data: Vec<u8> = (0..100_000u32).map(|i| (i % 251) as u8).collect();
+    fs::write(fixture.0.join("film.bin"), &data).unwrap();
+    fs::write(fixture.0.join("other.bin"), b"other").unwrap();
+    let mut catalog = fixture.catalog();
+    let version = stat(&catalog, "film.bin").version.unwrap();
+    assert_eq!(catalog.open_file_count(), 0, "stat keeps no handle");
+    let mut offset = 0u64;
+    while offset < data.len() as u64 {
+        match read(&catalog, "film.bin", &version, offset, MAX_READ_BYTES) {
+            FileResponse::Read {
+                offset: at,
+                total,
+                data: block,
+                eof,
+                ..
+            } => {
+                assert_eq!(at, offset);
+                assert_eq!(total, data.len() as u64);
+                assert_eq!(
+                    &data[offset as usize..offset as usize + block.len()],
+                    &block[..]
+                );
+                offset += block.len() as u64;
+                assert_eq!(eof, offset == data.len() as u64);
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+    assert_eq!(catalog.open_file_count(), 1, "one stream, one handle");
+    let other = stat(&catalog, "other.bin").version.unwrap();
+    assert!(matches!(
+        read(&catalog, "other.bin", &other, 0, 5),
+        FileResponse::Read { .. }
+    ));
+    assert_eq!(catalog.open_file_count(), 2);
+    assert_eq!(
+        read(&catalog, "other.bin", &"0".repeat(64), 0, 5),
+        FileResponse::Error {
+            code: FileError::Changed
+        }
+    );
+    assert_eq!(catalog.open_file_count(), 2, "a stale token caches nothing");
+    {
+        use std::io::Write;
+        fs::OpenOptions::new()
+            .append(true)
+            .open(fixture.0.join("film.bin"))
+            .unwrap()
+            .write_all(b"x")
+            .unwrap();
+    }
+    assert_eq!(
+        read(&catalog, "film.bin", &version, 0, 16),
+        FileResponse::Error {
+            code: FileError::Changed
+        }
+    );
+    assert_eq!(
+        catalog.open_file_count(),
+        1,
+        "a changed file drops its handle"
+    );
+    let fresh = stat(&catalog, "film.bin").version.unwrap();
+    assert_ne!(fresh, version);
+    assert!(matches!(
+        read(&catalog, "film.bin", &fresh, 0, 16),
+        FileResponse::Read { .. }
+    ));
+    assert_eq!(catalog.open_file_count(), 2);
+    assert!(catalog.remove("films"));
+    assert_eq!(
+        catalog.open_file_count(),
+        0,
+        "revoking a share drops its handles"
+    );
 }
 
 #[test]

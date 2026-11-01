@@ -782,13 +782,30 @@ impl SecureReader {
     /// invalid, [`Error::Timeout`] when the receive stalls, [`Error::Crypto`] on
     /// decryption failure and [`Error::Io`] on transport failure.
     pub async fn recv<T: DeserializeOwned>(&mut self) -> Result<T> {
+        let plaintext = self.recv_raw().await?;
+        match decode_frame(&plaintext) {
+            Ok(value) => Ok(value),
+            Err(error) => {
+                self.failed = true;
+                Err(error)
+            }
+        }
+    }
+
+    /// Receives and decrypts one frame, returning the CBOR plaintext undecoded
+    /// so callers with a faster or partial decoder can skip the generic one.
+    ///
+    /// # Errors
+    ///
+    /// Same conditions as [`Self::recv`] except CBOR validity.
+    pub async fn recv_raw(&mut self) -> Result<Zeroizing<Vec<u8>>> {
         if self.failed {
             return Err(Error::Protocol("receive direction is closed"));
         }
         // Set before awaiting so dropping a partially completed receive future
         // cannot make the next call treat the rest of a frame as a new header.
         self.failed = true;
-        let result = tokio::time::timeout(RECEIVE_TIMEOUT, self.recv_inner())
+        let result = tokio::time::timeout(RECEIVE_TIMEOUT, self.recv_frame())
             .await
             .map_err(|_| Error::Timeout)
             .and_then(|value| value);
@@ -799,6 +816,11 @@ impl SecureReader {
     }
 
     async fn recv_inner<T: DeserializeOwned>(&mut self) -> Result<T> {
+        let plaintext = self.recv_frame().await?;
+        decode_frame(&plaintext)
+    }
+
+    async fn recv_frame(&mut self) -> Result<Zeroizing<Vec<u8>>> {
         let frame = read_frame(&mut self.stream, MAX_CIPHERTEXT).await?;
         if frame.len() < 16 {
             return Err(Error::Protocol("truncated encrypted frame"));
@@ -808,14 +830,19 @@ impl SecureReader {
             .transport
             .read_message(self.nonce, &frame, &mut plaintext)?;
         self.nonce = self.nonce.checked_add(1).ok_or(Error::Crypto)?;
-        let mut cursor = Cursor::new(&plaintext[..size]);
-        let value = ciborium::from_reader(&mut cursor)
-            .map_err(|_| Error::Protocol("invalid CBOR frame"))?;
-        if cursor.position() != size as u64 {
-            return Err(Error::Protocol("trailing data in CBOR frame"));
-        }
-        Ok(value)
+        plaintext.truncate(size);
+        Ok(plaintext)
     }
+}
+
+fn decode_frame<T: DeserializeOwned>(plaintext: &[u8]) -> Result<T> {
+    let mut cursor = Cursor::new(plaintext);
+    let value =
+        ciborium::from_reader(&mut cursor).map_err(|_| Error::Protocol("invalid CBOR frame"))?;
+    if cursor.position() != plaintext.len() as u64 {
+        return Err(Error::Protocol("trailing data in CBOR frame"));
+    }
+    Ok(value)
 }
 
 pub struct SecureWriter {
@@ -865,12 +892,21 @@ impl SecureWriter {
         if plaintext.len() > MAX_PLAINTEXT {
             return Err(Error::Protocol("encrypted frame exceeds limit"));
         }
-        let mut ciphertext = vec![0u8; plaintext.len() + 16];
+        // Length prefix and ciphertext leave in one write so a frame is not
+        // split into a 4-byte segment plus its body on a no-delay socket.
+        let mut frame = vec![0u8; 4 + plaintext.len() + 16];
         let size = self
             .transport
-            .write_message(self.nonce, &plaintext, &mut ciphertext)?;
+            .write_message(self.nonce, &plaintext, &mut frame[4..])?;
+        if size == 0 || size > MAX_CIPHERTEXT {
+            // Validate before advancing the nonce so a rejected frame cannot
+            // desynchronize the peer's counter.
+            return Err(Error::Protocol("invalid frame length"));
+        }
         self.nonce = self.nonce.checked_add(1).ok_or(Error::Crypto)?;
-        write_frame(&mut self.stream, &ciphertext[..size], MAX_CIPHERTEXT).await
+        frame[..4].copy_from_slice(&(size as u32).to_be_bytes());
+        self.stream.write_all(&frame[..4 + size]).await?;
+        Ok(())
     }
 }
 

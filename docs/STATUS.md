@@ -8,6 +8,8 @@
 
 用户授权的历史邮箱修正已完成：20 个既有提交的 author / committer 均统一为目标邮箱，20 个文件树不变，16 个提交号变化；旧记录中的提交号见[旧 → 新映射](evidence/2026-10-27-history-email-rewrite.md)。
 
+YML-035 文件读取吞吐（与游目 YM-335 配对）：`Read` 块 16 384 → 32 512、句柄缓存（同句柄前后校验，1 s 按路径重开核对替换）、文件请求 32 项排队 + 控制队列 permit 后再读盘、长度与密文一次写出；协议 v0.7 字段不变，旧桌面以 `invalid_request` 让新 Quest 回退 16 K。core / desktop 全部测试通过（新增 3 项、改 2 项），回环基准深度 1 = 38 MB/s、深度 4–16 ≈ 70 MB/s；真机 Windows / macOS ↔ Quest Wi-Fi 与 2 倍速实测 not-run，见 [YML-035](tasks/YML-035-file-read-throughput.md)。
+
 ## 当前制品与服务
 
 | 项目 | 最近实际记录及边界 |
@@ -17,6 +19,7 @@
 | 设计与实现基线 | 用户授权基于现有 demo 实现，M1 通过；[YML-001](tasks/archive/YML-001-bootstrap.md) 归档。按 [ADR-0002](engineering/decisions/0002-native-desktop.md) 改为 macOS SwiftUI / AppKit 原生界面 + Rust 后端，取代桌面 Tauri 方案。 |
 | Rust 核心 | UDP 发现 / 三端口回退、Noise XX、SPAKE2、系统身份与信任、capability 授权文件服务。rescan 单路由失败不阻断其余探测，新增 2 项真实 UDP 回归；核心 Windows 46 / Mac 41 项通过。当前应用协议v4 /四位配对，发现v1与transport-v2保持；1147 Quest真实LAN core链已通过，原生Mac当前补正常断开反馈回归。 |
 | Rust 桌面后端 | C ABI + 单设备状态、取消 / 重连、16KiB 停等 Ack 传输；读写与文件工作分别调度，慢磁盘 / socket 不阻塞停止指令。文件工作每连接 4 项、真实 I/O 跨连接全局 4 项；同连接传输 id 不复用，防迟到确认误作用于新任务。 |
+| 文件读取吞吐 [YML-035](tasks/YML-035-file-read-throughput.md) | verifying：32 512 B 块、句柄缓存、请求排队、单次写帧已实现并通过 core / desktop 测试，回环 ≈70 MB/s；PROTOCOL v0.7。Windows / macOS 安装版与 Quest 的 Wi-Fi 2 倍速实测 not-run。 |
 | macOS 原生应用 | macOS 15.8.2 arm64 / Xcode 26.3 云端：Rust100 passed/1 ignored、Swift6/6、静态重链接2/2、新图标/静态链接/ad-hoc签名/移位中英资源/DMG完整载荷通过（最新链环a438c0b）。本机26.3.1链环图标独立副本About实显通过；此前镂刻版About/Finder实显保留；此前288成员/138×2文案/许可/签名/路径独立包核验保留。此前 Mac 27.0.1 手工配对 / 4 MiB 下载为历史证据；新版人工窗口交互、Mac 14 / Intel not-run。 |
 | Windows 原生应用 | 10-30 同步 `efe6f56` 后，Windows 11 Pro x64 build 26200 的完整 Rust 103 passed / 2 ignored、Python 36 passed / 2 skipped、WPF 模型 / 本地化 / 行模板 / ABI、Release 自包含目录与 smoke、系统 H.264 合成编码通过。实际窗口中英 / 显示器 / 四位前导零 / 取消、单机加密 Shares 查询与正常断开无误报通过；修复 CLI 配对协商前等待 stdin 的测试桩缺陷，临时信任清至 0。真实 Windows↔Quest LAN / 采集、Windows 10 / ARM64、安装器 / 签名 not-run。[报告](evidence/2026-10-30-windows-regression.md)、[YML-003](tasks/YML-003-windows-native.md)。 |
 | 镜像 | Rust ScreenCaptureKit + VideoToolbox 硬件 H.264、系统 PCM 与加密分片、双端控制、持续背压降分辨率实现就位。首次开始必须本机确认；独立故障信号跨暂停 / 恢复保存，采集或初始化失败不能自动重启，对端不请求系统权限。真实硬件合成帧编码单测通过；真实采集 / 弱网切档、权限恢复、Quest 解码 / 音画同步 / 延迟仍 not-run。 |
