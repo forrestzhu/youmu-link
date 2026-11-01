@@ -30,6 +30,9 @@ public partial class MainWindow : Window
     private string? errorKey, nativeError;
     internal bool MinimizeToTray { get; set; } = true;
 
+    /// <summary>Set by App; every polled snapshot refreshes what the tray menu will show.</summary>
+    internal TrayStatusSource? TrayStatus { get; set; }
+
     internal MainWindow(Localizer localizer)
     {
         this.localizer = localizer;
@@ -91,6 +94,7 @@ public partial class MainWindow : Window
         var oldPairing = current.Pairing;
         var oldMirror = current.Mirror;
         current = snapshot;
+        TrayStatus?.Update(snapshot, ready);
         rendering = true;
         Sync(peers, snapshot.Peers, value => value.Id, (value, l) => new PeerItem(value, l));
         Sync(displays, snapshot.Displays, value => value.Id.ToString(), (value, l) => new DisplayItem(value, l));

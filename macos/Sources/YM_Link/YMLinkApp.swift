@@ -26,7 +26,7 @@ struct YMLinkApp: App {
                 .environmentObject(model)
                 .frame(minWidth: 920, minHeight: 620)
                 .onAppear {
-                    delegate.model = model
+                    delegate.attachStatusMenu(model)
                     NSApp.setActivationPolicy(.regular)
                     NSApp.activate(ignoringOtherApps: true)
                 }
@@ -49,9 +49,26 @@ struct YMLinkApp: App {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     weak var model: DesktopModel?
+    private var statusMenu: StatusMenuController?
 
-    func applicationWillTerminate(_ notification: Notification) { model?.shutdown() }
+    func applicationWillTerminate(_ notification: Notification) {
+        statusMenu?.close()
+        model?.shutdown()
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+
+    /// Called once SwiftUI has the model; safe to call again from onAppear refreshes.
+    func attachStatusMenu(_ model: DesktopModel) {
+        self.model = model
+        guard statusMenu == nil else { return }
+        statusMenu = StatusMenuController(model: model) {
+            NSApp.activate(ignoringOtherApps: true)
+            if let window = NSApp.orderedWindows.first(where: { !$0.isKind(of: NSPanel.self) }) {
+                window.makeKeyAndOrderFront(nil)
+            }
+        }
+    }
 }
 
 struct SettingsView: View {

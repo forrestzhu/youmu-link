@@ -114,6 +114,7 @@ await using (var backend = new NativeBackend())
 }
 Console.WriteLine("PASS: localization parity/fallback, redacted errors, snapshots, error cursor, commands, pairing, transfers, idempotent lifetime.");
 TemplateBindingTests.Run();
+TrayMenuTests.Run();
 if (args is ["--native", var dll])
 {
     NativeLibrary.SetDllImportResolver(typeof(NativeBackend).Assembly, (library, _, _) => library == "ymlink_desktop.dll" ? NativeLibrary.Load(Path.GetFullPath(dll)) : IntPtr.Zero);

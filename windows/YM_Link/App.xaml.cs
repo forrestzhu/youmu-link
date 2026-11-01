@@ -10,6 +10,11 @@ public partial class App : Application
 {
     private Mutex? instance;
     private TrayIcon? tray;
+    private TrayMenuWindow? trayMenu;
+    private MainWindow? mainWindow;
+    private readonly TrayStatusSource trayStatus = new();
+    private Localizer localizer = new("en");
+    private long reopenSuppressedUntil;
     internal static string StateDirectory => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Youmu", "YM_Link");
 
     protected override async void OnStartup(StartupEventArgs e)
@@ -66,9 +71,12 @@ public partial class App : Application
         }
         var window = new MainWindow(localizer);
         MainWindow = window;
+        mainWindow = window;
+        window.TrayStatus = trayStatus;
         try
         {
-            tray = new TrayIcon(localizer, window.RestoreFromTray, window.ExitApplication);
+            tray = new TrayIcon(window.RestoreFromTray, window.ExitApplication);
+            tray.MenuRequested += OpenTrayMenu;
             tray.Show();
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException
@@ -84,7 +92,11 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
-        try { tray?.Dispose(); }
+        try
+        {
+            trayMenu?.Close();
+            tray?.Dispose();
+        }
         finally
         {
             instance?.ReleaseMutex();
@@ -93,10 +105,48 @@ public partial class App : Application
         }
     }
 
+    /// <summary>Opens the owner-drawn menu above the tray anchor; a second right-click on the
+    /// icon closes it, and the inevitable click that lands just after a dismissal cannot
+    /// reopen it. The anchor arrives in physical pixels and the card is placed in DIP.</summary>
+    private void OpenTrayMenu(System.Drawing.Point physical)
+    {
+        if (Environment.TickCount64 < reopenSuppressedUntil) return;
+        if (trayMenu is { } open)
+        {
+            open.Close();
+            trayMenu = null;
+            reopenSuppressedUntil = Environment.TickCount64 + 350;
+            return;
+        }
+        var scale = TrayScreen.ScaleFor(physical);
+        var anchor = new Point(physical.X / scale, physical.Y / scale);
+        var workArea = TrayScreen.WorkAreaFor(physical, scale);
+        var status = trayStatus.BackendReady
+            ? TrayMenuLogic.Describe(trayStatus.Snapshot, localizer)
+            : TrayMenuLogic.Starting(localizer);
+        var menu = new TrayMenuWindow(status, SystemTheme.IsDark(), localizer);
+        var actionTaken = false;
+        menu.ActionRequested += action =>
+        {
+            actionTaken = true;
+            if (action == "open") mainWindow?.RestoreFromTray();
+            else mainWindow?.ExitApplication();
+        };
+        menu.Closed += (_, _) =>
+        {
+            if (ReferenceEquals(trayMenu, menu)) trayMenu = null;
+            // Outside presses, Escape and focus loss all close without an action; the
+            // icon's click for this gesture may still be in flight, so hold reopening briefly.
+            if (!actionTaken) reopenSuppressedUntil = Environment.TickCount64 + 350;
+        };
+        trayMenu = menu;
+        menu.OpenAt(anchor, workArea);
+    }
+
     internal static void SetLanguageResources(Localizer localizer)
     {
         foreach (var key in localizer.Keys) Current.Resources[key] = localizer[key];
-        if (Current is App app) app.tray?.UpdateLanguage(localizer);
+        if (Current is App app) app.localizer = localizer;
     }
 }
 

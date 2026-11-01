@@ -1,44 +1,55 @@
-# YML-034：Windows 托盘右键菜单重设计（Klip 风格 demo）
+# YML-034：Windows 托盘右键菜单重设计（Klip 风格）与 macOS 菜单栏统一
 
-Status: doing
+Status: verifying
 Workflow: feature
 Requires-Device: no
-Tests: not-applicable (本阶段仅交付 HTML 设计 demo，不改产品代码；进入原生实现阶段时按窗口启动核验与 WPF 模型测试补充)
+Tests: windows/Tests（TrayMenuTests 状态映射 / 定位 / 视觉树行渲染 / 键盘导航，TrayIconTests 重写为事件模型，经 `dotnet run --project windows/Tests/YM_Link.Tests.csproj`）；macOS ModelsTests.testTrayMenuStatusMirrorsConnectionStates 经 `swift test`（本机 Windows 无法执行，由三平台 CI 覆盖）；不改 Rust core / 协议。
 
 ## Scope
 
-把 Windows 托盘右键菜单从 WinForms `ContextMenuStrip`（仅"打开 YM_Link / 退出"两项）重设计为参考 klip 托盘菜单（`klip/src-windows/KlipApp/Shell/TrayMenuWindow.cs`，2026-10-12 demo A Fluent shell）的自绘 WPF 弹窗：圆角卡片、行 hover、状态头、快捷键/说明列。本阶段先交付交互 HTML demo 供用户确认设计方向；原生 WPF 实现另起后续提交。
+把 Windows 托盘右键菜单从 WinForms `ContextMenuStrip`（仅"打开 YM_Link / 退出"）重设计为参考 klip 托盘菜单（2026-10-12 已批准 Fluent shell）的自绘 WPF 弹窗，并按用户要求做好跨平台统一：macOS 新增 NSStatusItem 菜单，结构与语义一致（状态头 + 打开 + 退出），外观各随平台原生。视觉基准为 [demo](../../design/prototypes/desktop/2026-10-31-tray-menu/index.html)（用户 2026-11-01 确认方向：默认无镜像开关行，深浅两套主题，状态头第二行含设备 / 速率）。
 
-非目标：本任务不改动 Rust core / 协议；不新增托盘菜单业务动作（是否加入镜像开关等留待用户在 demo 上反馈）；macOS 菜单栏不在本任务内。
+非目标：不改动 Rust core / 协议；不新增托盘业务动作（镜像开关行未选）；macOS 关窗收起菜单栏（生命周期变更）需真机交互验证，另立任务。
 
 ## Spec
 
-- 用户入口：任务栏托盘图标右键；左键双击保持恢复主窗口。
-- 菜单结构（demo 版，待用户确认）：
-  - 顶部状态头：YM_Link 名称 + 连接状态（正在搜索 / 等待连接 / 已连接 + 设备名 / 镜像运行中），状态点颜色沿用主窗口 SuccessInk / Accent 语义。
-  - 操作行：打开 YM_Link；退出（底部独立分隔）。
-  - 视觉规格对齐 klip：卡片宽 220、圆角 10、行高 30、行圆角 6、hover 面、12pt 正文 + 10.5pt 说明文字；浅色主题为主（当前应用仅浅色），深色作为 Windows 深色任务bar 下的适配方向一并展示。
-- 状态变化：状态头随 Snapshot（status / peers / mirror）实时刷新；无可用动作时操作行不降级隐藏。
-- 错误恢复：后端不可达时状态头显示"状态待确认"，操作行仍可用。
+- 用户入口：Windows 任务栏托盘图标右键（左键双击保持恢复主窗口）；macOS 菜单栏链环图标点击。
+- 菜单结构（双端一致）：状态头（状态点 + 主行 + 可选第二行说明）、分隔线、打开 YM_Link、分隔线、退出。
+- 状态映射（`TrayMenuLogic` / `TrayMenuStatus.describe`，给定 Snapshot）：
+  - status=starting → 正在启动（灰点）
+  - status=error → 状态待确认 + 第二行"打开主窗口查看详情"（红点）
+  - 镜像 paused → 镜像已暂停 + 设备名（绿点）；镜像 starting/running → 镜像运行中 + "设备 · fps · 码率"（绿点）
+  - status=connected 或有 connected peer → 已连接 · 设备名（绿点）
+  - 有可信未连接 peer（PeerItem.ShowsPairedStatus 同语义）→ 已配对 · 设备名（绿点波纹，仅 Windows 动效）
+  - 其余 → 正在搜索 Quest…（灰点）
+- 视觉规格（Windows，对齐 demo）：卡片宽 220、外边距 16、圆角 10、行高 30、行圆角 6、正文 12px、说明 10.5px；深浅主题跟随 Windows 应用模式；菜单置于托盘锚点上方（可见右缘距锚点 12px、底缘不低于工作区上方 8px）。macOS 使用原生 NSMenu 外观。
+- 状态变化：Windows 每次打开菜单时按最新 Snapshot 渲染（MainWindow 轮询持续写入）；macOS 在菜单将展开时重建。
+- 错误恢复：后端启动失败时 Windows 状态头停留"正在启动"（主窗口承载失败详情）；操作行始终可用。macOS 后端失败经 status=error 显示"状态待确认"。
 - 非目标：不加载 WebView；不引入 HTTP 服务。
 
 ## Acceptance
 
-- [ ] demo 覆盖至少 4 种连接状态 × 中英双语 × 浅色主题（深色为方向展示），用户可交互（右键托盘图标打开菜单、hover、点击操作行）。
-- [x] 已交付：6 状态 × 中英 × 深浅 × 可选镜像开关行，浏览器实测通过（见 Evidence）。
-- [ ] 用户确认设计方向后，后续原生实现任务引用本 demo 为视觉基准。
+- [x] demo 覆盖 6 状态 × 中英 × 深浅，浏览器实测通过（2026-10-31）。
+- [x] 用户确认设计方向（2026-11-01），本 demo 为视觉基准。
+- [x] Windows：托盘菜单实现 + `TrayMenuTests` / `TrayIconTests` 回归（含状态映射、定位、视觉树行渲染、键盘导航）全部 PASS；Release 自包含构建通过；实际托盘右键交互按 YML-029/032 先例由用户自验。
+- [x] macOS：菜单栏同语义菜单实现；`TrayMenuStatus` 映射与文案回归随 CI `swift test` 执行（本机 Windows 无法本地运行）。
 
 ## Verification
 
-- demo：浏览器打开 `design/prototypes/desktop/2026-10-31-tray-menu/index.html`（见其 [README](../../design/prototypes/desktop/2026-10-31-tray-menu/README.md)），人工核验交互与状态切换（无自动化断言；HTML demo 不入 harness 门禁）。
-- 原生实现阶段：`dotnet run --project windows/Tests/YM_Link.Tests.csproj` + `python scripts/build_windows.py` + 实际窗口启动核验（届时改写本节）。
-- 真实第二设备层：not-applicable（纯视觉 demo）。
+- Windows：`dotnet run --project windows/Tests/YM_Link.Tests.csproj` → 全部 PASS（本地 Debug）；`python scripts/build_windows.py` → Release 构建通过（含 --native 真实 DLL 生命周期 PASS）；`--smoke-test` not-run（本机 UDP/单实例互斥量被用户正在运行的已安装版占用，退出码 4，进程 I:\my_program_files\YM_Link\YM_Link.exe，未触碰用户实例）。
+- Windows 完整门禁 `harness verify`：python 47 OK / 3 skipped、repo check PASS、rustfmt 无 diff、cargo 除 `beacon_ports_fall_back_in_order` 外全过——该 1 项因同一已安装实例占 UDP 47610 报 AddrInUse，为既有环境性失败（YML-024/028 同因保留），用户关闭已安装版后可复跑转绿。
+- macOS：`swift test` / .app 构建随三平台 CI；本机为 Windows，Swift 本地编译 not-run。混合 DPI 多显示器定位 not-run（本机单一缩放，待真机；理论偏差见 Evidence）。
+- 真实第二设备层：not-applicable（状态头消费既有 Snapshot，真实 Quest 连接语义沿用已验收展示）。
 
 ## Evidence
 
-- 2026-10-31：demo 初版交付于 `design/prototypes/desktop/2026-10-31-tray-menu/`，Chromium (IAB) 实测通过：右键 / 单击开菜单且定位符合 klip ComputePlacement（可见右缘距锚点 13px、底缘距任务栏 7px）、六状态 × 中英 × 深浅主题、镜像开关行、↑↓/Enter/Esc 键盘导航、退出 toast 与托盘图标自动恢复；菜单定位实测 (222×126) @ (507,342)、taskbarTop 475。截图保存在 ignored 会话工件，不入库。用户反馈待记录。
+- 2026-10-31：demo 初版交付于 `design/prototypes/desktop/2026-10-31-tray-menu/`，Chromium (IAB) 实测通过：右键 / 单击开菜单且定位符合规格（可见右缘距锚点 13px、底缘距任务栏 7px）、六状态 × 中英 × 深浅主题、镜像开关行、↑↓/Enter/Esc 键盘导航、退出 toast 与托盘图标自动恢复。截图保存在 ignored 会话工件，不入库。
 - 编号说明：创建时本地 main 尚未含远端随后的 YML-031（文件首读）与 YML-032（右键闪退归档），同步发现撞号后改号为 YML-034；033 留给同批并行创建的文件读取吞吐任务改号。
+- 2026-11-01：用户确认 demo 方向并授权实现（含跨平台统一）；范围加入 macOS 菜单栏，原"macOS 不在本任务内"的非目标作废。
+- 2026-11-01 CR 第一轮（独立 subagent，范围=本任务全部变更文件）：8 项属实发现全部修复并经回归——P1 DpiForMonitor 单出参签名栈越界（改双 out uint）；P2 NotifyIcon e.X/e.Y 恒 (0,0)（改 CursorPosition seam，klip 同法）；P2 OpenAt 未减 ShellMargin 16（加 WindowPosition + 回归）；P2 图标二次右键重开（非动作关闭后 350ms 重开抑制）；P3 SystemTheme 缺值返回深色与注释相反（仅显式 0 深色）；P3 GreenRipple 无波纹（补 ScaleTransform+Opacity 环动画，尊重 ClientAreaAnimation）；P3 前台锁键盘失效（Show 后 SetForegroundWindow，拒绝则鼠标降级）；P3 高对比度（SystemColors 面板 + 单色状态点，随主窗口契约）。
+- 2026-11-01 CR 第二轮（新独立 subagent，复核 8 项修复=全部确认 + 全量再审）：P1 行模板缺 ContentPresenter 致行文案不可见——已补 presenter（14/8 内缩对齐 demo），并暴露 Factory `SetValue+TemplateBindingExtension` 不求值的连带缺陷（键盘高亮背景同样失效），改 `SetBinding+RelativeSource TemplatedParent`，新增视觉树断言拦截此类回归；P1 macOS 测试 `Snapshot(status:)` 缺 9 参不可编译——改 `Snapshot.empty` 变更（已核实 memberwise init 无默认值）；P3 注册表测试残键（finally 删根树）；P3 Topmost 缺失（补）；P3 Alt-Tab 空条目（OnSourceInitialized 置 WS_EX_TOOLWINDOW）；P3 分隔线绿通道与 demo 差 1（对齐 #DDDFE3）；P3 波纹线性 vs ease-out（CircleEase）；P3 TrayIcon 死 localizer 字段（删除，TrayIcon 不再持文案）。已接受偏差：混合 DPI 定位 not-run 待真机；fps/码率恰为二分中点时 C# 远离零舍入 vs Swift half-to-even 的极端文案差异（真实快照不可达，仅记录）。
+- 修复后回归：Windows 全部测试 PASS（含视觉树行渲染、主题注册表三态），Release 重构建通过。
 
 ## Next
 
-用户查看 demo 并反馈：菜单项取舍（是否加镜像开关行等快捷动作）、深浅主题取舍、状态头信息密度；确认后建原生 WPF 实现任务并引用本 demo。
+用户在实际任务栏右键自验托盘菜单（Windows 真机交互先例由用户自验）；三平台 CI 绿后本任务 verifying→done。后续候选（不阻塞本任务）：macOS 关窗收起菜单栏的生命周期统一（需真机）、混合 DPI 多显示器定位真机核验、高对比度下自绘菜单的可读性细调。

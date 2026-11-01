@@ -1,6 +1,13 @@
 {
   "tray_open": "打开 YM_Link",
   "tray_exit": "退出",
+  "tray_searching": "正在搜索 Quest…",
+  "tray_connected_format": "已连接 · {0}",
+  "tray_paired_format": "已配对 · {0}",
+  "tray_mirror_running": "镜像运行中",
+  "tray_mirror_paused": "镜像已暂停",
+  "tray_unavailable": "状态待确认",
+  "tray_unavailable_hint": "打开主窗口查看详情",
   "mirror": "屏幕镜像",
   "shares": "文件共享",
   "transfers": "传输任务",

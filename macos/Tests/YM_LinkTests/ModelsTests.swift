@@ -250,4 +250,65 @@ final class ModelsTests: XCTestCase {
         XCTAssertFalse(input.apply(nil)); XCTAssertEqual(input.text, "")
     }
 
+    func testTrayMenuStatusMirrorsConnectionStates() {
+        func describe(_ snapshot: Snapshot, language: String = "en") -> TrayMenuStatus {
+            TrayMenuStatus.describe(snapshot: snapshot, language: language)
+        }
+        var snapshot = Snapshot.empty
+        XCTAssertEqual(describe(snapshot).dot, .muted)
+        XCTAssertEqual(describe(snapshot).title, "Starting")
+        XCTAssertEqual(describe(snapshot, language: "zh-Hans").title, "正在启动")
+
+        snapshot.status = "ready"
+        XCTAssertEqual(describe(snapshot).title, "Searching for Quest…")
+        XCTAssertEqual(describe(snapshot, language: "zh-Hans").title, "正在搜索 Quest…")
+
+        snapshot.status = "error"
+        XCTAssertEqual(describe(snapshot).dot, .red)
+        XCTAssertEqual(describe(snapshot).title, "Status unavailable")
+        XCTAssertEqual(describe(snapshot).detail, "Open the main window for details")
+
+        snapshot.status = "connected"
+        snapshot.peers = [Peer(id: "p1", address: "192.0.2.7", name: "Quest 3S", platform: "quest", status: "connected", trusted: true)]
+        let connected = describe(snapshot)
+        XCTAssertEqual(connected.dot, .green)
+        XCTAssertEqual(connected.title, "Connected · Quest 3S")
+        XCTAssertEqual(describe(snapshot, language: "zh-Hans").title, "已连接 · Quest 3S")
+
+        snapshot.status = "ready"
+        snapshot.peers = [Peer(id: "p1", address: "192.0.2.7", name: "Quest 3S", platform: "quest", status: "disconnected", trusted: true)]
+        let paired = describe(snapshot)
+        XCTAssertEqual(paired.dot, .green)
+        XCTAssertEqual(paired.title, "Paired · Quest 3S")
+        XCTAssertEqual(describe(snapshot, language: "zh-Hans").title, "已配对 · Quest 3S")
+
+        snapshot.mirror = MirrorState(status: "running", permission: "granted", displayId: 1, audio: true, quality: "balanced", fps: 60, bitrateMbps: 12.36, latencyMs: nil, error: nil)
+        let mirroring = describe(snapshot)
+        XCTAssertEqual(mirroring.dot, .green)
+        XCTAssertEqual(mirroring.title, "Mirroring")
+        XCTAssertEqual(mirroring.detail, "Quest 3S · 60 fps · 12.4 Mbps")
+        XCTAssertEqual(describe(snapshot, language: "zh-Hans").detail, "Quest 3S · 60 fps · 12.4 Mbps")
+        snapshot.mirror.status = "paused"
+        let paused = describe(snapshot)
+        XCTAssertEqual(paused.title, "Mirror paused")
+        XCTAssertEqual(paused.detail, "Quest 3S")
+
+        snapshot.mirror = .empty
+        snapshot.peers = [Peer(id: "s1", address: "192.0.2.9", name: "Other", platform: "quest", status: "discovered", trusted: false)]
+        let searching = describe(snapshot)
+        XCTAssertEqual(searching.dot, .muted)
+        XCTAssertEqual(searching.title, "Searching for Quest…", "discovered-only devices must stay in search")
+
+        var unnamedSnapshot = Snapshot.empty
+        unnamedSnapshot.status = "connected"
+        let unnamed = TrayMenuStatus.describe(snapshot: unnamedSnapshot, language: "en")
+        XCTAssertEqual(unnamed.title, "Connected", "a connection without a readable name keeps the plain status line")
+
+        for key in ["tray_open", "tray_exit", "tray_searching", "tray_connected_format", "tray_paired_format",
+                    "tray_mirror_running", "tray_mirror_paused", "tray_unavailable", "tray_unavailable_hint"] {
+            XCTAssertNotEqual(Localizer.string(key, language: "en"), key, "missing English tray string: \(key)")
+            XCTAssertNotEqual(Localizer.string(key, language: "zh-Hans"), key, "missing Chinese tray string: \(key)")
+        }
+    }
+
 }

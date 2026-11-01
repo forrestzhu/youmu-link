@@ -1,3 +1,12 @@
+"tray_open" = "Open YM_Link";
+"tray_exit" = "Exit";
+"tray_searching" = "Searching for Quest…";
+"tray_connected_format" = "Connected · %@";
+"tray_paired_format" = "Paired · %@";
+"tray_mirror_running" = "Mirroring";
+"tray_mirror_paused" = "Mirror paused";
+"tray_unavailable" = "Status unavailable";
+"tray_unavailable_hint" = "Open the main window for details";
 "mirror" = "Screen mirroring";
 "shares" = "File sharing";
 "transfers" = "Transfers";
