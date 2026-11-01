@@ -41,7 +41,8 @@ Tests: core::tests::files::{streaming_reads_reuse_one_handle_until_the_file_chan
 - 回环基准（release，64 MiB，`isolated_file_server_raw`）：depth 1 = 38.1 MB/s（1173 块/s），depth 4 = 72.4 MB/s，depth 16 = 68.7 MB/s。先前用 `recv::<Message>` 的客户端只测到 12 MB/s，瓶颈是 ciborium 逐项解码 uint 数组（≈2.7 ms / 32 KiB），与桌面无关；ciborium 编码 32 KB 约 265 µs（≈120 MB/s），手写编码器 61 µs，暂不引入。
 - clippy：新增 1 条 OR-pattern 提示已改为区间，基线 8 条未动。`cargo fmt` 已运行。
 - `harness verify`：见下方记录。
-- 真机 Windows / macOS ↔ Quest Wi-Fi：not-run（本轮无头显联调；macOS 需用户 Mac 构建）。
+- 真机联调（Windows 侧）：CI `repository-checks` 三平台通过（run 41261968031），`YM_Link-windows-x64-af3b56ab53ce-setup.exe`（SHA-256 4ce308d9…，校验一致）已覆盖安装至本机 `I:\my_program_files\YM_Link`（原 73cb59a → af3b56a），安装后正常启动。Quest 侧配对任务 YM-335：全量 22 例 E2E + 180 项本地化矩阵在 Quest 3S 通过（含 link 之旅，钉住 v4 对端即验证了旧桌面回退路径）。macOS 构建 not-run（需用户 Mac）。
+- 用户原网络 2 倍速 / 起播主观体验：not-run，待用户佩戴反馈（两端均已装新版：Quest 主包 20261101.1112 + 桌面 af3b56a）。
 - CR（用户要求 ≥3 轮独立 subagent 只读审查，逐轮修复后复审）：
   - 第 1 轮：属实并修复——排队溢出的 `unavailable` 在控制队列满时经 `try_send` 会断连，改为先 `try_reserve_owned`，预约不到则继续排队；`send_inner` 长度校验移到 nonce 递增前；补目录锁串行化注释。未采纳：`MAX_FILE_WORK` 实际并行化（回环 70 MB/s 已达标，留待实测）。
   - 第 2 轮：属实并修复——上游同步遗漏：工作树落后 origin/main 8 提交（含 e7141ca Windows 首读版本号修复，与句柄缓存同域），已 stash→ff-only→pop 干净合并并全量复测通过；回压下 `waiting` 队列对不断发请求却不读响应的对端无上界，加 `MAX_FILE_BACKLOG` 硬上限后断连。
@@ -49,5 +50,5 @@ Tests: core::tests::files::{streaming_reads_reuse_one_handle_until_the_file_chan
 
 ## Next
 
-- 构建 Windows 安装版并与 YM-335 APK 在 Quest 3S 实测；macOS 用 `python3 scripts/build_macos.py` 后同样实测，记录 2 倍速与起播。
+- 待用户佩戴实测 2 倍速与起播（两端新版已就位；头显现连 PC 热点 FORREST-PC_WIFI，同二层可直连）。macOS 用 `python3 scripts/build_macos.py` 后同样实测。
 - 若实测仍受桌面 CPU 限制，再评估手写 uint 数组编码（4× ciborium）与多线程编码。
