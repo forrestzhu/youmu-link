@@ -2,7 +2,7 @@
 
 更新：2026-11-01。仅记录最近实测事实、未关闭问题与下一步；详细证据见任务。
 
-[YML-034 托盘菜单重设计](tasks/YML-034-tray-menu-redesign.md) 原生实现完成（verifying，待用户实际托盘自验 + 三平台 CI）：用户确认 demo 后按 klip Fluent shell 规格实现 Windows 自绘 WPF 弹窗（状态头 / 打开 / 退出，深浅跟随系统、高对比度降级、键盘导航、托盘锚点上方定位）与 macOS NSStatusItem 同语义菜单（不改关窗即退出生命周期）。两轮独立 subagent CR 的 1+2 项 P1（DpiForMonitor 签名、NotifyIcon 锚点恒零、行模板缺 ContentPresenter、macOS 测试构造不可编译等共 15 项属实发现）全部修复复核；Windows 全部测试 PASS、Release 重构建通过、`harness verify` 除已安装版占 UDP 47610 的既有环境项外全绿；swift test 随 CI。混合 DPI 定位与 fps/码率极端舍入差异如实记录，实际托盘交互按先例由用户自验。
+[YML-034 托盘菜单重设计](tasks/YML-034-tray-menu-redesign.md) 原生实现完成（verifying，待用户实际托盘自验 + 三平台 CI）：用户确认 demo 后按 klip Fluent shell 规格实现 Windows 自绘 WPF 弹窗（状态头 / 打开 / 退出，深浅跟随系统、高对比度降级、键盘导航、托盘锚点上方定位）与 macOS NSStatusItem 同语义菜单（不改关窗即退出生命周期）。四轮独立 subagent CR 共 21 项属实发现全部修复复核（含 DpiForMonitor 签名、NotifyIcon 锚点恒零、行模板缺 ContentPresenter、macOS 测试构造不可编译等 P1，及测量宽度、status_* 键漂移防护、负原点定位等加固），每轮均实跑/复核 Windows 测试套件；Windows 全部测试 PASS、Release 重构建通过、`harness verify` 除已安装版占 UDP 47610 的既有环境项外全绿；swift test 随 CI。混合 DPI 定位、长按右键 >350ms 重开边界与 fps/码率极端舍入差异如实记录，实际托盘交互按先例由用户自验。
 
 当前安装版已更新至8789d24成功CI完整载荷，包含配对波纹初始化闪退修复及此前文件首读修复；747文件 /配置保持 /startup与实际主窗口启动通过。闪退的生产BAML相同异常已RED→GREEN，双轮CR属实问题闭环，见[YML-032](tasks/archive/YML-032-taskbar-context-crash.md)；大文件实际解码边界仍见[YML-031](tasks/YML-031-file-version-read.md)。此前Quest无调试器名称 /Windows识别及配对前取消已通过；完整认证 /Known /重启恢复仍未签，原失败保留，见[YML-023](tasks/YML-023-encrypted-identification.md)。
 

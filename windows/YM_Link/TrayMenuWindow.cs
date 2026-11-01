@@ -27,6 +27,7 @@ internal sealed class TrayMenuWindow : Window
     private readonly Localizer localizer;
     private readonly Brush hover, ink, muted;
     private readonly List<Button> rows = [];
+    private FrameworkElement statusHeader = null!;
     private int highlight = -1;
 
     /// <summary>"open" or "exit"; the menu always closes after the action.</summary>
@@ -92,6 +93,7 @@ internal sealed class TrayMenuWindow : Window
 
     internal IReadOnlyList<Button> RowsForTest => rows;
     internal int HighlightForTest => highlight;
+    internal FrameworkElement StatusHeaderForTest => statusHeader;
 
     /// <summary>Test seam: drives the activation path without showing a real window.</summary>
     internal void ActivateForTest(int index) => Activate(index);
@@ -107,7 +109,9 @@ internal sealed class TrayMenuWindow : Window
             {
                 (Left, Top) = WindowPosition(anchor, workArea, cardHeight);
             }
-            shell.Measure(new Size(MenuWidth, double.PositiveInfinity));
+            // Constrain the prediction by the full shell width; constraining by the card
+            // alone would misestimate wrapping content before the first SizeChanged.
+            shell.Measure(new Size(MenuWidth + ShellMargin * 2, double.PositiveInfinity));
             Place(shell.DesiredSize.Height - ShellMargin * 2);
             SizeChanged += (_, args) => { if (args.HeightChanged && IsLoaded) Place(args.NewSize.Height - ShellMargin * 2); };
         }
@@ -128,7 +132,8 @@ internal sealed class TrayMenuWindow : Window
     private Border BuildShell(TrayMenuStatus status)
     {
         var body = new StackPanel { Margin = new Thickness(0, 6, 0, 6) };
-        body.Children.Add(StatusHeader(status));
+        statusHeader = StatusHeader(status);
+        body.Children.Add(statusHeader);
         body.Children.Add(Separator());
         AddRow(body, "open", localizer["tray_open"]);
         body.Children.Add(Separator());
@@ -175,8 +180,8 @@ internal sealed class TrayMenuWindow : Window
         return header;
     }
 
-    /// <summary>The paired-idle ripple mirrors the main window's PairedRipple: an expanding
-    /// ring around the green dot, looping while the menu shows the state.</summary>
+    /// <summary>The paired-idle dot carries the same looping-ring semantics as the main
+    /// window's PairedRipple: an expanding, fading ring while the state is on screen.</summary>
     private FrameworkElement StatusDot(TrayDot dot)
     {
         var ellipse = Dot(dot);

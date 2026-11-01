@@ -98,6 +98,9 @@ internal static class TrayMenuTests
         Require(left == 4 && top == 4, "A tiny work area pins the card to its top-left margin.");
         (left, top) = TrayMenuLogic.Place(new Point(1000, 2000), workArea, 220, 126);
         Require(top == 906, "An anchor below the taskbar cannot push the card into it.");
+        // A left-of-primary monitor keeps the same clamp semantics in negative space.
+        (left, top) = TrayMenuLogic.Place(new Point(-1000, 500), new Rect(-1920, 0, 1920, 1040), 220, 126);
+        Require(left == -1232 && top == 368, $"Negative-origin work areas clamp identically: expected (-1232, 368), got ({left}, {top}).");
     }
 
     private static void ThemeRegistry()
@@ -164,8 +167,51 @@ internal static class TrayMenuTests
         Require(chinese.RowsForTest[0].Content is TextBlock { Text: "打开 YM_Link" }, "Chinese open row.");
         Require(chinese.RowsForTest[1].Content is TextBlock { Text: "退出" }, "Chinese exit row.");
 
+        // The dark palette must actually reach the row highlight, not just exist. A
+        // high-contrast host correctly swaps in ControlDark, so pin the demo color only there.
+        SendKey(chinese, Key.Down);
+        var highlightBrush = chinese.RowsForTest[0].Background as System.Windows.Media.SolidColorBrush;
+        if (!SystemParameters.HighContrast)
+            Require(highlightBrush is { } && highlightBrush.Color == System.Windows.Media.Color.FromRgb(0x34, 0x37, 0x3C),
+                $"Dark hover must use the demo highlight #34373C, got {highlightBrush?.Color}.");
+        else
+            Require(ReferenceEquals(highlightBrush, SystemColors.ControlDarkBrush), "High-contrast hover must use the system role.");
+        SendKey(chinese, Key.Up);
+
+        // The paired ripple realizes a ring + dot grid when motion is allowed, else a plain dot.
+        var paired = new TrayMenuWindow(new TrayMenuStatus(TrayDot.GreenRipple, "Paired · Quest 3S", ""), false, en);
+        var header = paired.StatusHeaderForTest;
+        header.ApplyTemplate();
+        var dots = CountVisuals<System.Windows.Shapes.Ellipse>(header, _ => true);
+        Require(dots >= 1, "The paired header always shows a status dot.");
+        if (SystemParameters.ClientAreaAnimation)
+        {
+            var ring = FindVisual<System.Windows.Shapes.Ellipse>(header, e => e.Stroke is not null);
+            Require(ring is not null, "With motion enabled the ripple ring must exist.");
+        }
+
         var detailed = new TrayMenuWindow(new TrayMenuStatus(TrayDot.Red, "Status unavailable", "Open the main window for details"), false, en);
         Require(detailed.RowsForTest.Count == 2, "The error status keeps both actions.");
+    }
+
+    private static T? FindVisual<T>(System.Windows.DependencyObject node, Func<T, bool> match) where T : System.Windows.DependencyObject
+    {
+        if (node is T hit && match(hit)) return hit;
+        var children = System.Windows.Media.VisualTreeHelper.GetChildrenCount(node);
+        for (var i = 0; i < children; i++)
+        {
+            if (FindVisual(System.Windows.Media.VisualTreeHelper.GetChild(node, i), match) is { } found) return found;
+        }
+        return null;
+    }
+
+    private static int CountVisuals<T>(System.Windows.DependencyObject node, Func<T, bool> match) where T : System.Windows.DependencyObject
+    {
+        var count = node is T hit && match(hit) ? 1 : 0;
+        var children = System.Windows.Media.VisualTreeHelper.GetChildrenCount(node);
+        for (var i = 0; i < children; i++)
+            count += CountVisuals(System.Windows.Media.VisualTreeHelper.GetChild(node, i), match);
+        return count;
     }
 
     private static void SendKey(TrayMenuWindow menu, Key key)

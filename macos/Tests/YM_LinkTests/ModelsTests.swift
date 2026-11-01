@@ -304,8 +304,11 @@ final class ModelsTests: XCTestCase {
         let unnamed = TrayMenuStatus.describe(snapshot: unnamedSnapshot, language: "en")
         XCTAssertEqual(unnamed.title, "Connected", "a connection without a readable name keeps the plain status line")
 
+        // The status_* keys describe() consumes must exist in both languages too, or the
+        // platform fallback chains would silently diverge on a key drift.
         for key in ["tray_open", "tray_exit", "tray_searching", "tray_connected_format", "tray_paired_format",
-                    "tray_mirror_running", "tray_mirror_paused", "tray_unavailable", "tray_unavailable_hint"] {
+                    "tray_mirror_running", "tray_mirror_paused", "tray_unavailable", "tray_unavailable_hint",
+                    "status_starting", "status_connected", "status_paired", "status_unknown"] {
             XCTAssertNotEqual(Localizer.string(key, language: "en"), key, "missing English tray string: \(key)")
             XCTAssertNotEqual(Localizer.string(key, language: "zh-Hans"), key, "missing Chinese tray string: \(key)")
         }
